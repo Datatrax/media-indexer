@@ -1,110 +1,120 @@
-<!DOCTYPE html>
-<html lang="es">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Mi Biblioteca</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <style>
-        .line-clamp-2 {
-            display: -webkit-box;
-            -webkit-line-clamp: 2;
-            -webkit-box-orient: vertical;
-            overflow: hidden;
-        }
-        .line-clamp-3 {
-            display: -webkit-box;
-            -webkit-line-clamp: 3;
-            -webkit-box-orient: vertical;
-            overflow: hidden;
-        }
-    </style>
-</head>
-<body class="bg-gray-900 text-white min-h-screen">
-    <div class="container mx-auto px-4 py-6 max-w-6xl">
+import os
+import re
+import secrets
+import base64
+from io import BytesIO
+from typing import Dict, Any
+import asyncio
 
-        <!-- Header -->
-        <div class="mb-6">
-            <h1 class="text-3xl md:text-4xl font-bold">🎬 Mi Biblioteca</h1>
-            <p class="text-gray-400 mt-1">Total indexado: <span class="font-semibold text-white">{{ total }}</span> archivos</p>
-        </div>
+from telethon import TelegramClient
+from telethon.sessions import StringSession
+from telethon.tl.types import MessageMediaDocument, MessageMediaPhoto, NewMessage
 
-        <!-- Filtros -->
-        <div class="flex flex-wrap gap-2 mb-6">
-            <a href="/?category=all" class="px-4 py-2 rounded-full text-sm font-medium {{ 'bg-blue-600' if category=='all' else 'bg-gray-700 hover:bg-gray-600' }}">Todos ({{ total }})</a>
-            <a href="/?category=movies" class="px-4 py-2 rounded-full text-sm font-medium {{ 'bg-blue-600' if category=='movies' else 'bg-gray-700 hover:bg-gray-600' }}">Películas ({{ counts.movies }})</a>
-            <a href="/?category=series" class="px-4 py-2 rounded-full text-sm font-medium {{ 'bg-blue-600' if category=='series' else 'bg-gray-700 hover:bg-gray-600' }}">Series ({{ counts.series }})</a>
-            <a href="/?category=music" class="px-4 py-2 rounded-full text-sm font-medium {{ 'bg-blue-600' if category=='music' else 'bg-gray-700 hover:bg-gray-600' }}">Música ({{ counts.music }})</a>
-        </div>
+from fastapi import FastAPI, Request, Query, Depends, HTTPException, status
+from fastapi.responses import HTMLResponse
+from fastapi.templating import Jinja2Templates
+from fastapi.security import HTTPBasic, HTTPBasicCredentials
+import uvicorn
+from dotenv import load_dotenv
 
-        <!-- Buscador -->
-        <form method="get" class="mb-8">
-            <input type="hidden" name="category" value="{{ category }}">
-            <input type="text" name="q" value="{{ q }}" placeholder="Buscar título, género, año..."
-                   class="w-full px-5 py-3 rounded-xl bg-gray-800 border border-gray-700 focus:outline-none focus:border-blue-500 text-white">
-        </form>
+load_dotenv()
 
-        <!-- Lista de series -->
-        <div class="space-y-8">
-            {% for series in items %}
-            <div class="bg-gray-800 rounded-2xl overflow-hidden shadow-lg">
-                <div class="flex flex-col md:flex-row">
-                    
-                    <!-- Poster -->
-                    <div class="md:w-48 lg:w-56 flex-shrink-0">
-                        {% if series.thumbnail %}
-                        <img src="{{ series.thumbnail }}" alt="{{ series.title }}" 
-                             class="w-full h-64 md:h-full object-cover">
-                        {% else %}
-                        <div class="w-full h-64 md:h-full bg-gray-700 flex items-center justify-center text-gray-500">
-                            Sin imagen
-                        </div>
-                        {% endif %}
-                    </div>
+# ====================== CONFIGURACIÓN ======================
+API_ID = int(os.getenv("API_ID"))
+API_HASH = os.getenv("API_HASH")
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+CHANNEL_ID = int(os.getenv("CHANNEL_ID"))
+SESSION_STRING = os.getenv("SESSION_STRING")
+ADMIN_USER = os.getenv("ADMIN_USER", "admin")
+ADMIN_PASS = os.getenv("ADMIN_PASS", "cambia_esta_password")
+# ===========================================================
 
-                    <!-- Info + episodios -->
-                    <div class="flex-1 p-5">
-                        <h2 class="text-xl font-bold mb-1">{{ series.title }}</h2>
-                        
-                        <div class="text-sm text-gray-400 mb-3 flex flex-wrap gap-x-4 gap-y-1">
-                            {% if series.year %}<span>{{ series.year }}</span>{% endif %}
-                            {% if series.quality %}<span class="text-blue-400">{{ series.quality }}</span>{% endif %}
-                            {% if series.estudio %}<span>{{ series.estudio }}</span>{% endif %}
-                            {% if series.episodios %}<span>{{ series.episodios }}</span>{% endif %}
-                        </div>
+app = FastAPI(title="Media Indexer Real-Time")
+templates = Jinja2Templates(directory="templates")
+security = HTTPBasic()
 
-                        {% if series.genero %}
-                        <p class="text-sm text-purple-400 mb-3">{{ series.genero }}</p>
-                        {% endif %}
+# Catálogo en RAM (Compartido)
+catalog = {
+    "movies": [],
+    "series": [],
+    "music": [],
+    "other": []
+}
+# Diccionario para evitar duplicados (usando ID de Telegram)
+catalog_ids = set()
 
-                        {% if series.sinopsis %}
-                        <p class="text-sm text-gray-400 mb-4 line-clamp-3">{{ series.sinopsis }}</p>
-                        {% endif %}
+client = TelegramClient(StringSession(SESSION_STRING), API_ID, API_HASH)
 
-                        <!-- Lista de episodios -->
-                        <div class="border-t border-gray-700 pt-4">
-                            <h3 class="text-sm font-semibold text-gray-300 mb-2">Episodios ({{ series.episodes|length }})</h3>
-                            <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
-                                {% for ep in series.episodes %}
-                                <a href="{{ ep.link }}" target="_blank"
-                                   class="flex items-center justify-between px-3 py-2 bg-gray-700 hover:bg-blue-600 rounded-lg text-sm transition">
-                                    <span>
-                                        {% if ep.episode %}Ep {{ ep.episode }}{% else %}Archivo{% endif %}
-                                    </span>
-                                    <span class="text-xs text-gray-400">{{ ep.size_mb }} MB</span>
-                                </a>
-                                {% endfor %}
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            {% else %}
-            <div class="text-center py-16 text-gray-500">
-                <p class="text-lg">No se encontraron resultados</p>
-            </div>
-            {% endfor %}
-        </div>
-    </div>
-</body>
-</html>
+# Función de verificación de credenciales
+def verify_credentials(credentials: HTTPBasicCredentials = Depends(security)):
+    correct_user = secrets.compare_digest(credentials.username, ADMIN_USER)
+    correct_pass = secrets.compare_digest(credentials.password, ADMIN_PASS)
+    if not (correct_user and correct_pass):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Credenciales incorrectas",
+            headers={"WWW-Authenticate": "Basic"},
+        )
+    return credentials.username
+
+# --- Lógica de Parseo y Clasificación (Misma que antes) ---
+
+def parse_caption(caption: str) -> Dict[str, Any]:
+    data = {
+        "nombre": None, "secuela": None, "tipo": None, "episodios": None,
+        "estudio": None, "año": None, "genero": None, "resolucion": None,
+        "calidad": None, "duracion": None, "audios": None, "subtitulos": None,
+        "fansub": None, "formato": None, "peso": None, "sinopsis": None
+    }
+    if not caption:
+        return data
+
+    sinopsis_match = re.search(r"Sinopsis:\s*(.+)", caption, re.IGNORECASE | re.DOTALL)
+    if sinopsis_match:
+        data["sinopsis"] = sinopsis_match.group(1).strip()
+
+    for line in caption.split("\n"):
+        line = line.strip()
+        if ":" in line:
+            key, value = line.split(":", 1)
+            key = key.strip().lower()
+            value = value.strip()
+
+            mapping = {
+                "nombre": "nombre", "title": "nombre",
+                "secuela": "secuela", "sequel": "secuela",
+                "tipo": "tipo", "type": "tipo",
+                "episodios": "episodios", "episodes": "episodios", "eps": "episodios",
+                "estudio": "estudio", "studio": "estudio",
+                "año": "año", "year": "año", "ano": "año",
+                "género": "genero", "genero": "genero", "genre": "genero",
+                "resolución": "resolucion", "resolucion": "resolucion", "resolution": "resolucion",
+                "calidad": "calidad", "quality": "calidad",
+                "duración": "duracion", "duracion": "duracion", "duration": "duracion",
+                "audios": "audios", "audio": "audios",
+                "subtítulos": "subtitulos", "subtitulos": "subtitulos", "subtitles": "subtitulos", "subs": "subtitulos",
+                "fansub": "fansub", "sub": "fansub",
+                "formato": "formato", "format": "formato",
+                "peso": "peso", "size": "peso"
+            }
+            if key in mapping:
+                data[mapping[key]] = value
+    return data
+
+def extract_info(filename: str, caption: str = "") -> Dict[str, Any]:
+    parsed = parse_caption(caption)
+    if not parsed["nombre"]:
+        clean = re.sub(r"\.(mkv|mp4|avi|mov)$", "", filename, flags=re.I)
+        clean = re.sub(r"[\._]", " ", clean)
+        clean = re.sub(r"\s*[-–]\s*\d{1,3}.*", "", clean)
+        parsed["nombre"] = re.sub(r"\s+", " ", clean).strip()
+
+    episode = None
+    season = 1
+    anime_ep = re.search(r"[-–]\s*(\d{1,3})(?:\s*(ova|special|sp))?", filename.lower())
+    if anime_ep:
+        episode = int(anime_ep.group(1))
+
+    return {
+        "title": parsed["nombre"], "secuela": parsed["secuela"], "tipo": parsed["tipo"],
+        "episodios": parsed["epis

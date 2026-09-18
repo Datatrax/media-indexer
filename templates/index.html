@@ -5,40 +5,116 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Mi Biblioteca</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .line-clamp-3 {
+            display: -webkit-box;
+            -webkit-line-clamp: 3;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+        .card-hover:hover {
+            transform: translateY(-4px);
+            transition: all 0.2s ease;
+        }
+    </style>
 </head>
 <body class="bg-gray-900 text-white min-h-screen">
-    <div class="container mx-auto px-4 py-8">
-        <h1 class="text-4xl font-bold mb-2">🎬 Mi Biblioteca</h1>
-        <p class="text-gray-400 mb-6">Total indexado: {{ total }} archivos</p>
-
-        <div class="flex flex-wrap gap-3 mb-6">
-            <a href="/?category=all" class="px-4 py-2 rounded-full {{ 'bg-blue-600' if category=='all' else 'bg-gray-700' }}">Todos ({{ total }})</a>
-            <a href="/?category=movies" class="px-4 py-2 rounded-full {{ 'bg-blue-600' if category=='movies' else 'bg-gray-700' }}">Películas ({{ counts.movies }})</a>
-            <a href="/?category=series" class="px-4 py-2 rounded-full {{ 'bg-blue-600' if category=='series' else 'bg-gray-700' }}">Series ({{ counts.series }})</a>
-            <a href="/?category=music" class="px-4 py-2 rounded-full {{ 'bg-blue-600' if category=='music' else 'bg-gray-700' }}">Música ({{ counts.music }})</a>
+    <div class="container mx-auto px-4 py-6 max-w-7xl">
+        
+        <!-- Header -->
+        <div class="mb-6">
+            <h1 class="text-3xl md:text-4xl font-bold flex items-center gap-2">
+                🎬 Mi Biblioteca
+            </h1>
+            <p class="text-gray-400 mt-1">Total indexado: <span class="font-semibold text-white">{{ total }}</span> archivos</p>
         </div>
 
+        <!-- Filtros -->
+        <div class="flex flex-wrap gap-2 mb-6">
+            <a href="/?category=all" 
+               class="px-4 py-2 rounded-full text-sm font-medium transition
+               {{ 'bg-blue-600 text-white' if category=='all' else 'bg-gray-700 hover:bg-gray-600' }}">
+                Todos ({{ total }})
+            </a>
+            <a href="/?category=movies" 
+               class="px-4 py-2 rounded-full text-sm font-medium transition
+               {{ 'bg-blue-600 text-white' if category=='movies' else 'bg-gray-700 hover:bg-gray-600' }}">
+                Películas ({{ counts.movies }})
+            </a>
+            <a href="/?category=series" 
+               class="px-4 py-2 rounded-full text-sm font-medium transition
+               {{ 'bg-blue-600 text-white' if category=='series' else 'bg-gray-700 hover:bg-gray-600' }}">
+                Series ({{ counts.series }})
+            </a>
+            <a href="/?category=music" 
+               class="px-4 py-2 rounded-full text-sm font-medium transition
+               {{ 'bg-blue-600 text-white' if category=='music' else 'bg-gray-700 hover:bg-gray-600' }}">
+                Música ({{ counts.music }})
+            </a>
+        </div>
+
+        <!-- Buscador -->
         <form method="get" class="mb-8">
             <input type="hidden" name="category" value="{{ category }}">
-            <input type="text" name="q" value="{{ q }}" placeholder="Buscar título, año, temporada..."
-                   class="w-full md:w-1/2 px-4 py-3 rounded-lg bg-gray-800 border border-gray-700 focus:outline-none focus:border-blue-500">
+            <input type="text" name="q" value="{{ q }}" 
+                   placeholder="Buscar título, género, año, estudio..."
+                   class="w-full px-5 py-3 rounded-xl bg-gray-800 border border-gray-700 
+                          focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/30
+                          text-white placeholder-gray-500">
         </form>
 
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <!-- Grid de tarjetas -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
             {% for item in items %}
-            <div class="bg-gray-800 rounded-xl p-5">
-                <h3 class="font-semibold text-lg mb-1 truncate">{{ item.title }}</h3>
-                <p class="text-sm text-gray-400 mb-2">
-                    {% if item.year %}{{ item.year }} · {% endif %}
-                    {% if item.season %}S{{ "%02d"|format(item.season) }}E{{ "%02d"|format(item.episode) }} · {% endif %}
-                    {% if item.quality %}{{ item.quality }} · {% endif %}
-                    {{ item.size_mb }} MB
-                </p>
-                {% if item.caption %}<p class="text-sm text-gray-500 mb-4">{{ item.caption }}</p>{% endif %}
-                <a href="{{ item.link }}" target="_blank" class="inline-block px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-sm">Ver / Descargar</a>
+            <div class="bg-gray-800 rounded-2xl overflow-hidden shadow-lg card-hover">
+                
+                <!-- Miniatura -->
+                {% if item.thumbnail %}
+                <div class="relative aspect-[2/3] bg-gray-700">
+                    <img src="{{ item.thumbnail }}" 
+                         alt="{{ item.title }}" 
+                         class="w-full h-full object-cover"
+                         loading="lazy">
+                </div>
+                {% else %}
+                <div class="aspect-[2/3] bg-gray-700 flex items-center justify-center">
+                    <span class="text-gray-500 text-sm">Sin imagen</span>
+                </div>
+                {% endif %}
+
+                <!-- Información -->
+                <div class="p-4">
+                    <h3 class="font-bold text-base leading-tight mb-1 line-clamp-2" title="{{ item.title }}">
+                        {{ item.title }}
+                    </h3>
+
+                    <div class="text-xs text-gray-400 mb-2 space-y-0.5">
+                        {% if item.year %}<div>{{ item.year }}</div>{% endif %}
+                        {% if item.episode %}<div>Episodio {{ item.episode }}{% if item.season %} · Temp {{ item.season }}{% endif %}</div>{% endif %}
+                        {% if item.quality %}<div class="text-blue-400">{{ item.quality }}</div>{% endif %}
+                        <div>{{ item.size_mb }} MB</div>
+                    </div>
+
+                    {% if item.genero %}
+                    <p class="text-xs text-purple-400 mb-2 line-clamp-1">{{ item.genero }}</p>
+                    {% endif %}
+
+                    {% if item.sinopsis %}
+                    <p class="text-xs text-gray-500 mb-3 line-clamp-3">{{ item.sinopsis }}</p>
+                    {% endif %}
+
+                    <a href="{{ item.link }}" target="_blank"
+                       class="block w-full text-center px-4 py-2.5 bg-blue-600 hover:bg-blue-700 
+                              rounded-xl text-sm font-medium transition">
+                        Ver / Descargar
+                    </a>
+                </div>
             </div>
             {% else %}
-            <p class="text-gray-500 col-span-full">No se encontraron resultados.</p>
+            <div class="col-span-full text-center py-16 text-gray-500">
+                <p class="text-lg">No se encontraron resultados</p>
+                <p class="text-sm mt-2">Prueba cambiando de categoría o el término de búsqueda</p>
+            </div>
             {% endfor %}
         </div>
     </div>

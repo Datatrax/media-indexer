@@ -110,13 +110,55 @@ def extract_info(filename: str, caption: str = "") -> Dict[str, Any]:
         clean = re.sub(r"\.(mkv|mp4|avi|mov)$", "", filename, flags=re.I)
         clean = re.sub(r"[\._]", " ", clean)
         clean = re.sub(r"\s*[-–]\s*\d{1,3}.*", "", clean)
+        clean = re.sub(r"\s*(ova|special|sp|especial).*$", "", clean, flags=re.I)
         parsed["nombre"] = re.sub(r"\s+", " ", clean).strip()
 
     episode = None
     season = 1
-    anime_ep = re.search(r"[-–]\s*(\d{1,3})(?:\s*(ova|special|sp))?", filename.lower())
-    if anime_ep:
-        episode = int(anime_ep.group(1))
+    is_ova = False
+    special_type = None
+
+    filename_lower = filename.lower()
+
+    # Caso 1: "- 14 OVA" o "- 14 Special"
+    match1 = re.search(r"[-–]\s*(\d{1,3})\s*(ova|special|sp|especial)\b", filename_lower)
+    if match1:
+        episode = int(match1.group(1))
+        is_ova = True
+        special_type = match1.group(2).upper()
+        if special_type in ["SP", "ESPECIAL"]:
+            special_type = "Special"
+
+    # Caso 2: "- OVA 2" o "- Special 3"
+    if not is_ova:
+        match2 = re.search(r"[-–]\s*(ova|special|sp|especial)\s*(\d{1,3})\b", filename_lower)
+        if match2:
+            is_ova = True
+            special_type = match2.group(1).upper()
+            episode = int(match2.group(2))
+            if special_type in ["SP", "ESPECIAL"]:
+                special_type = "Special"
+
+    # Caso 3: "OVA 2" o "Special 1" al final o solo
+    if not is_ova:
+        match3 = re.search(r"\b(ova|special|sp|especial)\s*(\d{1,3})\b", filename_lower)
+        if match3:
+            is_ova = True
+            special_type = match3.group(1).upper()
+            episode = int(match3.group(2))
+            if special_type in ["SP", "ESPECIAL"]:
+                special_type = "Special"
+
+    # Caso 4: solo dice OVA / Special sin número
+    if not is_ova and re.search(r"\b(ova|special|sp|especial)\b", filename_lower):
+        is_ova = True
+        special_type = "OVA"
+
+    # Episodio normal si no es OVA
+    if episode is None and not is_ova:
+        normal_ep = re.search(r"[-–]\s*(\d{1,3})\b", filename_lower)
+        if normal_ep:
+            episode = int(normal_ep.group(1))
 
     return {
         "title": parsed["nombre"],
@@ -136,7 +178,9 @@ def extract_info(filename: str, caption: str = "") -> Dict[str, Any]:
         "peso": parsed["peso"],
         "sinopsis": parsed["sinopsis"],
         "season": season,
-        "episode": episode
+        "episode": episode,
+        "is_ova": is_ova,
+        "special_type": special_type
     }
 
 
@@ -216,6 +260,8 @@ async def process_message(msg):
         "sinopsis": info["sinopsis"],
         "season": info["season"],
         "episode": info["episode"],
+        "is_ova": info["is_ova"],
+        "special_type": info["special_type"],
         "size_mb": round(size / (1024 * 1024), 2) if size else 0,
         "mime": mime,
         "caption": caption[:600],
@@ -330,12 +376,15 @@ async def home(
             if item.get(field) and not g.get(field):
                 g[field] = item[field]
 
-        # Solo añadir como episodio si NO es foto y tiene tamaño > 0
         if not item.get("is_photo") and item.get("size_mb", 0) > 0:
             g["episodes"].append(item)
 
     for g in grouped.values():
-        g["episodes"].sort(key=lambda x: (x.get("episode") or 0))
+        # Ordenar: primero episodios normales, luego OVAs
+        g["episodes"].sort(key=lambda x: (
+            1 if x.get("is_ova") else 0,
+            x.get("episode") or 999
+        ))
 
     all_series = list(grouped.values())
     total_series = len(all_series)

@@ -1,10 +1,14 @@
 import os
 import re
 import secrets
+import base64
+from io import BytesIO
 from typing import Dict, Any
+
 from telethon import TelegramClient
 from telethon.sessions import StringSession
-from telethon.tl.types import MessageMediaDocument
+from telethon.tl.types import MessageMediaDocument, MessageMediaPhoto
+
 from fastapi import FastAPI, Request, Query, Depends, HTTPException, status
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
@@ -14,6 +18,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+# ====================== CONFIGURACIÓN ======================
 API_ID = int(os.getenv("API_ID"))
 API_HASH = os.getenv("API_HASH")
 BOT_TOKEN = os.getenv("BOT_TOKEN")
@@ -21,6 +26,7 @@ CHANNEL_ID = int(os.getenv("CHANNEL_ID"))
 SESSION_STRING = os.getenv("SESSION_STRING")
 ADMIN_USER = os.getenv("ADMIN_USER", "admin")
 ADMIN_PASS = os.getenv("ADMIN_PASS", "cambia_esta_password")
+# ===========================================================
 
 app = FastAPI(title="Media Indexer")
 templates = Jinja2Templates(directory="templates")
@@ -29,6 +35,7 @@ security = HTTPBasic()
 catalog = {"movies": [], "series": [], "music": [], "other": []}
 
 client = TelegramClient(StringSession(SESSION_STRING), API_ID, API_HASH)
+
 
 def verify_credentials(credentials: HTTPBasicCredentials = Depends(security)):
     correct_user = secrets.compare_digest(credentials.username, ADMIN_USER)
@@ -41,99 +48,212 @@ def verify_credentials(credentials: HTTPBasicCredentials = Depends(security)):
         )
     return credentials.username
 
+
+def parse_caption(caption: str) -> Dict[str, Any]:
+    data = {
+        "nombre": None, "secuela": None, "tipo": None, "episodios": None,
+        "estudio": None, "año": None, "genero": None, "resolucion": None,
+        "calidad": None, "duracion": None, "audios": None, "subtitulos": None,
+        "fansub": None, "formato": None, "peso": None, "sinopsis": None
+    }
+    if not caption:
+        return data
+
+    # Sinopsis
+    sinopsis_match = re.search(r"Sinopsis:\s*(.+)", caption, re.IGNORECASE | re.DOTALL)
+    if sinopsis_match:
+        data["sinopsis"] = sinopsis_match.group(1).strip()
+
+    for line in caption.split("\n"):
+        line = line.strip()
+        if ":" in line:
+            key, value = line.split(":", 1)
+            key = key.strip().lower()
+            value = value.strip()
+
+            mapping = {
+                "nombre": "nombre", "title": "nombre",
+                "secuela": "secuela", "sequel": "secuela",
+                "tipo": "tipo", "type": "tipo",
+                "episodios": "episodios", "episodes": "episodios", "eps": "episodios",
+                "estudio": "estudio", "studio": "estudio",
+                "año": "año", "year": "año", "ano": "año",
+                "género": "genero", "genero": "genero", "genre": "genero",
+                "resolución": "resolucion", "resolucion": "resolucion", "resolution": "resolucion",
+                "calidad": "calidad", "quality": "calidad",
+                "duración": "duracion", "duracion": "duracion", "duration": "duracion",
+                "audios": "audios", "audio": "audios",
+                "subtítulos": "subtitulos", "subtitulos": "subtitulos", "subtitles": "subtitulos", "subs": "subtitulos",
+                "fansub": "fansub", "sub": "fansub",
+                "formato": "formato", "format": "formato",
+                "peso": "peso", "size": "peso"
+            }
+            if key in mapping:
+                data[mapping[key]] = value
+    return data
+
+
 def extract_info(filename: str, caption: str = "") -> Dict[str, Any]:
-    text = f"{filename} {caption}".lower()
-    year_match = re.search(r"(19|20)\d{2}", text)
-    year = year_match.group(0) if year_match else None
+    parsed = parse_caption(caption)
 
-    se_match = re.search(
-        r"(?:s|season|temporada)[\s._-]*(\d{1,2})[\s._-]*(?:e|ep|episode|capítulo|cap)[\s._-]*(\d{1,3})",
-        text, re.IGNORECASE
-    )
-    if not se_match:
-        se_match = re.search(r"(\d{1,2})[xX](\d{1,3})", text)
+    if not parsed["nombre"]:
+        clean = re.sub(r"\.(mkv|mp4|avi|mov)$", "", filename, flags=re.I)
+        clean = re.sub(r"[\._]", " ", clean)
+        clean = re.sub(r"\s*[-–]\s*\d{1,3}.*", "", clean)
+        parsed["nombre"] = re.sub(r"\s+", " ", clean).strip()
 
-    season = int(se_match.group(1)) if se_match else None
-    episode = int(se_match.group(2)) if se_match else None
+    episode = None
+    season = 1
+    anime_ep = re.search(r"[-–]\s*(\d{1,3})(?:\s*(ova|special|sp))?", filename.lower())
+    if anime_ep:
+        episode = int(anime_ep.group(1))
 
-    quality = None
-    for q in ["2160p", "4k", "1080p", "720p", "480p", "360p"]:
-        if q in text:
-            quality = q.upper()
-            break
+    return {
+        "title": parsed["nombre"],
+        "secuela": parsed["secuela"],
+        "tipo": parsed["tipo"],
+        "episodios": parsed["episodios"],
+        "estudio": parsed["estudio"],
+        "year": parsed["año"],
+        "genero": parsed["genero"],
+        "resolucion": parsed["resolucion"],
+        "quality": parsed["calidad"],
+        "duracion": parsed["duracion"],
+        "audios": parsed["audios"],
+        "subtitulos": parsed["subtitulos"],
+        "fansub": parsed["fansub"],
+        "formato": parsed["formato"],
+        "peso": parsed["peso"],
+        "sinopsis": parsed["sinopsis"],
+        "season": season,
+        "episode": episode
+    }
 
-    clean_title = re.sub(r"\.(mkv|mp4|avi|mov|mp3|flac|m4a|ogg)$", "", filename, flags=re.I)
-    clean_title = re.sub(r"[\._]", " ", clean_title)
-    clean_title = re.sub(r"\s+", " ", clean_title).strip()
 
-    return {"title": clean_title, "year": year, "season": season, "episode": episode, "quality": quality}
+def classify(filename: str, mime: str = "", caption: str = "", tipo: str = None) -> str:
+    if tipo:
+        t = tipo.lower()
+        if any(x in t for x in ["serie", "ova", "anime"]):
+            return "series"
+        if any(x in t for x in ["película", "pelicula", "movie"]):
+            return "movies"
+        if any(x in t for x in ["música", "musica", "music"]):
+            return "music"
 
-def classify(filename: str, mime: str = "", caption: str = "") -> str:
     text = (filename + " " + caption).lower()
-    if any(x in text for x in [".mp3", ".flac", ".m4a", ".ogg", ".wav", "music", "song", "album", "ost"]) or "audio/" in mime:
+    if any(x in text for x in [".mp3", ".flac", ".m4a", "music", "ost"]) or "audio/" in mime:
         return "music"
-    if re.search(r"(s\d{1,2}e\d{1,2}|season|temporada|capítulo|episode|cap\.|\d{1,2}x\d{1,3})", text, re.I):
+    if re.search(r"(s\d{1,2}e\d{1,2}|season|temporada|[-–]\s*\d{1,3})", text):
         return "series"
-    if any(x in text for x in [".mkv", ".mp4", ".avi", ".mov", "1080p", "720p", "2160p", "4k", "bluray", "web-dl", "webrip"]):
+    if any(x in text for x in [".mkv", ".mp4", "1080p", "720p", "bluray", "bd"]):
         return "movies"
     return "other"
+
 
 async def reindex():
     global catalog
     catalog = {"movies": [], "series": [], "music": [], "other": []}
     print("Iniciando re-indexación...")
-    count = 0
 
-    async for msg in client.iter_messages(CHANNEL_ID, limit=None):
-        if not msg.media or not isinstance(msg.media, MessageMediaDocument):
-            continue
+    try:
+        entity = await client.get_entity(CHANNEL_ID)
+        print(f"Canal encontrado: {entity.title}")
 
-        doc = msg.media.document
-        filename = "Sin nombre"
-        for attr in doc.attributes:
-            if hasattr(attr, "file_name") and attr.file_name:
-                filename = attr.file_name
-                break
+        count = 0
+        async for msg in client.iter_messages(entity, limit=None):
+            if not msg.media:
+                continue
 
-        mime = doc.mime_type or ""
-        size = doc.size or 0
-        caption = msg.message or ""
-        info = extract_info(filename, caption)
+            filename = "Sin nombre"
+            mime = ""
+            size = 0
+            caption = msg.message or ""
 
-        item = {
-            "id": msg.id,
-            "filename": filename,
-            "title": info["title"],
-            "year": info["year"],
-            "season": info["season"],
-            "episode": info["episode"],
-            "quality": info["quality"],
-            "size_mb": round(size / (1024 * 1024), 2),
-            "mime": mime,
-            "caption": caption[:200],
-            "date": msg.date.strftime("%Y-%m-%d") if msg.date else "",
-            "link": f"https://t.me/c/{str(CHANNEL_ID)[4:]}/{msg.id}"
-        }
+            if isinstance(msg.media, MessageMediaDocument):
+                doc = msg.media.document
+                for attr in doc.attributes:
+                    if hasattr(attr, "file_name") and attr.file_name:
+                        filename = attr.file_name
+                        break
+                mime = doc.mime_type or ""
+                size = doc.size or 0
+            elif isinstance(msg.media, MessageMediaPhoto):
+                filename = f"photo_{msg.id}.jpg"
+                mime = "image/jpeg"
 
-        tipo = classify(filename, mime, caption)
-        catalog[tipo].append(item)
-        count += 1
-        if count % 100 == 0:
-            print(f"Indexados {count} archivos...")
+            info = extract_info(filename, caption)
+            tipo_detectado = classify(filename, mime, caption, info.get("tipo"))
 
-    for key in catalog:
-        catalog[key].sort(key=lambda x: x["date"], reverse=True)
+            # Extraer miniatura real
+            thumbnail_b64 = None
+            try:
+                if msg.photo:
+                    thumb_bytes = await client.download_media(msg.photo, file=BytesIO())
+                    thumbnail_b64 = base64.b64encode(thumb_bytes.getvalue()).decode()
+                elif isinstance(msg.media, MessageMediaDocument) and msg.media.document.thumbs:
+                    thumb_bytes = await client.download_media(msg.media, thumb=-1, file=BytesIO())
+                    thumbnail_b64 = base64.b64encode(thumb_bytes.getvalue()).decode()
+            except Exception as e:
+                print(f"No se pudo extraer miniatura {msg.id}: {e}")
 
-    print(f"✅ Completado: {count} archivos")
-    print(f"Películas: {len(catalog['movies'])} | Series: {len(catalog['series'])} | Música: {len(catalog['music'])}")
+            item = {
+                "id": msg.id,
+                "filename": filename,
+                "title": info["title"],
+                "secuela": info["secuela"],
+                "tipo": info["tipo"],
+                "episodios": info["episodios"],
+                "estudio": info["estudio"],
+                "year": info["year"],
+                "genero": info["genero"],
+                "resolucion": info["resolucion"],
+                "quality": info["quality"],
+                "duracion": info["duracion"],
+                "audios": info["audios"],
+                "subtitulos": info["subtitulos"],
+                "fansub": info["fansub"],
+                "formato": info["formato"],
+                "peso": info["peso"],
+                "sinopsis": info["sinopsis"],
+                "season": info["season"],
+                "episode": info["episode"],
+                "size_mb": round(size / (1024 * 1024), 2) if size else 0,
+                "mime": mime,
+                "caption": caption[:400],
+                "date": msg.date.strftime("%Y-%m-%d") if msg.date else "",
+                "link": f"https://t.me/c/{str(CHANNEL_ID)[4:]}/{msg.id}",
+                "thumbnail": f"data:image/jpeg;base64,{thumbnail_b64}" if thumbnail_b64 else None
+            }
+
+            catalog[tipo_detectado].append(item)
+            count += 1
+            if count % 50 == 0:
+                print(f"Indexados {count} archivos...")
+
+        for key in catalog:
+            catalog[key].sort(key=lambda x: x["date"], reverse=True)
+
+        print(f"✅ Re-indexación completa: {count} archivos")
+        print(f"Películas: {len(catalog['movies'])} | Series: {len(catalog['series'])} | Música: {len(catalog['music'])}")
+
+    except Exception as e:
+        print(f"❌ Error durante la re-indexación: {e}")
+        raise
+
 
 @app.on_event("startup")
 async def startup_event():
     await client.start(bot_token=BOT_TOKEN)
     await reindex()
 
+
 @app.get("/", response_class=HTMLResponse)
-async def home(request: Request, category: str = "all", q: str = "", username: str = Depends(verify_credentials)):
+async def home(
+    request: Request,
+    category: str = "all",
+    q: str = "",
+    username: str = Depends(verify_credentials)
+):
     items = []
     if category == "all":
         for cat in catalog.values():
@@ -143,20 +263,26 @@ async def home(request: Request, category: str = "all", q: str = "", username: s
 
     if q:
         q_lower = q.lower()
-        items = [i for i in items if q_lower in i["filename"].lower() or q_lower in i["title"].lower() or q_lower in i["caption"].lower()]
+        items = [
+            i for i in items
+            if q_lower in (i["title"] or "").lower()
+            or q_lower in (i["caption"] or "").lower()
+            or q_lower in (i["genero"] or "").lower()
+        ]
 
     return templates.TemplateResponse(
-    request,
-    "index.html",
-    {
-        "request": request,
-        "items": items[:300],
-        "total": sum(len(v) for v in catalog.values()),
-        "counts": {k: len(v) for k, v in catalog.items()},
-        "category": category,
-        "q": q
-    }
-)
+        request,
+        "index.html",
+        {
+            "request": request,
+            "items": items[:300],
+            "total": sum(len(v) for v in catalog.values()),
+            "counts": {k: len(v) for k, v in catalog.items()},
+            "category": category,
+            "q": q
+        }
+    )
+
 
 @app.get("/api/search")
 async def api_search(q: str = Query(...), username: str = Depends(verify_credentials)):
@@ -164,13 +290,17 @@ async def api_search(q: str = Query(...), username: str = Depends(verify_credent
     results = []
     for cat in catalog.values():
         for item in cat:
-            if q in item["filename"].lower() or q in item["title"].lower() or q in item["caption"].lower():
+            if (q in (item["title"] or "").lower() or
+                q in (item["caption"] or "").lower() or
+                q in (item.get("genero") or "").lower()):
                 results.append(item)
     return results[:100]
+
 
 @app.get("/health")
 async def health():
     return {"status": "ok", "total_files": sum(len(v) for v in catalog.values())}
+
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 8000))

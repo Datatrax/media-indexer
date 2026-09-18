@@ -4,7 +4,6 @@ import secrets
 import base64
 from io import BytesIO
 from typing import Dict, Any
-from collections import defaultdict
 
 from telethon import TelegramClient, events
 from telethon.sessions import StringSession
@@ -52,13 +51,11 @@ def verify_credentials(credentials: HTTPBasicCredentials = Depends(security)):
 
 
 def normalize_title(title: str) -> str:
-    """Normaliza el título para agrupar correctamente"""
     if not title:
         return "sin título"
     t = title.lower().strip()
-    t = re.sub(r"[^\w\s]", "", t)           # quita puntuación
+    t = re.sub(r"[^\w\s]", "", t)
     t = re.sub(r"\s+", " ", t)
-    # Quita subtítulos comunes
     t = re.sub(r"\s*(heavens? lost property|heaven’s lost property).*$", "", t)
     return t.strip()
 
@@ -73,11 +70,14 @@ def parse_caption(caption: str) -> Dict[str, Any]:
     if not caption:
         return data
 
-    sinopsis_match = re.search(r"Sinopsis:\s*(.+)", caption, re.IGNORECASE | re.DOTALL)
+    # Quitar formato de Telegram (negrita, cursiva, etc.)
+    clean_caption = re.sub(r"[*_`~]", "", caption)
+
+    sinopsis_match = re.search(r"Sinopsis:\s*(.+)", clean_caption, re.IGNORECASE | re.DOTALL)
     if sinopsis_match:
         data["sinopsis"] = sinopsis_match.group(1).strip()
 
-    for line in caption.split("\n"):
+    for line in clean_caption.split("\n"):
         line = line.strip()
         if ":" in line:
             key, value = line.split(":", 1)
@@ -164,7 +164,6 @@ def classify(filename: str, mime: str = "", caption: str = "", tipo: str = None)
 
 
 async def process_message(msg):
-    """Procesa un mensaje y lo añade al catálogo"""
     if not msg.media:
         return None
 
@@ -222,7 +221,7 @@ async def process_message(msg):
         "episode": info["episode"],
         "size_mb": round(size / (1024 * 1024), 2) if size else 0,
         "mime": mime,
-        "caption": caption[:500],
+        "caption": caption[:600],
         "date": msg.date.strftime("%Y-%m-%d") if msg.date else "",
         "link": f"https://t.me/c/{str(CHANNEL_ID)[4:]}/{msg.id}",
         "thumbnail": f"data:image/jpeg;base64,{thumbnail_b64}" if thumbnail_b64 else None
@@ -252,11 +251,21 @@ async def reindex():
             catalog[key].sort(key=lambda x: x["date"], reverse=True)
 
         print(f"✅ Re-indexación completa: {count} archivos")
-        print(f"Películas: {len(catalog['movies'])} | Series: {len(catalog['series'])} | Música: {len(catalog['music'])}")
 
     except Exception as e:
         print(f"❌ Error durante la re-indexación: {e}")
         raise
+
+
+def get_grouped_counts():
+    """Cuenta series/películas/música únicas (no archivos)"""
+    counts = {"movies": 0, "series": 0, "music": 0, "other": 0}
+    for cat_name, items in catalog.items():
+        titles = set()
+        for item in items:
+            titles.add(normalize_title(item["title"]))
+        counts[cat_name] = len(titles)
+    return counts
 
 
 @app.on_event("startup")
@@ -264,12 +273,10 @@ async def startup_event():
     await client.start(bot_token=BOT_TOKEN)
     await reindex()
 
-    # Escuchar nuevos mensajes del canal en tiempo real
     @client.on(events.NewMessage(chats=CHANNEL_ID))
     async def handler(event):
         print(f"Nuevo mensaje detectado: {event.message.id}")
         await process_message(event.message)
-        print("Catálogo actualizado en caliente")
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -296,7 +303,7 @@ async def home(
             or q_lower in (i.get("genero") or "").lower()
         ]
 
-    # Agrupación inteligente
+    # Agrupación
     grouped = {}
     for item in raw_items:
         key = normalize_title(item["title"])
@@ -320,15 +327,17 @@ async def home(
                 "peso": item.get("peso"),
                 "episodes": []
             }
-        # Preferir miniatura y datos más completos
-        if item.get("thumbnail") and not grouped[key]["thumbnail"]:
-            grouped[key]["thumbnail"] = item["thumbnail"]
-        if item.get("sinopsis") and not grouped[key]["sinopsis"]:
-            grouped[key]["sinopsis"] = item["sinopsis"]
-        if item.get("year") and not grouped[key]["year"]:
-            grouped[key]["year"] = item["year"]
 
-        grouped[key]["episodes"].append(item)
+        # Rellenar datos faltantes con los mejores disponibles
+        g = grouped[key]
+        if item.get("thumbnail") and not g["thumbnail"]:
+            g["thumbnail"] = item["thumbnail"]
+        for field in ["year", "genero", "sinopsis", "quality", "estudio", "episodios",
+                      "secuela", "resolucion", "duracion", "audios", "subtitulos", "fansub", "formato", "peso"]:
+            if item.get(field) and not g.get(field):
+                g[field] = item[field]
+
+        g["episodes"].append(item)
 
     for g in grouped.values():
         g["episodes"].sort(key=lambda x: (x.get("episode") or 0))
@@ -340,7 +349,7 @@ async def home(
     start = (page - 1) * ITEMS_PER_PAGE
     end = start + ITEMS_PER_PAGE
     items = all_series[start:end]
-    total_pages = (total_series + ITEMS_PER_PAGE - 1) // ITEMS_PER_PAGE
+    total_pages = max(1, (total_series + ITEMS_PER_PAGE - 1) // ITEMS_PER_PAGE)
 
     return templates.TemplateResponse(
         request,
@@ -350,7 +359,7 @@ async def home(
             "items": items,
             "total": sum(len(v) for v in catalog.values()),
             "total_series": total_series,
-            "counts": {k: len(v) for k, v in catalog.items()},
+            "counts": get_grouped_counts(),          # ← ahora cuenta series únicas
             "category": category,
             "q": q,
             "page": page,

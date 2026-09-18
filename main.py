@@ -59,7 +59,6 @@ def parse_caption(caption: str) -> Dict[str, Any]:
     if not caption:
         return data
 
-    # Sinopsis
     sinopsis_match = re.search(r"Sinopsis:\s*(.+)", caption, re.IGNORECASE | re.DOTALL)
     if sinopsis_match:
         data["sinopsis"] = sinopsis_match.group(1).strip()
@@ -254,28 +253,58 @@ async def home(
     q: str = "",
     username: str = Depends(verify_credentials)
 ):
-    items = []
+    # Recolectar items
+    raw_items = []
     if category == "all":
         for cat in catalog.values():
-            items.extend(cat)
+            raw_items.extend(cat)
     else:
-        items = catalog.get(category, [])
+        raw_items = catalog.get(category, [])
 
+    # Filtrar búsqueda
     if q:
         q_lower = q.lower()
-        items = [
-            i for i in items
+        raw_items = [
+            i for i in raw_items
             if q_lower in (i["title"] or "").lower()
-            or q_lower in (i["caption"] or "").lower()
-            or q_lower in (i["genero"] or "").lower()
+            or q_lower in (i.get("caption") or "").lower()
+            or q_lower in (i.get("genero") or "").lower()
         ]
+
+    # === AGRUPAR POR TÍTULO ===
+    grouped = {}
+    for item in raw_items:
+        title = item["title"] or "Sin título"
+        if title not in grouped:
+            grouped[title] = {
+                "title": title,
+                "year": item.get("year"),
+                "genero": item.get("genero"),
+                "sinopsis": item.get("sinopsis"),
+                "thumbnail": item.get("thumbnail"),
+                "quality": item.get("quality"),
+                "estudio": item.get("estudio"),
+                "episodios": item.get("episodios"),
+                "episodes": []
+            }
+        # Preferir miniatura que sí existe
+        if item.get("thumbnail") and not grouped[title]["thumbnail"]:
+            grouped[title]["thumbnail"] = item["thumbnail"]
+
+        grouped[title]["episodes"].append(item)
+
+    # Ordenar episodios
+    for g in grouped.values():
+        g["episodes"].sort(key=lambda x: (x.get("episode") or 0))
+
+    items = list(grouped.values())
 
     return templates.TemplateResponse(
         request,
         "index.html",
         {
             "request": request,
-            "items": items[:300],
+            "items": items,
             "total": sum(len(v) for v in catalog.values()),
             "counts": {k: len(v) for k, v in catalog.items()},
             "category": category,

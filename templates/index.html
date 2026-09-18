@@ -27,25 +27,18 @@ CHANNEL_ID = int(os.getenv("CHANNEL_ID"))
 SESSION_STRING = os.getenv("SESSION_STRING")
 ADMIN_USER = os.getenv("ADMIN_USER", "admin")
 ADMIN_PASS = os.getenv("ADMIN_PASS", "cambia_esta_password")
-# ===========================================================
 
 app = FastAPI(title="Media Indexer Real-Time")
 templates = Jinja2Templates(directory="templates")
 security = HTTPBasic()
 
-# Catálogo en RAM (Compartido)
-catalog = {
-    "movies": [],
-    "series": [],
-    "music": [],
-    "other": []
-}
-# Diccionario para evitar duplicados (usando ID de Telegram)
+# Catálogo en RAM
+catalog = {"movies": [], "series": [], "music": [], "other": []}
 catalog_ids = set()
 
 client = TelegramClient(StringSession(SESSION_STRING), API_ID, API_HASH)
 
-# Función de verificación de credenciales
+# --- Función de Autenticación ---
 def verify_credentials(credentials: HTTPBasicCredentials = Depends(security)):
     correct_user = secrets.compare_digest(credentials.username, ADMIN_USER)
     correct_pass = secrets.compare_digest(credentials.password, ADMIN_PASS)
@@ -57,8 +50,7 @@ def verify_credentials(credentials: HTTPBasicCredentials = Depends(security)):
         )
     return credentials.username
 
-# --- Lógica de Parseo y Clasificación (Misma que antes) ---
-
+# --- Lógica de Parseo ---
 def parse_caption(caption: str) -> Dict[str, Any]:
     data = {
         "nombre": None, "secuela": None, "tipo": None, "episodios": None,
@@ -79,7 +71,6 @@ def parse_caption(caption: str) -> Dict[str, Any]:
             key, value = line.split(":", 1)
             key = key.strip().lower()
             value = value.strip()
-
             mapping = {
                 "nombre": "nombre", "title": "nombre",
                 "secuela": "secuela", "sequel": "secuela",
@@ -144,9 +135,7 @@ def classify(filename: str, mime: str = "", caption: str = "", tipo: str = None)
     return "other"
 
 async def process_message(msg):
-    """Procesa un mensaje individual y lo añade al catálogo si es nuevo"""
     global catalog, catalog_ids
-    
     if not msg.media:
         return
 
@@ -154,10 +143,8 @@ async def process_message(msg):
     mime = ""
     size = 0
     caption = msg.message or ""
-    
-    file_id = msg.id # Usamos el ID del mensaje como identificador único
+    file_id = msg.id
 
-    # Si ya está indexado, saltar
     if file_id in catalog_ids:
         return
 
@@ -173,13 +160,11 @@ async def process_message(msg):
         elif isinstance(msg.media, MessageMediaPhoto):
             filename = f"photo_{msg.id}.jpg"
             mime = "image/jpeg"
-            # Para fotos, el tamaño es irrelevante para el catálogo, pero lo ponemos en 0
             size = 0
 
         info = extract_info(filename, caption)
         tipo_detectado = classify(filename, mime, caption, info.get("tipo"))
 
-        # Extraer miniatura real
         thumbnail_b64 = None
         try:
             if msg.photo:
@@ -222,13 +207,12 @@ async def process_message(msg):
 
         catalog[tipo_detectado].append(item)
         catalog_ids.add(file_id)
-        print(f"✅ Nuevo archivo agregado en tiempo real: {info['title']}")
+        print(f"✅ Nuevo archivo agregado: {info['title']}")
 
     except Exception as e:
         print(f"❌ Error procesando mensaje {file_id}: {e}")
 
 async def reindex():
-    """Indexa todo el historial existente al iniciar"""
     global catalog, catalog_ids
     catalog = {"movies": [], "series": [], "music": [], "other": []}
     catalog_ids = set()
@@ -255,27 +239,20 @@ async def reindex():
         print(f"❌ Error durante la re-indexación: {e}")
         raise
 
-# Listener en tiempo real
 async def on_new_message(event):
-    """Detecta nuevos mensajes en el canal"""
     if event.message.channel_id == CHANNEL_ID:
         await process_message(event.message)
-
-# ====================== EVENTOS ======================
 
 @app.on_event("startup")
 async def startup_event():
     await client.start(bot_token=BOT_TOKEN)
     await reindex()
-    # Registrar el listener para mensajes nuevos
     client.add_event_handler(on_new_message, NewMessage())
     print("🔴 Sistema listo y escuchando nuevos archivos en tiempo real.")
 
 @app.on_event("shutdown")
 async def shutdown_event():
     await client.disconnect()
-
-# ====================== RUTAS ======================
 
 @app.get("/", response_class=HTMLResponse)
 async def home(
@@ -284,7 +261,6 @@ async def home(
     q: str = "",
     username: str = Depends(verify_credentials)
 ):
-    # Recolectar items
     raw_items = []
     if category == "all":
         for cat in catalog.values():
@@ -292,7 +268,6 @@ async def home(
     else:
         raw_items = catalog.get(category, [])
 
-    # Filtrar búsqueda
     if q:
         q_lower = q.lower()
         raw_items = [
@@ -302,7 +277,6 @@ async def home(
             or q_lower in (i.get("genero") or "").lower()
         ]
 
-    # === AGRUPAR POR TÍTULO ===
     grouped = {}
     for item in raw_items:
         title = item["title"] or "Sin título"
@@ -318,13 +292,10 @@ async def home(
                 "episodios": item.get("episodios"),
                 "episodes": []
             }
-        # Preferir miniatura que sí existe
         if item.get("thumbnail") and not grouped[title]["thumbnail"]:
             grouped[title]["thumbnail"] = item["thumbnail"]
-
         grouped[title]["episodes"].append(item)
 
-    # Ordenar episodios
     for g in grouped.values():
         g["episodes"].sort(key=lambda x: (x.get("episode") or 0))
 

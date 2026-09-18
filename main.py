@@ -4,6 +4,7 @@ import secrets
 import base64
 from io import BytesIO
 from typing import Dict, Any
+from urllib.parse import quote
 
 from telethon import TelegramClient, events
 from telethon.sessions import StringSession
@@ -18,7 +19,6 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# ====================== CONFIGURACIÓN ======================
 API_ID = int(os.getenv("API_ID"))
 API_HASH = os.getenv("API_HASH")
 BOT_TOKEN = os.getenv("BOT_TOKEN")
@@ -27,14 +27,12 @@ SESSION_STRING = os.getenv("SESSION_STRING")
 ADMIN_USER = os.getenv("ADMIN_USER", "admin")
 ADMIN_PASS = os.getenv("ADMIN_PASS", "cambia_esta_password")
 ITEMS_PER_PAGE = 12
-# ===========================================================
 
 app = FastAPI(title="Media Indexer")
 templates = Jinja2Templates(directory="templates")
 security = HTTPBasic()
 
 catalog = {"movies": [], "series": [], "music": [], "other": []}
-
 client = TelegramClient(StringSession(SESSION_STRING), API_ID, API_HASH)
 
 
@@ -70,7 +68,6 @@ def parse_caption(caption: str) -> Dict[str, Any]:
     if not caption:
         return data
 
-    # Quitar formato de Telegram (negrita, cursiva, etc.)
     clean_caption = re.sub(r"[*_`~]", "", caption)
 
     sinopsis_match = re.search(r"Sinopsis:\s*(.+)", clean_caption, re.IGNORECASE | re.DOTALL)
@@ -224,7 +221,8 @@ async def process_message(msg):
         "caption": caption[:600],
         "date": msg.date.strftime("%Y-%m-%d") if msg.date else "",
         "link": f"https://t.me/c/{str(CHANNEL_ID)[4:]}/{msg.id}",
-        "thumbnail": f"data:image/jpeg;base64,{thumbnail_b64}" if thumbnail_b64 else None
+        "thumbnail": f"data:image/jpeg;base64,{thumbnail_b64}" if thumbnail_b64 else None,
+        "is_photo": isinstance(msg.media, MessageMediaPhoto)
     }
 
     catalog[tipo_detectado].append(item)
@@ -253,17 +251,14 @@ async def reindex():
         print(f"✅ Re-indexación completa: {count} archivos")
 
     except Exception as e:
-        print(f"❌ Error durante la re-indexación: {e}")
+        print(f"❌ Error: {e}")
         raise
 
 
 def get_grouped_counts():
-    """Cuenta series/películas/música únicas (no archivos)"""
     counts = {"movies": 0, "series": 0, "music": 0, "other": 0}
     for cat_name, items in catalog.items():
-        titles = set()
-        for item in items:
-            titles.add(normalize_title(item["title"]))
+        titles = set(normalize_title(item["title"]) for item in items)
         counts[cat_name] = len(titles)
     return counts
 
@@ -275,7 +270,7 @@ async def startup_event():
 
     @client.on(events.NewMessage(chats=CHANNEL_ID))
     async def handler(event):
-        print(f"Nuevo mensaje detectado: {event.message.id}")
+        print(f"Nuevo mensaje: {event.message.id}")
         await process_message(event.message)
 
 
@@ -303,7 +298,6 @@ async def home(
             or q_lower in (i.get("genero") or "").lower()
         ]
 
-    # Agrupación
     grouped = {}
     for item in raw_items:
         key = normalize_title(item["title"])
@@ -328,7 +322,6 @@ async def home(
                 "episodes": []
             }
 
-        # Rellenar datos faltantes con los mejores disponibles
         g = grouped[key]
         if item.get("thumbnail") and not g["thumbnail"]:
             g["thumbnail"] = item["thumbnail"]
@@ -337,7 +330,9 @@ async def home(
             if item.get(field) and not g.get(field):
                 g[field] = item[field]
 
-        g["episodes"].append(item)
+        # Solo añadir como episodio si NO es foto y tiene tamaño > 0
+        if not item.get("is_photo") and item.get("size_mb", 0) > 0:
+            g["episodes"].append(item)
 
     for g in grouped.values():
         g["episodes"].sort(key=lambda x: (x.get("episode") or 0))
@@ -345,7 +340,6 @@ async def home(
     all_series = list(grouped.values())
     total_series = len(all_series)
 
-    # Paginación
     start = (page - 1) * ITEMS_PER_PAGE
     end = start + ITEMS_PER_PAGE
     items = all_series[start:end]
@@ -359,7 +353,7 @@ async def home(
             "items": items,
             "total": sum(len(v) for v in catalog.values()),
             "total_series": total_series,
-            "counts": get_grouped_counts(),          # ← ahora cuenta series únicas
+            "counts": get_grouped_counts(),
             "category": category,
             "q": q,
             "page": page,

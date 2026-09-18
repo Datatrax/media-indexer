@@ -4,8 +4,9 @@ import secrets
 import base64
 from io import BytesIO
 from typing import Dict, Any
+from collections import defaultdict
 
-from telethon import TelegramClient
+from telethon import TelegramClient, events
 from telethon.sessions import StringSession
 from telethon.tl.types import MessageMediaDocument, MessageMediaPhoto
 
@@ -26,6 +27,7 @@ CHANNEL_ID = int(os.getenv("CHANNEL_ID"))
 SESSION_STRING = os.getenv("SESSION_STRING")
 ADMIN_USER = os.getenv("ADMIN_USER", "admin")
 ADMIN_PASS = os.getenv("ADMIN_PASS", "cambia_esta_password")
+ITEMS_PER_PAGE = 12
 # ===========================================================
 
 app = FastAPI(title="Media Indexer")
@@ -47,6 +49,18 @@ def verify_credentials(credentials: HTTPBasicCredentials = Depends(security)):
             headers={"WWW-Authenticate": "Basic"},
         )
     return credentials.username
+
+
+def normalize_title(title: str) -> str:
+    """Normaliza el título para agrupar correctamente"""
+    if not title:
+        return "sin título"
+    t = title.lower().strip()
+    t = re.sub(r"[^\w\s]", "", t)           # quita puntuación
+    t = re.sub(r"\s+", " ", t)
+    # Quita subtítulos comunes
+    t = re.sub(r"\s*(heavens? lost property|heaven’s lost property).*$", "", t)
+    return t.strip()
 
 
 def parse_caption(caption: str) -> Dict[str, Any]:
@@ -149,10 +163,79 @@ def classify(filename: str, mime: str = "", caption: str = "", tipo: str = None)
     return "other"
 
 
+async def process_message(msg):
+    """Procesa un mensaje y lo añade al catálogo"""
+    if not msg.media:
+        return None
+
+    filename = "Sin nombre"
+    mime = ""
+    size = 0
+    caption = msg.message or ""
+
+    if isinstance(msg.media, MessageMediaDocument):
+        doc = msg.media.document
+        for attr in doc.attributes:
+            if hasattr(attr, "file_name") and attr.file_name:
+                filename = attr.file_name
+                break
+        mime = doc.mime_type or ""
+        size = doc.size or 0
+    elif isinstance(msg.media, MessageMediaPhoto):
+        filename = f"photo_{msg.id}.jpg"
+        mime = "image/jpeg"
+
+    info = extract_info(filename, caption)
+    tipo_detectado = classify(filename, mime, caption, info.get("tipo"))
+
+    thumbnail_b64 = None
+    try:
+        if msg.photo:
+            thumb_bytes = await client.download_media(msg.photo, file=BytesIO())
+            thumbnail_b64 = base64.b64encode(thumb_bytes.getvalue()).decode()
+        elif isinstance(msg.media, MessageMediaDocument) and msg.media.document.thumbs:
+            thumb_bytes = await client.download_media(msg.media, thumb=-1, file=BytesIO())
+            thumbnail_b64 = base64.b64encode(thumb_bytes.getvalue()).decode()
+    except Exception:
+        pass
+
+    item = {
+        "id": msg.id,
+        "filename": filename,
+        "title": info["title"],
+        "secuela": info["secuela"],
+        "tipo": info["tipo"],
+        "episodios": info["episodios"],
+        "estudio": info["estudio"],
+        "year": info["year"],
+        "genero": info["genero"],
+        "resolucion": info["resolucion"],
+        "quality": info["quality"],
+        "duracion": info["duracion"],
+        "audios": info["audios"],
+        "subtitulos": info["subtitulos"],
+        "fansub": info["fansub"],
+        "formato": info["formato"],
+        "peso": info["peso"],
+        "sinopsis": info["sinopsis"],
+        "season": info["season"],
+        "episode": info["episode"],
+        "size_mb": round(size / (1024 * 1024), 2) if size else 0,
+        "mime": mime,
+        "caption": caption[:500],
+        "date": msg.date.strftime("%Y-%m-%d") if msg.date else "",
+        "link": f"https://t.me/c/{str(CHANNEL_ID)[4:]}/{msg.id}",
+        "thumbnail": f"data:image/jpeg;base64,{thumbnail_b64}" if thumbnail_b64 else None
+    }
+
+    catalog[tipo_detectado].append(item)
+    return item
+
+
 async def reindex():
     global catalog
     catalog = {"movies": [], "series": [], "music": [], "other": []}
-    print("Iniciando re-indexación...")
+    print("Iniciando re-indexación completa...")
 
     try:
         entity = await client.get_entity(CHANNEL_ID)
@@ -160,71 +243,7 @@ async def reindex():
 
         count = 0
         async for msg in client.iter_messages(entity, limit=None):
-            if not msg.media:
-                continue
-
-            filename = "Sin nombre"
-            mime = ""
-            size = 0
-            caption = msg.message or ""
-
-            if isinstance(msg.media, MessageMediaDocument):
-                doc = msg.media.document
-                for attr in doc.attributes:
-                    if hasattr(attr, "file_name") and attr.file_name:
-                        filename = attr.file_name
-                        break
-                mime = doc.mime_type or ""
-                size = doc.size or 0
-            elif isinstance(msg.media, MessageMediaPhoto):
-                filename = f"photo_{msg.id}.jpg"
-                mime = "image/jpeg"
-
-            info = extract_info(filename, caption)
-            tipo_detectado = classify(filename, mime, caption, info.get("tipo"))
-
-            # Extraer miniatura real
-            thumbnail_b64 = None
-            try:
-                if msg.photo:
-                    thumb_bytes = await client.download_media(msg.photo, file=BytesIO())
-                    thumbnail_b64 = base64.b64encode(thumb_bytes.getvalue()).decode()
-                elif isinstance(msg.media, MessageMediaDocument) and msg.media.document.thumbs:
-                    thumb_bytes = await client.download_media(msg.media, thumb=-1, file=BytesIO())
-                    thumbnail_b64 = base64.b64encode(thumb_bytes.getvalue()).decode()
-            except Exception as e:
-                print(f"No se pudo extraer miniatura {msg.id}: {e}")
-
-            item = {
-                "id": msg.id,
-                "filename": filename,
-                "title": info["title"],
-                "secuela": info["secuela"],
-                "tipo": info["tipo"],
-                "episodios": info["episodios"],
-                "estudio": info["estudio"],
-                "year": info["year"],
-                "genero": info["genero"],
-                "resolucion": info["resolucion"],
-                "quality": info["quality"],
-                "duracion": info["duracion"],
-                "audios": info["audios"],
-                "subtitulos": info["subtitulos"],
-                "fansub": info["fansub"],
-                "formato": info["formato"],
-                "peso": info["peso"],
-                "sinopsis": info["sinopsis"],
-                "season": info["season"],
-                "episode": info["episode"],
-                "size_mb": round(size / (1024 * 1024), 2) if size else 0,
-                "mime": mime,
-                "caption": caption[:400],
-                "date": msg.date.strftime("%Y-%m-%d") if msg.date else "",
-                "link": f"https://t.me/c/{str(CHANNEL_ID)[4:]}/{msg.id}",
-                "thumbnail": f"data:image/jpeg;base64,{thumbnail_b64}" if thumbnail_b64 else None
-            }
-
-            catalog[tipo_detectado].append(item)
+            await process_message(msg)
             count += 1
             if count % 50 == 0:
                 print(f"Indexados {count} archivos...")
@@ -245,15 +264,22 @@ async def startup_event():
     await client.start(bot_token=BOT_TOKEN)
     await reindex()
 
+    # Escuchar nuevos mensajes del canal en tiempo real
+    @client.on(events.NewMessage(chats=CHANNEL_ID))
+    async def handler(event):
+        print(f"Nuevo mensaje detectado: {event.message.id}")
+        await process_message(event.message)
+        print("Catálogo actualizado en caliente")
+
 
 @app.get("/", response_class=HTMLResponse)
 async def home(
     request: Request,
     category: str = "all",
     q: str = "",
+    page: int = 1,
     username: str = Depends(verify_credentials)
 ):
-    # Recolectar items
     raw_items = []
     if category == "all":
         for cat in catalog.values():
@@ -261,7 +287,6 @@ async def home(
     else:
         raw_items = catalog.get(category, [])
 
-    # Filtrar búsqueda
     if q:
         q_lower = q.lower()
         raw_items = [
@@ -271,13 +296,13 @@ async def home(
             or q_lower in (i.get("genero") or "").lower()
         ]
 
-    # === AGRUPAR POR TÍTULO ===
+    # Agrupación inteligente
     grouped = {}
     for item in raw_items:
-        title = item["title"] or "Sin título"
-        if title not in grouped:
-            grouped[title] = {
-                "title": title,
+        key = normalize_title(item["title"])
+        if key not in grouped:
+            grouped[key] = {
+                "title": item["title"],
                 "year": item.get("year"),
                 "genero": item.get("genero"),
                 "sinopsis": item.get("sinopsis"),
@@ -285,19 +310,37 @@ async def home(
                 "quality": item.get("quality"),
                 "estudio": item.get("estudio"),
                 "episodios": item.get("episodios"),
+                "secuela": item.get("secuela"),
+                "resolucion": item.get("resolucion"),
+                "duracion": item.get("duracion"),
+                "audios": item.get("audios"),
+                "subtitulos": item.get("subtitulos"),
+                "fansub": item.get("fansub"),
+                "formato": item.get("formato"),
+                "peso": item.get("peso"),
                 "episodes": []
             }
-        # Preferir miniatura que sí existe
-        if item.get("thumbnail") and not grouped[title]["thumbnail"]:
-            grouped[title]["thumbnail"] = item["thumbnail"]
+        # Preferir miniatura y datos más completos
+        if item.get("thumbnail") and not grouped[key]["thumbnail"]:
+            grouped[key]["thumbnail"] = item["thumbnail"]
+        if item.get("sinopsis") and not grouped[key]["sinopsis"]:
+            grouped[key]["sinopsis"] = item["sinopsis"]
+        if item.get("year") and not grouped[key]["year"]:
+            grouped[key]["year"] = item["year"]
 
-        grouped[title]["episodes"].append(item)
+        grouped[key]["episodes"].append(item)
 
-    # Ordenar episodios
     for g in grouped.values():
         g["episodes"].sort(key=lambda x: (x.get("episode") or 0))
 
-    items = list(grouped.values())
+    all_series = list(grouped.values())
+    total_series = len(all_series)
+
+    # Paginación
+    start = (page - 1) * ITEMS_PER_PAGE
+    end = start + ITEMS_PER_PAGE
+    items = all_series[start:end]
+    total_pages = (total_series + ITEMS_PER_PAGE - 1) // ITEMS_PER_PAGE
 
     return templates.TemplateResponse(
         request,
@@ -306,24 +349,14 @@ async def home(
             "request": request,
             "items": items,
             "total": sum(len(v) for v in catalog.values()),
+            "total_series": total_series,
             "counts": {k: len(v) for k, v in catalog.items()},
             "category": category,
-            "q": q
+            "q": q,
+            "page": page,
+            "total_pages": total_pages
         }
     )
-
-
-@app.get("/api/search")
-async def api_search(q: str = Query(...), username: str = Depends(verify_credentials)):
-    q = q.lower()
-    results = []
-    for cat in catalog.values():
-        for item in cat:
-            if (q in (item["title"] or "").lower() or
-                q in (item["caption"] or "").lower() or
-                q in (item.get("genero") or "").lower()):
-                results.append(item)
-    return results[:100]
 
 
 @app.get("/health")

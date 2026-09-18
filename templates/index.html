@@ -117,4 +117,248 @@ def extract_info(filename: str, caption: str = "") -> Dict[str, Any]:
 
     return {
         "title": parsed["nombre"], "secuela": parsed["secuela"], "tipo": parsed["tipo"],
-        "episodios": parsed["epis
+        "episodios": parsed["episodios"], "estudio": parsed["estudio"], "year": parsed["año"],
+        "genero": parsed["genero"], "resolucion": parsed["resolucion"], "quality": parsed["calidad"],
+        "duracion": parsed["duracion"], "audios": parsed["audios"], "subtitulos": parsed["subtitulos"],
+        "fansub": parsed["fansub"], "formato": parsed["formato"], "peso": parsed["peso"],
+        "sinopsis": parsed["sinopsis"], "season": season, "episode": episode
+    }
+
+def classify(filename: str, mime: str = "", caption: str = "", tipo: str = None) -> str:
+    if tipo:
+        t = tipo.lower()
+        if any(x in t for x in ["serie", "ova", "anime"]):
+            return "series"
+        if any(x in t for x in ["película", "pelicula", "movie"]):
+            return "movies"
+        if any(x in t for x in ["música", "musica", "music"]):
+            return "music"
+
+    text = (filename + " " + caption).lower()
+    if any(x in text for x in [".mp3", ".flac", ".m4a", "music", "ost"]) or "audio/" in mime:
+        return "music"
+    if re.search(r"(s\d{1,2}e\d{1,2}|season|temporada|[-–]\s*\d{1,3})", text):
+        return "series"
+    if any(x in text for x in [".mkv", ".mp4", "1080p", "720p", "bluray", "bd"]):
+        return "movies"
+    return "other"
+
+async def process_message(msg):
+    """Procesa un mensaje individual y lo añade al catálogo si es nuevo"""
+    global catalog, catalog_ids
+    
+    if not msg.media:
+        return
+
+    filename = "Sin nombre"
+    mime = ""
+    size = 0
+    caption = msg.message or ""
+    
+    file_id = msg.id # Usamos el ID del mensaje como identificador único
+
+    # Si ya está indexado, saltar
+    if file_id in catalog_ids:
+        return
+
+    try:
+        if isinstance(msg.media, MessageMediaDocument):
+            doc = msg.media.document
+            for attr in doc.attributes:
+                if hasattr(attr, "file_name") and attr.file_name:
+                    filename = attr.file_name
+                    break
+            mime = doc.mime_type or ""
+            size = doc.size or 0
+        elif isinstance(msg.media, MessageMediaPhoto):
+            filename = f"photo_{msg.id}.jpg"
+            mime = "image/jpeg"
+            # Para fotos, el tamaño es irrelevante para el catálogo, pero lo ponemos en 0
+            size = 0
+
+        info = extract_info(filename, caption)
+        tipo_detectado = classify(filename, mime, caption, info.get("tipo"))
+
+        # Extraer miniatura real
+        thumbnail_b64 = None
+        try:
+            if msg.photo:
+                thumb_bytes = await client.download_media(msg.photo, file=BytesIO())
+                thumbnail_b64 = base64.b64encode(thumb_bytes.getvalue()).decode()
+            elif isinstance(msg.media, MessageMediaDocument) and msg.media.document.thumbs:
+                thumb_bytes = await client.download_media(msg.media, thumb=-1, file=BytesIO())
+                thumbnail_b64 = base64.b64encode(thumb_bytes.getvalue()).decode()
+        except Exception as e:
+            print(f"No se pudo extraer miniatura {file_id}: {e}")
+
+        item = {
+            "id": file_id,
+            "filename": filename,
+            "title": info["title"],
+            "secuela": info["secuela"],
+            "tipo": info["tipo"],
+            "episodios": info["episodios"],
+            "estudio": info["estudio"],
+            "year": info["year"],
+            "genero": info["genero"],
+            "resolucion": info["resolucion"],
+            "quality": info["quality"],
+            "duracion": info["duracion"],
+            "audios": info["audios"],
+            "subtitulos": info["subtitulos"],
+            "fansub": info["fansub"],
+            "formato": info["formato"],
+            "peso": info["peso"],
+            "sinopsis": info["sinopsis"],
+            "season": info["season"],
+            "episode": info["episode"],
+            "size_mb": round(size / (1024 * 1024), 2) if size else 0,
+            "mime": mime,
+            "caption": caption[:400],
+            "date": msg.date.strftime("%Y-%m-%d") if msg.date else "",
+            "link": f"https://t.me/c/{str(CHANNEL_ID)[4:]}/{msg.id}",
+            "thumbnail": f"data:image/jpeg;base64,{thumbnail_b64}" if thumbnail_b64 else None
+        }
+
+        catalog[tipo_detectado].append(item)
+        catalog_ids.add(file_id)
+        print(f"✅ Nuevo archivo agregado en tiempo real: {info['title']}")
+
+    except Exception as e:
+        print(f"❌ Error procesando mensaje {file_id}: {e}")
+
+async def reindex():
+    """Indexa todo el historial existente al iniciar"""
+    global catalog, catalog_ids
+    catalog = {"movies": [], "series": [], "music": [], "other": []}
+    catalog_ids = set()
+    print("Iniciando re-indexación inicial...")
+
+    try:
+        entity = await client.get_entity(CHANNEL_ID)
+        print(f"Canal encontrado: {entity.title}")
+
+        count = 0
+        async for msg in client.iter_messages(entity, limit=None):
+            await process_message(msg)
+            count += 1
+            if count % 50 == 0:
+                print(f"Indexados {count} archivos...")
+
+        for key in catalog:
+            catalog[key].sort(key=lambda x: x["date"], reverse=True)
+
+        print(f"✅ Re-indexación completa: {count} archivos")
+        print(f"Películas: {len(catalog['movies'])} | Series: {len(catalog['series'])} | Música: {len(catalog['music'])}")
+
+    except Exception as e:
+        print(f"❌ Error durante la re-indexación: {e}")
+        raise
+
+# Listener en tiempo real
+async def on_new_message(event):
+    """Detecta nuevos mensajes en el canal"""
+    if event.message.channel_id == CHANNEL_ID:
+        await process_message(event.message)
+
+# ====================== EVENTOS ======================
+
+@app.on_event("startup")
+async def startup_event():
+    await client.start(bot_token=BOT_TOKEN)
+    await reindex()
+    # Registrar el listener para mensajes nuevos
+    client.add_event_handler(on_new_message, NewMessage())
+    print("🔴 Sistema listo y escuchando nuevos archivos en tiempo real.")
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    await client.disconnect()
+
+# ====================== RUTAS ======================
+
+@app.get("/", response_class=HTMLResponse)
+async def home(
+    request: Request,
+    category: str = "all",
+    q: str = "",
+    username: str = Depends(verify_credentials)
+):
+    # Recolectar items
+    raw_items = []
+    if category == "all":
+        for cat in catalog.values():
+            raw_items.extend(cat)
+    else:
+        raw_items = catalog.get(category, [])
+
+    # Filtrar búsqueda
+    if q:
+        q_lower = q.lower()
+        raw_items = [
+            i for i in raw_items
+            if q_lower in (i["title"] or "").lower()
+            or q_lower in (i.get("caption") or "").lower()
+            or q_lower in (i.get("genero") or "").lower()
+        ]
+
+    # === AGRUPAR POR TÍTULO ===
+    grouped = {}
+    for item in raw_items:
+        title = item["title"] or "Sin título"
+        if title not in grouped:
+            grouped[title] = {
+                "title": title,
+                "year": item.get("year"),
+                "genero": item.get("genero"),
+                "sinopsis": item.get("sinopsis"),
+                "thumbnail": item.get("thumbnail"),
+                "quality": item.get("quality"),
+                "estudio": item.get("estudio"),
+                "episodios": item.get("episodios"),
+                "episodes": []
+            }
+        # Preferir miniatura que sí existe
+        if item.get("thumbnail") and not grouped[title]["thumbnail"]:
+            grouped[title]["thumbnail"] = item["thumbnail"]
+
+        grouped[title]["episodes"].append(item)
+
+    # Ordenar episodios
+    for g in grouped.values():
+        g["episodes"].sort(key=lambda x: (x.get("episode") or 0))
+
+    items = list(grouped.values())
+
+    return templates.TemplateResponse(
+        request,
+        "index.html",
+        {
+            "request": request,
+            "items": items,
+            "total": sum(len(v) for v in catalog.values()),
+            "counts": {k: len(v) for k, v in catalog.items()},
+            "category": category,
+            "q": q
+        }
+    )
+
+@app.get("/api/search")
+async def api_search(q: str = Query(...), username: str = Depends(verify_credentials)):
+    q = q.lower()
+    results = []
+    for cat in catalog.values():
+        for item in cat:
+            if (q in (item["title"] or "").lower() or
+                q in (item["caption"] or "").lower() or
+                q in (item.get("genero") or "").lower()):
+                results.append(item)
+    return results[:100]
+
+@app.get("/health")
+async def health():
+    return {"status": "ok", "total_files": sum(len(v) for v in catalog.values())}
+
+if __name__ == "__main__":
+    port = int(os.getenv("PORT", 8000))
+    uvicorn.run(app, host="0.0.0.0", port=port)

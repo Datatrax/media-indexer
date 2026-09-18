@@ -145,14 +145,18 @@ async def home(request: Request, category: str = "all", q: str = "", username: s
         q_lower = q.lower()
         items = [i for i in items if q_lower in i["filename"].lower() or q_lower in i["title"].lower() or q_lower in i["caption"].lower()]
 
-    return templates.TemplateResponse("index.html", {
+    return templates.TemplateResponse(
+    request,
+    "index.html",
+    {
         "request": request,
         "items": items[:300],
         "total": sum(len(v) for v in catalog.values()),
         "counts": {k: len(v) for k, v in catalog.items()},
         "category": category,
         "q": q
-    })
+    }
+)
 
 @app.get("/api/search")
 async def api_search(q: str = Query(...), username: str = Depends(verify_credentials)):

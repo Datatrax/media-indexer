@@ -60,7 +60,7 @@ def normalize_title(title: str) -> str:
 
 def parse_caption(caption: str) -> Dict[str, Any]:
     data = {
-        "nombre": None, "secuela": None, "tipo": None, "episodios": None,
+        "nombre": None, "secuela": None, "precuela": None, "tipo": None, "episodios": None,
         "estudio": None, "año": None, "genero": None, "resolucion": None,
         "calidad": None, "duracion": None, "audios": None, "subtitulos": None,
         "fansub": None, "formato": None, "peso": None, "sinopsis": None
@@ -84,6 +84,7 @@ def parse_caption(caption: str) -> Dict[str, Any]:
             mapping = {
                 "nombre": "nombre", "title": "nombre",
                 "secuela": "secuela", "sequel": "secuela",
+                "precuela": "precuela", "prequel": "precuela",
                 "tipo": "tipo", "type": "tipo",
                 "episodios": "episodios", "episodes": "episodios", "eps": "episodios",
                 "estudio": "estudio", "studio": "estudio",
@@ -106,11 +107,14 @@ def parse_caption(caption: str) -> Dict[str, Any]:
 def extract_info(filename: str, caption: str = "") -> Dict[str, Any]:
     parsed = parse_caption(caption)
 
+    # --- Limpiar título ---
     if not parsed["nombre"]:
         clean = re.sub(r"\.(mkv|mp4|avi|mov)$", "", filename, flags=re.I)
         clean = re.sub(r"[\._]", " ", clean)
-        clean = re.sub(r"\s*[-–]\s*\d{1,3}.*", "", clean)
-        clean = re.sub(r"\s*(ova|special|sp|especial).*$", "", clean, flags=re.I)
+        # Quitar calidad y cosas entre corchetes
+        clean = re.sub(r"\[.*?\]", "", clean)
+        # Quitar " - OVA 1", " - 14 OVA", etc. del final
+        clean = re.sub(r"\s*[-–]\s*(ova|special|sp|especial)?\s*\d{0,3}.*$", "", clean, flags=re.I)
         parsed["nombre"] = re.sub(r"\s+", " ", clean).strip()
 
     episode = None
@@ -120,49 +124,52 @@ def extract_info(filename: str, caption: str = "") -> Dict[str, Any]:
 
     filename_lower = filename.lower()
 
-    # Caso 1: "- 14 OVA" o "- 14 Special"
-    match1 = re.search(r"[-–]\s*(\d{1,3})\s*(ova|special|sp|especial)\b", filename_lower)
-    if match1:
-        episode = int(match1.group(1))
+    # ========== DETECCIÓN DE OVA / SPECIAL ==========
+
+    # 1. "- OVA 1" o "- Special 2"
+    match = re.search(r"[-–]\s*(ova|special|sp|especial)\s*(\d{1,3})\b", filename_lower)
+    if match:
         is_ova = True
-        special_type = match1.group(2).upper()
+        special_type = match.group(1).upper()
+        episode = int(match.group(2))
         if special_type in ["SP", "ESPECIAL"]:
             special_type = "Special"
 
-    # Caso 2: "- OVA 2" o "- Special 3"
+    # 2. "- 14 OVA" o "- 14 Special"
     if not is_ova:
-        match2 = re.search(r"[-–]\s*(ova|special|sp|especial)\s*(\d{1,3})\b", filename_lower)
-        if match2:
+        match = re.search(r"[-–]\s*(\d{1,3})\s*(ova|special|sp|especial)\b", filename_lower)
+        if match:
             is_ova = True
-            special_type = match2.group(1).upper()
-            episode = int(match2.group(2))
+            episode = int(match.group(1))
+            special_type = match.group(2).upper()
             if special_type in ["SP", "ESPECIAL"]:
                 special_type = "Special"
 
-    # Caso 3: "OVA 2" o "Special 1" al final o solo
+    # 3. "OVA 1" o "Special 2" en cualquier parte
     if not is_ova:
-        match3 = re.search(r"\b(ova|special|sp|especial)\s*(\d{1,3})\b", filename_lower)
-        if match3:
+        match = re.search(r"\b(ova|special|sp|especial)\s*(\d{1,3})\b", filename_lower)
+        if match:
             is_ova = True
-            special_type = match3.group(1).upper()
-            episode = int(match3.group(2))
+            special_type = match.group(1).upper()
+            episode = int(match.group(2))
             if special_type in ["SP", "ESPECIAL"]:
                 special_type = "Special"
 
-    # Caso 4: solo dice OVA / Special sin número
+    # 4. Solo dice OVA / Special
     if not is_ova and re.search(r"\b(ova|special|sp|especial)\b", filename_lower):
         is_ova = True
         special_type = "OVA"
 
-    # Episodio normal si no es OVA
+    # ========== EPISODIO NORMAL ==========
     if episode is None and not is_ova:
-        normal_ep = re.search(r"[-–]\s*(\d{1,3})\b", filename_lower)
-        if normal_ep:
-            episode = int(normal_ep.group(1))
+        match = re.search(r"[-–]\s*(\d{1,3})\b", filename_lower)
+        if match:
+            episode = int(match.group(1))
 
     return {
         "title": parsed["nombre"],
         "secuela": parsed["secuela"],
+        "precuela": parsed["precuela"],
         "tipo": parsed["tipo"],
         "episodios": parsed["episodios"],
         "estudio": parsed["estudio"],
@@ -244,6 +251,7 @@ async def process_message(msg):
         "filename": filename,
         "title": info["title"],
         "secuela": info["secuela"],
+        "precuela": info["precuela"],
         "tipo": info["tipo"],
         "episodios": info["episodios"],
         "estudio": info["estudio"],
@@ -358,6 +366,7 @@ async def home(
                 "estudio": item.get("estudio"),
                 "episodios": item.get("episodios"),
                 "secuela": item.get("secuela"),
+                "precuela": item.get("precuela"),
                 "resolucion": item.get("resolucion"),
                 "duracion": item.get("duracion"),
                 "audios": item.get("audios"),
@@ -372,7 +381,7 @@ async def home(
         if item.get("thumbnail") and not g["thumbnail"]:
             g["thumbnail"] = item["thumbnail"]
         for field in ["year", "genero", "sinopsis", "quality", "estudio", "episodios",
-                      "secuela", "resolucion", "duracion", "audios", "subtitulos", "fansub", "formato", "peso"]:
+                      "secuela", "precuela", "resolucion", "duracion", "audios", "subtitulos", "fansub", "formato", "peso"]:
             if item.get(field) and not g.get(field):
                 g[field] = item[field]
 
@@ -380,7 +389,6 @@ async def home(
             g["episodes"].append(item)
 
     for g in grouped.values():
-        # Ordenar: primero episodios normales, luego OVAs
         g["episodes"].sort(key=lambda x: (
             1 if x.get("is_ova") else 0,
             x.get("episode") or 999

@@ -54,6 +54,7 @@ def normalize_title(title: str) -> str:
     t = title.lower().strip()
     t = re.sub(r"[^\w\s]", "", t)
     t = re.sub(r"\s+", " ", t)
+    # Quitar subtítulos en inglés para agrupar mejor
     t = re.sub(r"\s*(heavens? lost property|heaven’s lost property).*$", "", t)
     return t.strip()
 
@@ -107,13 +108,11 @@ def parse_caption(caption: str) -> Dict[str, Any]:
 def extract_info(filename: str, caption: str = "") -> Dict[str, Any]:
     parsed = parse_caption(caption)
 
-    # --- Limpiar título ---
+    # --- Título ---
     if not parsed["nombre"]:
         clean = re.sub(r"\.(mkv|mp4|avi|mov)$", "", filename, flags=re.I)
         clean = re.sub(r"[\._]", " ", clean)
-        # Quitar calidad y cosas entre corchetes
         clean = re.sub(r"\[.*?\]", "", clean)
-        # Quitar " - OVA 1", " - 14 OVA", etc. del final
         clean = re.sub(r"\s*[-–]\s*(ova|special|sp|especial)?\s*\d{0,3}.*$", "", clean, flags=re.I)
         parsed["nombre"] = re.sub(r"\s+", " ", clean).strip()
 
@@ -122,47 +121,41 @@ def extract_info(filename: str, caption: str = "") -> Dict[str, Any]:
     is_ova = False
     special_type = None
 
-    filename_lower = filename.lower()
+    fname = filename.lower()
 
-    # ========== DETECCIÓN DE OVA / SPECIAL ==========
+    # ========== DETECCIÓN MUY AGRESIVA DE OVA ==========
+    # Buscamos cualquier variación de OVA / Special + número
 
-    # 1. "- OVA 1" o "- Special 2"
-    match = re.search(r"[-–]\s*(ova|special|sp|especial)\s*(\d{1,3})\b", filename_lower)
-    if match:
-        is_ova = True
-        special_type = match.group(1).upper()
-        episode = int(match.group(2))
-        if special_type in ["SP", "ESPECIAL"]:
-            special_type = "Special"
+    patterns = [
+        r"[-–\s](ova|special|sp|especial)\s*(\d{1,3})\b",   # - OVA 1  |  OVA 1
+        r"[-–\s](\d{1,3})\s*(ova|special|sp|especial)\b",   # - 14 OVA
+        r"\b(ova|special|sp|especial)\s*(\d{1,3})\b",        # OVA1 o OVA 1
+    ]
 
-    # 2. "- 14 OVA" o "- 14 Special"
-    if not is_ova:
-        match = re.search(r"[-–]\s*(\d{1,3})\s*(ova|special|sp|especial)\b", filename_lower)
+    for pattern in patterns:
+        match = re.search(pattern, fname)
         if match:
             is_ova = True
-            episode = int(match.group(1))
-            special_type = match.group(2).upper()
+            groups = match.groups()
+            if groups[0].isdigit():
+                episode = int(groups[0])
+                special_type = groups[1].upper()
+            else:
+                special_type = groups[0].upper()
+                episode = int(groups[1]) if groups[1].isdigit() else None
+
             if special_type in ["SP", "ESPECIAL"]:
                 special_type = "Special"
+            break
 
-    # 3. "OVA 1" o "Special 2" en cualquier parte
-    if not is_ova:
-        match = re.search(r"\b(ova|special|sp|especial)\s*(\d{1,3})\b", filename_lower)
-        if match:
-            is_ova = True
-            special_type = match.group(1).upper()
-            episode = int(match.group(2))
-            if special_type in ["SP", "ESPECIAL"]:
-                special_type = "Special"
-
-    # 4. Solo dice OVA / Special
-    if not is_ova and re.search(r"\b(ova|special|sp|especial)\b", filename_lower):
+    # Si solo dice OVA sin número
+    if not is_ova and re.search(r"\b(ova|special|sp|especial)\b", fname):
         is_ova = True
         special_type = "OVA"
 
-    # ========== EPISODIO NORMAL ==========
+    # Episodio normal
     if episode is None and not is_ova:
-        match = re.search(r"[-–]\s*(\d{1,3})\b", filename_lower)
+        match = re.search(r"[-–]\s*(\d{1,3})\b", fname)
         if match:
             episode = int(match.group(1))
 
@@ -378,8 +371,14 @@ async def home(
             }
 
         g = grouped[key]
+
+        # Preferir el título más largo (el que tiene el nombre en inglés)
+        if item.get("title") and len(item["title"]) > len(g["title"] or ""):
+            g["title"] = item["title"]
+
         if item.get("thumbnail") and not g["thumbnail"]:
             g["thumbnail"] = item["thumbnail"]
+
         for field in ["year", "genero", "sinopsis", "quality", "estudio", "episodios",
                       "secuela", "precuela", "resolucion", "duracion", "audios", "subtitulos", "fansub", "formato", "peso"]:
             if item.get(field) and not g.get(field):

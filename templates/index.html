@@ -84,17 +84,20 @@
                             <summary class="cursor-pointer text-sm text-blue-400 hover:text-blue-300 flex items-center gap-1">
                                 <span>▼ Ver ficha completa</span>
                             </summary>
-                            <div class="mt-3 text-sm text-gray-300 space-y-1 bg-gray-900/50 p-3 rounded-lg">
-                                {% if series.secuela %}<p><strong>Secuela:</strong> {{ series.secuela }}</p>{% endif %}
-                                {% if series.resolucion %}<p><strong>Resolución:</strong> {{ series.resolucion }}</p>{% endif %}
-                                {% if series.duracion %}<p><strong>Duración:</strong> {{ series.duracion }}</p>{% endif %}
-                                {% if series.audios %}<p><strong>Audios:</strong> {{ series.audios }}</p>{% endif %}
-                                {% if series.subtitulos %}<p><strong>Subtítulos:</strong> {{ series.subtitulos }}</p>{% endif %}
-                                {% if series.fansub %}<p><strong>Fansub:</strong> {{ series.fansub }}</p>{% endif %}
-                                {% if series.formato %}<p><strong>Formato:</strong> {{ series.formato }}</p>{% endif %}
-                                {% if series.peso %}<p><strong>Peso:</strong> {{ series.peso }}</p>{% endif %}
+                            <div class="mt-3 text-sm text-gray-300 space-y-1.5 bg-gray-900/60 p-4 rounded-xl">
+                                {% if series.secuela %}<p><span class="text-gray-400">Secuela:</span> {{ series.secuela }}</p>{% endif %}
+                                {% if series.resolucion %}<p><span class="text-gray-400">Resolución:</span> {{ series.resolucion }}</p>{% endif %}
+                                {% if series.duracion %}<p><span class="text-gray-400">Duración:</span> {{ series.duracion }}</p>{% endif %}
+                                {% if series.audios %}<p><span class="text-gray-400">Audios:</span> {{ series.audios }}</p>{% endif %}
+                                {% if series.subtitulos %}<p><span class="text-gray-400">Subtítulos:</span> {{ series.subtitulos }}</p>{% endif %}
+                                {% if series.fansub %}<p><span class="text-gray-400">Fansub:</span> {{ series.fansub }}</p>{% endif %}
+                                {% if series.formato %}<p><span class="text-gray-400">Formato:</span> {{ series.formato }}</p>{% endif %}
+                                {% if series.peso %}<p><span class="text-gray-400">Peso:</span> {{ series.peso }}</p>{% endif %}
                                 {% if series.sinopsis %}
-                                <p class="mt-2"><strong>Sinopsis:</strong><br>{{ series.sinopsis }}</p>
+                                <div class="mt-3 pt-3 border-t border-gray-700">
+                                    <p class="text-gray-400 mb-1">Sinopsis:</p>
+                                    <p>{{ series.sinopsis }}</p>
+                                </div>
                                 {% endif %}
                             </div>
                         </details>

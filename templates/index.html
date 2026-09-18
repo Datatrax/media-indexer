@@ -1,335 +1,110 @@
-import os
-import re
-import secrets
-import base64
-from io import BytesIO
-from typing import Dict, Any
-import asyncio
-
-from telethon import TelegramClient
-from telethon.sessions import StringSession
-from telethon.tl.types import MessageMediaDocument, MessageMediaPhoto, NewMessage
-
-from fastapi import FastAPI, Request, Query, Depends, HTTPException, status
-from fastapi.responses import HTMLResponse
-from fastapi.templating import Jinja2Templates
-from fastapi.security import HTTPBasic, HTTPBasicCredentials
-import uvicorn
-from dotenv import load_dotenv
-
-load_dotenv()
-
-# ====================== CONFIGURACIÓN ======================
-API_ID = int(os.getenv("API_ID"))
-API_HASH = os.getenv("API_HASH")
-BOT_TOKEN = os.getenv("BOT_TOKEN")
-CHANNEL_ID = int(os.getenv("CHANNEL_ID"))
-SESSION_STRING = os.getenv("SESSION_STRING")
-ADMIN_USER = os.getenv("ADMIN_USER", "admin")
-ADMIN_PASS = os.getenv("ADMIN_PASS", "cambia_esta_password")
-
-app = FastAPI(title="Media Indexer Real-Time")
-templates = Jinja2Templates(directory="templates")
-security = HTTPBasic()
-
-# Catálogo en RAM
-catalog = {"movies": [], "series": [], "music": [], "other": []}
-catalog_ids = set()
-
-client = TelegramClient(StringSession(SESSION_STRING), API_ID, API_HASH)
-
-# --- Función de Autenticación ---
-def verify_credentials(credentials: HTTPBasicCredentials = Depends(security)):
-    correct_user = secrets.compare_digest(credentials.username, ADMIN_USER)
-    correct_pass = secrets.compare_digest(credentials.password, ADMIN_PASS)
-    if not (correct_user and correct_pass):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Credenciales incorrectas",
-            headers={"WWW-Authenticate": "Basic"},
-        )
-    return credentials.username
-
-# --- Lógica de Parseo ---
-def parse_caption(caption: str) -> Dict[str, Any]:
-    data = {
-        "nombre": None, "secuela": None, "tipo": None, "episodios": None,
-        "estudio": None, "año": None, "genero": None, "resolucion": None,
-        "calidad": None, "duracion": None, "audios": None, "subtitulos": None,
-        "fansub": None, "formato": None, "peso": None, "sinopsis": None
-    }
-    if not caption:
-        return data
-
-    sinopsis_match = re.search(r"Sinopsis:\s*(.+)", caption, re.IGNORECASE | re.DOTALL)
-    if sinopsis_match:
-        data["sinopsis"] = sinopsis_match.group(1).strip()
-
-    for line in caption.split("\n"):
-        line = line.strip()
-        if ":" in line:
-            key, value = line.split(":", 1)
-            key = key.strip().lower()
-            value = value.strip()
-            mapping = {
-                "nombre": "nombre", "title": "nombre",
-                "secuela": "secuela", "sequel": "secuela",
-                "tipo": "tipo", "type": "tipo",
-                "episodios": "episodios", "episodes": "episodios", "eps": "episodios",
-                "estudio": "estudio", "studio": "estudio",
-                "año": "año", "year": "año", "ano": "año",
-                "género": "genero", "genero": "genero", "genre": "genero",
-                "resolución": "resolucion", "resolucion": "resolucion", "resolution": "resolucion",
-                "calidad": "calidad", "quality": "calidad",
-                "duración": "duracion", "duracion": "duracion", "duration": "duracion",
-                "audios": "audios", "audio": "audios",
-                "subtítulos": "subtitulos", "subtitulos": "subtitulos", "subtitles": "subtitulos", "subs": "subtitulos",
-                "fansub": "fansub", "sub": "fansub",
-                "formato": "formato", "format": "formato",
-                "peso": "peso", "size": "peso"
-            }
-            if key in mapping:
-                data[mapping[key]] = value
-    return data
-
-def extract_info(filename: str, caption: str = "") -> Dict[str, Any]:
-    parsed = parse_caption(caption)
-    if not parsed["nombre"]:
-        clean = re.sub(r"\.(mkv|mp4|avi|mov)$", "", filename, flags=re.I)
-        clean = re.sub(r"[\._]", " ", clean)
-        clean = re.sub(r"\s*[-–]\s*\d{1,3}.*", "", clean)
-        parsed["nombre"] = re.sub(r"\s+", " ", clean).strip()
-
-    episode = None
-    season = 1
-    anime_ep = re.search(r"[-–]\s*(\d{1,3})(?:\s*(ova|special|sp))?", filename.lower())
-    if anime_ep:
-        episode = int(anime_ep.group(1))
-
-    return {
-        "title": parsed["nombre"], "secuela": parsed["secuela"], "tipo": parsed["tipo"],
-        "episodios": parsed["episodios"], "estudio": parsed["estudio"], "year": parsed["año"],
-        "genero": parsed["genero"], "resolucion": parsed["resolucion"], "quality": parsed["calidad"],
-        "duracion": parsed["duracion"], "audios": parsed["audios"], "subtitulos": parsed["subtitulos"],
-        "fansub": parsed["fansub"], "formato": parsed["formato"], "peso": parsed["peso"],
-        "sinopsis": parsed["sinopsis"], "season": season, "episode": episode
-    }
-
-def classify(filename: str, mime: str = "", caption: str = "", tipo: str = None) -> str:
-    if tipo:
-        t = tipo.lower()
-        if any(x in t for x in ["serie", "ova", "anime"]):
-            return "series"
-        if any(x in t for x in ["película", "pelicula", "movie"]):
-            return "movies"
-        if any(x in t for x in ["música", "musica", "music"]):
-            return "music"
-
-    text = (filename + " " + caption).lower()
-    if any(x in text for x in [".mp3", ".flac", ".m4a", "music", "ost"]) or "audio/" in mime:
-        return "music"
-    if re.search(r"(s\d{1,2}e\d{1,2}|season|temporada|[-–]\s*\d{1,3})", text):
-        return "series"
-    if any(x in text for x in [".mkv", ".mp4", "1080p", "720p", "bluray", "bd"]):
-        return "movies"
-    return "other"
-
-async def process_message(msg):
-    global catalog, catalog_ids
-    if not msg.media:
-        return
-
-    filename = "Sin nombre"
-    mime = ""
-    size = 0
-    caption = msg.message or ""
-    file_id = msg.id
-
-    if file_id in catalog_ids:
-        return
-
-    try:
-        if isinstance(msg.media, MessageMediaDocument):
-            doc = msg.media.document
-            for attr in doc.attributes:
-                if hasattr(attr, "file_name") and attr.file_name:
-                    filename = attr.file_name
-                    break
-            mime = doc.mime_type or ""
-            size = doc.size or 0
-        elif isinstance(msg.media, MessageMediaPhoto):
-            filename = f"photo_{msg.id}.jpg"
-            mime = "image/jpeg"
-            size = 0
-
-        info = extract_info(filename, caption)
-        tipo_detectado = classify(filename, mime, caption, info.get("tipo"))
-
-        thumbnail_b64 = None
-        try:
-            if msg.photo:
-                thumb_bytes = await client.download_media(msg.photo, file=BytesIO())
-                thumbnail_b64 = base64.b64encode(thumb_bytes.getvalue()).decode()
-            elif isinstance(msg.media, MessageMediaDocument) and msg.media.document.thumbs:
-                thumb_bytes = await client.download_media(msg.media, thumb=-1, file=BytesIO())
-                thumbnail_b64 = base64.b64encode(thumb_bytes.getvalue()).decode()
-        except Exception as e:
-            print(f"No se pudo extraer miniatura {file_id}: {e}")
-
-        item = {
-            "id": file_id,
-            "filename": filename,
-            "title": info["title"],
-            "secuela": info["secuela"],
-            "tipo": info["tipo"],
-            "episodios": info["episodios"],
-            "estudio": info["estudio"],
-            "year": info["year"],
-            "genero": info["genero"],
-            "resolucion": info["resolucion"],
-            "quality": info["quality"],
-            "duracion": info["duracion"],
-            "audios": info["audios"],
-            "subtitulos": info["subtitulos"],
-            "fansub": info["fansub"],
-            "formato": info["formato"],
-            "peso": info["peso"],
-            "sinopsis": info["sinopsis"],
-            "season": info["season"],
-            "episode": info["episode"],
-            "size_mb": round(size / (1024 * 1024), 2) if size else 0,
-            "mime": mime,
-            "caption": caption[:400],
-            "date": msg.date.strftime("%Y-%m-%d") if msg.date else "",
-            "link": f"https://t.me/c/{str(CHANNEL_ID)[4:]}/{msg.id}",
-            "thumbnail": f"data:image/jpeg;base64,{thumbnail_b64}" if thumbnail_b64 else None
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mi Biblioteca</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .line-clamp-2 {
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
         }
-
-        catalog[tipo_detectado].append(item)
-        catalog_ids.add(file_id)
-        print(f"✅ Nuevo archivo agregado: {info['title']}")
-
-    except Exception as e:
-        print(f"❌ Error procesando mensaje {file_id}: {e}")
-
-async def reindex():
-    global catalog, catalog_ids
-    catalog = {"movies": [], "series": [], "music": [], "other": []}
-    catalog_ids = set()
-    print("Iniciando re-indexación inicial...")
-
-    try:
-        entity = await client.get_entity(CHANNEL_ID)
-        print(f"Canal encontrado: {entity.title}")
-
-        count = 0
-        async for msg in client.iter_messages(entity, limit=None):
-            await process_message(msg)
-            count += 1
-            if count % 50 == 0:
-                print(f"Indexados {count} archivos...")
-
-        for key in catalog:
-            catalog[key].sort(key=lambda x: x["date"], reverse=True)
-
-        print(f"✅ Re-indexación completa: {count} archivos")
-        print(f"Películas: {len(catalog['movies'])} | Series: {len(catalog['series'])} | Música: {len(catalog['music'])}")
-
-    except Exception as e:
-        print(f"❌ Error durante la re-indexación: {e}")
-        raise
-
-async def on_new_message(event):
-    if event.message.channel_id == CHANNEL_ID:
-        await process_message(event.message)
-
-@app.on_event("startup")
-async def startup_event():
-    await client.start(bot_token=BOT_TOKEN)
-    await reindex()
-    client.add_event_handler(on_new_message, NewMessage())
-    print("🔴 Sistema listo y escuchando nuevos archivos en tiempo real.")
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    await client.disconnect()
-
-@app.get("/", response_class=HTMLResponse)
-async def home(
-    request: Request,
-    category: str = "all",
-    q: str = "",
-    username: str = Depends(verify_credentials)
-):
-    raw_items = []
-    if category == "all":
-        for cat in catalog.values():
-            raw_items.extend(cat)
-    else:
-        raw_items = catalog.get(category, [])
-
-    if q:
-        q_lower = q.lower()
-        raw_items = [
-            i for i in raw_items
-            if q_lower in (i["title"] or "").lower()
-            or q_lower in (i.get("caption") or "").lower()
-            or q_lower in (i.get("genero") or "").lower()
-        ]
-
-    grouped = {}
-    for item in raw_items:
-        title = item["title"] or "Sin título"
-        if title not in grouped:
-            grouped[title] = {
-                "title": title,
-                "year": item.get("year"),
-                "genero": item.get("genero"),
-                "sinopsis": item.get("sinopsis"),
-                "thumbnail": item.get("thumbnail"),
-                "quality": item.get("quality"),
-                "estudio": item.get("estudio"),
-                "episodios": item.get("episodios"),
-                "episodes": []
-            }
-        if item.get("thumbnail") and not grouped[title]["thumbnail"]:
-            grouped[title]["thumbnail"] = item["thumbnail"]
-        grouped[title]["episodes"].append(item)
-
-    for g in grouped.values():
-        g["episodes"].sort(key=lambda x: (x.get("episode") or 0))
-
-    items = list(grouped.values())
-
-    return templates.TemplateResponse(
-        request,
-        "index.html",
-        {
-            "request": request,
-            "items": items,
-            "total": sum(len(v) for v in catalog.values()),
-            "counts": {k: len(v) for k, v in catalog.items()},
-            "category": category,
-            "q": q
+        .line-clamp-3 {
+            display: -webkit-box;
+            -webkit-line-clamp: 3;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
         }
-    )
+    </style>
+</head>
+<body class="bg-gray-900 text-white min-h-screen">
+    <div class="container mx-auto px-4 py-6 max-w-6xl">
 
-@app.get("/api/search")
-async def api_search(q: str = Query(...), username: str = Depends(verify_credentials)):
-    q = q.lower()
-    results = []
-    for cat in catalog.values():
-        for item in cat:
-            if (q in (item["title"] or "").lower() or
-                q in (item["caption"] or "").lower() or
-                q in (item.get("genero") or "").lower()):
-                results.append(item)
-    return results[:100]
+        <!-- Header -->
+        <div class="mb-6">
+            <h1 class="text-3xl md:text-4xl font-bold">🎬 Mi Biblioteca</h1>
+            <p class="text-gray-400 mt-1">Total indexado: <span class="font-semibold text-white">{{ total }}</span> archivos</p>
+        </div>
 
-@app.get("/health")
-async def health():
-    return {"status": "ok", "total_files": sum(len(v) for v in catalog.values())}
+        <!-- Filtros -->
+        <div class="flex flex-wrap gap-2 mb-6">
+            <a href="/?category=all" class="px-4 py-2 rounded-full text-sm font-medium {{ 'bg-blue-600' if category=='all' else 'bg-gray-700 hover:bg-gray-600' }}">Todos ({{ total }})</a>
+            <a href="/?category=movies" class="px-4 py-2 rounded-full text-sm font-medium {{ 'bg-blue-600' if category=='movies' else 'bg-gray-700 hover:bg-gray-600' }}">Películas ({{ counts.movies }})</a>
+            <a href="/?category=series" class="px-4 py-2 rounded-full text-sm font-medium {{ 'bg-blue-600' if category=='series' else 'bg-gray-700 hover:bg-gray-600' }}">Series ({{ counts.series }})</a>
+            <a href="/?category=music" class="px-4 py-2 rounded-full text-sm font-medium {{ 'bg-blue-600' if category=='music' else 'bg-gray-700 hover:bg-gray-600' }}">Música ({{ counts.music }})</a>
+        </div>
 
-if __name__ == "__main__":
-    port = int(os.getenv("PORT", 8000))
-    uvicorn.run(app, host="0.0.0.0", port=port)
+        <!-- Buscador -->
+        <form method="get" class="mb-8">
+            <input type="hidden" name="category" value="{{ category }}">
+            <input type="text" name="q" value="{{ q }}" placeholder="Buscar título, género, año..."
+                   class="w-full px-5 py-3 rounded-xl bg-gray-800 border border-gray-700 focus:outline-none focus:border-blue-500 text-white">
+        </form>
+
+        <!-- Lista de series -->
+        <div class="space-y-8">
+            {% for series in items %}
+            <div class="bg-gray-800 rounded-2xl overflow-hidden shadow-lg">
+                <div class="flex flex-col md:flex-row">
+                    
+                    <!-- Poster -->
+                    <div class="md:w-48 lg:w-56 flex-shrink-0">
+                        {% if series.thumbnail %}
+                        <img src="{{ series.thumbnail }}" alt="{{ series.title }}" 
+                             class="w-full h-64 md:h-full object-cover">
+                        {% else %}
+                        <div class="w-full h-64 md:h-full bg-gray-700 flex items-center justify-center text-gray-500">
+                            Sin imagen
+                        </div>
+                        {% endif %}
+                    </div>
+
+                    <!-- Info + episodios -->
+                    <div class="flex-1 p-5">
+                        <h2 class="text-xl font-bold mb-1">{{ series.title }}</h2>
+                        
+                        <div class="text-sm text-gray-400 mb-3 flex flex-wrap gap-x-4 gap-y-1">
+                            {% if series.year %}<span>{{ series.year }}</span>{% endif %}
+                            {% if series.quality %}<span class="text-blue-400">{{ series.quality }}</span>{% endif %}
+                            {% if series.estudio %}<span>{{ series.estudio }}</span>{% endif %}
+                            {% if series.episodios %}<span>{{ series.episodios }}</span>{% endif %}
+                        </div>
+
+                        {% if series.genero %}
+                        <p class="text-sm text-purple-400 mb-3">{{ series.genero }}</p>
+                        {% endif %}
+
+                        {% if series.sinopsis %}
+                        <p class="text-sm text-gray-400 mb-4 line-clamp-3">{{ series.sinopsis }}</p>
+                        {% endif %}
+
+                        <!-- Lista de episodios -->
+                        <div class="border-t border-gray-700 pt-4">
+                            <h3 class="text-sm font-semibold text-gray-300 mb-2">Episodios ({{ series.episodes|length }})</h3>
+                            <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+                                {% for ep in series.episodes %}
+                                <a href="{{ ep.link }}" target="_blank"
+                                   class="flex items-center justify-between px-3 py-2 bg-gray-700 hover:bg-blue-600 rounded-lg text-sm transition">
+                                    <span>
+                                        {% if ep.episode %}Ep {{ ep.episode }}{% else %}Archivo{% endif %}
+                                    </span>
+                                    <span class="text-xs text-gray-400">{{ ep.size_mb }} MB</span>
+                                </a>
+                                {% endfor %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% else %}
+            <div class="text-center py-16 text-gray-500">
+                <p class="text-lg">No se encontraron resultados</p>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</body>
+</html>

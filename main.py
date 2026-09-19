@@ -4,13 +4,12 @@ import secrets
 import base64
 from io import BytesIO
 from typing import Dict, Any
-from urllib.parse import quote
 
 from telethon import TelegramClient, events
 from telethon.sessions import StringSession
 from telethon.tl.types import MessageMediaDocument, MessageMediaPhoto
 
-from fastapi import FastAPI, Request, Query, Depends, HTTPException, status
+from fastapi import FastAPI, Request, Depends, HTTPException, status
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
@@ -107,7 +106,6 @@ def parse_caption(caption: str) -> Dict[str, Any]:
 def extract_info(filename: str, caption: str = "") -> Dict[str, Any]:
     parsed = parse_caption(caption)
 
-    # Título
     if not parsed["nombre"]:
         clean = re.sub(r"\.(mkv|mp4|avi|mov)$", "", filename, flags=re.I)
         clean = re.sub(r"[\._]", " ", clean)
@@ -121,21 +119,21 @@ def extract_info(filename: str, caption: str = "") -> Dict[str, Any]:
 
     fname = filename.lower()
 
-    # ========== DETECCIÓN SUPER AGRESIVA ==========
-    # Si contiene la palabra "ova" → es OVA
-    if "ova" in fname or "special" in fname or " sp " in fname or "especial" in fname:
+    # ========== DETECCIÓN INFALIBLE ==========
+    if "ova" in fname:
         is_ova = True
         special_type = "OVA"
-
-        # Intentamos sacar el número
-        num_match = re.search(r"(?:ova|special|sp|especial)\s*[-–]?\s*(\d{1,3})", fname)
-        if not num_match:
-            num_match = re.search(r"(\d{1,3})\s*(?:ova|special|sp|especial)", fname)
-        if not num_match:
-            num_match = re.search(r"[-–]\s*(\d{1,3})", fname)
-
-        if num_match:
-            episode = int(num_match.group(1))
+        # Buscar el número más cercano
+        numbers = re.findall(r"\d{1,3}", fname)
+        if numbers:
+            # Preferimos el número que está cerca de la palabra ova
+            episode = int(numbers[-1])  # normalmente el último número es el del OVA
+    elif "special" in fname or "especial" in fname or " sp " in fname:
+        is_ova = True
+        special_type = "Special"
+        numbers = re.findall(r"\d{1,3}", fname)
+        if numbers:
+            episode = int(numbers[-1])
     else:
         # Episodio normal
         match = re.search(r"[-–]\s*(\d{1,3})\b", fname)
@@ -208,10 +206,14 @@ async def process_message(msg):
         filename = f"photo_{msg.id}.jpg"
         mime = "image/jpeg"
 
-    # Debug: imprimir el nombre real que ve el bot
     print(f"Archivo detectado: {filename}")
 
     info = extract_info(filename, caption)
+    
+    # Debug extra
+    if "ova" in filename.lower():
+        print(f"→ OVA detectado: is_ova={info['is_ova']}, episode={info['episode']}, special_type={info['special_type']}")
+
     tipo_detectado = classify(filename, mime, caption, info.get("tipo"))
 
     thumbnail_b64 = None
@@ -275,8 +277,6 @@ async def reindex():
         async for msg in client.iter_messages(entity, limit=None):
             await process_message(msg)
             count += 1
-            if count % 20 == 0:
-                print(f"Indexados {count} archivos...")
 
         for key in catalog:
             catalog[key].sort(key=lambda x: x["date"], reverse=True)
@@ -303,7 +303,6 @@ async def startup_event():
 
     @client.on(events.NewMessage(chats=CHANNEL_ID))
     async def handler(event):
-        print(f"Nuevo mensaje: {event.message.id}")
         await process_message(event.message)
 
 
@@ -358,7 +357,6 @@ async def home(
 
         g = grouped[key]
 
-        # Preferir el título más largo
         if item.get("title") and len(item["title"]) > len(g["title"] or ""):
             g["title"] = item["title"]
 
@@ -375,7 +373,7 @@ async def home(
 
     for g in grouped.values():
         g["episodes"].sort(key=lambda x: (
-            1 if x.get("is_ova") else 0,
+            0 if x.get("is_ova") else 1,
             x.get("episode") or 999
         ))
 

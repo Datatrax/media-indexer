@@ -319,7 +319,7 @@ async def home(
     request: Request,
     category: str = "all",
     q: str = "",
-    exact: str = "",          # ← nuevo parámetro
+    exact: str = "",
     page: int = 1,
     username: str = Depends(verify_credentials)
 ):
@@ -383,18 +383,26 @@ async def home(
     # ========== FILTRO ==========
     if q:
         q_lower = q.lower().strip()
-        q_norm = normalize_title(q)
+        q_clean = re.sub(r"[^\w\s]", "", q_lower)
+        q_clean = re.sub(r"\s+", " ", q_clean).strip()
 
         if exact == "1":
-            # Modo estricto (solo para precuela/secuela)
+            # ===== MODO ESTRICTO (Precuela / Secuela) =====
             filtered = []
             for series in all_series:
-                title_norm = normalize_title(series["title"] or "")
-                if q_norm == title_norm or q_lower == (series["title"] or "").lower():
+                title = (series["title"] or "").lower().strip()
+                title_clean = re.sub(r"[^\w\s]", "", title)
+                title_clean = re.sub(r"\s+", " ", title_clean).strip()
+
+                # Solo acepta si el título es casi idéntico
+                if (q_lower == title or 
+                    q_clean == title_clean or
+                    (q_clean in title_clean and len(q_clean) >= len(title_clean) * 0.85) or
+                    (title_clean in q_clean and len(title_clean) >= len(q_clean) * 0.85)):
                     filtered.append(series)
             all_series = filtered
         else:
-            # Modo normal (parcial permitido)
+            # ===== MODO NORMAL (parcial permitido) =====
             filtered = []
             for series in all_series:
                 if (q_lower in (series["title"] or "").lower() or

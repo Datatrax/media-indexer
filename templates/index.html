@@ -6,12 +6,6 @@
     <title>Mi Biblioteca</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        .line-clamp-3 {
-            display: -webkit-box;
-            -webkit-line-clamp: 3;
-            -webkit-box-orient: vertical;
-            overflow: hidden;
-        }
         details > summary {
             list-style: none;
         }
@@ -31,7 +25,6 @@
             </p>
         </div>
 
-        <!-- Filtros de categoría -->
         <div class="flex flex-wrap gap-2 mb-4">
             <a href="/?category=all" class="px-4 py-2 rounded-full text-sm font-medium {{ 'bg-blue-600' if category=='all' else 'bg-gray-700 hover:bg-gray-600' }}">Todos</a>
             <a href="/?category=movies" class="px-4 py-2 rounded-full text-sm font-medium {{ 'bg-blue-600' if category=='movies' else 'bg-gray-700 hover:bg-gray-600' }}">Películas ({{ counts.movies }})</a>
@@ -39,7 +32,6 @@
             <a href="/?category=music" class="px-4 py-2 rounded-full text-sm font-medium {{ 'bg-blue-600' if category=='music' else 'bg-gray-700 hover:bg-gray-600' }}">Música ({{ counts.music }})</a>
         </div>
 
-        <!-- Barra de géneros -->
         {% if all_genres %}
         <div class="flex flex-wrap gap-2 mb-6">
             <span class="text-sm text-gray-400 self-center mr-1">Géneros:</span>
@@ -52,7 +44,6 @@
         </div>
         {% endif %}
 
-        <!-- Buscador -->
         <form method="get" class="mb-8">
             <input type="hidden" name="category" value="{{ category }}">
             <input type="text" name="q" value="{{ q }}" placeholder="Buscar título, género, precuela, secuela..."
@@ -76,7 +67,10 @@
                     </div>
 
                     <div class="flex-1 p-5">
-                        <h2 class="text-xl font-bold mb-1">{{ series.title }}</h2>
+                        <!-- Título completo con wrap -->
+                        <h2 class="text-xl font-bold mb-1 leading-snug break-words">
+                            {{ series.title }}
+                        </h2>
 
                         <div class="text-sm text-gray-400 mb-2 flex flex-wrap gap-x-3 gap-y-1">
                             {% if series.year %}<span>{{ series.year }}</span>{% endif %}
@@ -134,13 +128,21 @@
                         </details>
 
                         <div class="border-t border-gray-700 pt-4">
-                            <h3 class="text-sm font-semibold text-gray-300 mb-2">Episodios ({{ series.episodes|length }})</h3>
+                            <h3 class="text-sm font-semibold text-gray-300 mb-2">
+                                {% if series.episodes and series.episodes[0].is_part %}
+                                    Partes ({{ series.episodes|length }})
+                                {% else %}
+                                    Episodios ({{ series.episodes|length }})
+                                {% endif %}
+                            </h3>
                             <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
                                 {% for ep in series.episodes %}
                                 <a href="{{ ep.link }}" target="_blank"
                                    class="flex items-center justify-between px-3 py-2 bg-gray-700 hover:bg-blue-600 rounded-lg text-sm transition">
                                     <span>
-                                        {% if ep.is_ova %}
+                                        {% if ep.is_part %}
+                                            <span class="text-green-400 font-medium">Part {{ ep.episode or "?" }}</span>
+                                        {% elif ep.is_ova %}
                                             <span class="text-yellow-400 font-medium">{{ ep.special_type or "OVA" }}{% if ep.episode %} {{ ep.episode }}{% endif %}</span>
                                         {% elif ep.episode %}
                                             Ep {{ ep.episode }}

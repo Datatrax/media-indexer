@@ -293,7 +293,6 @@ def get_grouped_counts():
 
 
 def get_all_genres() -> list:
-    """Obtiene todos los géneros únicos del catálogo"""
     genres: Set[str] = set()
     for items in catalog.values():
         for item in items:
@@ -320,10 +319,10 @@ async def home(
     request: Request,
     category: str = "all",
     q: str = "",
+    exact: str = "",          # ← nuevo parámetro
     page: int = 1,
     username: str = Depends(verify_credentials)
 ):
-    # 1. Tomar todos los items de la categoría
     if category == "all":
         raw_items = []
         for cat in catalog.values():
@@ -331,7 +330,7 @@ async def home(
     else:
         raw_items = catalog.get(category, [])
 
-    # 2. Agrupar PRIMERO (así no perdemos episodios)
+    # Agrupar primero
     grouped = {}
     for item in raw_items:
         key = normalize_title(item["title"])
@@ -381,22 +380,33 @@ async def home(
 
     all_series = list(grouped.values())
 
-    # 3. Filtrar las series ya agrupadas
+    # ========== FILTRO ==========
     if q:
         q_lower = q.lower().strip()
-        filtered = []
-        for series in all_series:
-            if (q_lower in (series["title"] or "").lower() or
-                q_lower in (series.get("genero") or "").lower() or
-                q_lower in (series.get("secuela") or "").lower() or
-                q_lower in (series.get("precuela") or "").lower() or
-                q_lower in (series.get("sinopsis") or "").lower()):
-                filtered.append(series)
-        all_series = filtered
+        q_norm = normalize_title(q)
+
+        if exact == "1":
+            # Modo estricto (solo para precuela/secuela)
+            filtered = []
+            for series in all_series:
+                title_norm = normalize_title(series["title"] or "")
+                if q_norm == title_norm or q_lower == (series["title"] or "").lower():
+                    filtered.append(series)
+            all_series = filtered
+        else:
+            # Modo normal (parcial permitido)
+            filtered = []
+            for series in all_series:
+                if (q_lower in (series["title"] or "").lower() or
+                    q_lower in (series.get("genero") or "").lower() or
+                    q_lower in (series.get("secuela") or "").lower() or
+                    q_lower in (series.get("precuela") or "").lower() or
+                    q_lower in (series.get("sinopsis") or "").lower()):
+                    filtered.append(series)
+            all_series = filtered
 
     total_series = len(all_series)
 
-    # Paginación
     start = (page - 1) * ITEMS_PER_PAGE
     end = start + ITEMS_PER_PAGE
     items = all_series[start:end]

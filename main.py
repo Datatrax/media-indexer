@@ -3,7 +3,7 @@ import re
 import secrets
 import base64
 from io import BytesIO
-from typing import Dict, Any
+from typing import Dict, Any, Set
 
 from telethon import TelegramClient, events
 from telethon.sessions import StringSession
@@ -116,7 +116,6 @@ def extract_info(filename: str, caption: str = "") -> Dict[str, Any]:
     episode = None
     is_ova = False
     special_type = None
-
     fname = filename.lower()
 
     if "ova" in fname:
@@ -293,6 +292,19 @@ def get_grouped_counts():
     return counts
 
 
+def get_all_genres() -> list:
+    """Obtiene todos los géneros únicos del catálogo"""
+    genres: Set[str] = set()
+    for items in catalog.values():
+        for item in items:
+            if item.get("genero"):
+                for g in item["genero"].split(","):
+                    g = g.strip()
+                    if g:
+                        genres.add(g)
+    return sorted(list(genres))
+
+
 @app.on_event("startup")
 async def startup_event():
     await client.start(bot_token=BOT_TOKEN)
@@ -311,26 +323,15 @@ async def home(
     page: int = 1,
     username: str = Depends(verify_credentials)
 ):
-    raw_items = []
+    # 1. Tomar todos los items de la categoría
     if category == "all":
+        raw_items = []
         for cat in catalog.values():
             raw_items.extend(cat)
     else:
         raw_items = catalog.get(category, [])
 
-    # Búsqueda mejorada (incluye título, caption y género)
-    if q:
-        q_lower = q.lower().strip()
-        raw_items = [
-            i for i in raw_items
-            if q_lower in (i["title"] or "").lower()
-            or q_lower in (i.get("caption") or "").lower()
-            or q_lower in (i.get("genero") or "").lower()
-            or q_lower in (i.get("secuela") or "").lower()
-            or q_lower in (i.get("precuela") or "").lower()
-        ]
-
-    # Agrupar
+    # 2. Agrupar PRIMERO (así no perdemos episodios)
     grouped = {}
     for item in raw_items:
         key = normalize_title(item["title"])
@@ -379,8 +380,23 @@ async def home(
         ))
 
     all_series = list(grouped.values())
+
+    # 3. Filtrar las series ya agrupadas
+    if q:
+        q_lower = q.lower().strip()
+        filtered = []
+        for series in all_series:
+            if (q_lower in (series["title"] or "").lower() or
+                q_lower in (series.get("genero") or "").lower() or
+                q_lower in (series.get("secuela") or "").lower() or
+                q_lower in (series.get("precuela") or "").lower() or
+                q_lower in (series.get("sinopsis") or "").lower()):
+                filtered.append(series)
+        all_series = filtered
+
     total_series = len(all_series)
 
+    # Paginación
     start = (page - 1) * ITEMS_PER_PAGE
     end = start + ITEMS_PER_PAGE
     items = all_series[start:end]
@@ -398,7 +414,8 @@ async def home(
             "category": category,
             "q": q,
             "page": page,
-            "total_pages": total_pages
+            "total_pages": total_pages,
+            "all_genres": get_all_genres()
         }
     )
 

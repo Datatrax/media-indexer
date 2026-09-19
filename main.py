@@ -387,32 +387,34 @@ async def home(
         q_clean = re.sub(r"\s+", " ", q_clean).strip()
 
         if exact == "1":
-            # ===== MODO SUPER ESTRICTO (solo Precuela / Secuela) =====
-            best_score = 0
-            best_series = None
+            # ===== MODO SUPER ESTRICTO =====
+            candidates = []
 
             for series in all_series:
                 title = (series["title"] or "").lower().strip()
                 title_clean = re.sub(r"[^\w\s]", "", title)
                 title_clean = re.sub(r"\s+", " ", title_clean).strip()
 
+                score = 0
                 if q_lower == title:
                     score = 100
                 elif q_clean == title_clean:
-                    score = 95
-                elif title.startswith(q_lower) or q_lower.startswith(title):
-                    score = 80
+                    score = 98
+                elif title.startswith(q_lower):
+                    score = 90
+                elif q_lower.startswith(title):
+                    score = 85
                 elif q_clean in title_clean:
-                    score = 50 * (len(q_clean) / max(len(title_clean), 1))
-                else:
-                    score = 0
+                    ratio = len(q_clean) / max(len(title_clean), 1)
+                    score = 70 * ratio
 
-                if score > best_score:
-                    best_score = score
-                    best_series = series
+                if score >= 85:
+                    candidates.append((score, series))
 
-            if best_series and best_score >= 80:
-                all_series = [best_series]
+            if candidates:
+                # Ordenamos por score y nos quedamos solo con el mejor
+                candidates.sort(key=lambda x: x[0], reverse=True)
+                all_series = [candidates[0][1]]
             else:
                 all_series = []
         else:

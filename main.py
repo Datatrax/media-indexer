@@ -48,25 +48,25 @@ def verify_credentials(credentials: HTTPBasicCredentials = Depends(security)):
 
 
 def normalize_title(title: str) -> str:
-    """Usado SOLO para agrupar. Debe ser conservador."""
+    """
+    Versión más robusta para agrupar.
+    Toma la parte principal del título (antes de la primera coma o dos puntos).
+    """
     if not title:
         return "sin título"
-    
+
     t = title.lower().strip()
-    
-    # Quitar puntuación y normalizar espacios
+
+    # Tomar solo la parte antes de la primera coma o dos puntos
+    t = re.split(r"[,:]", t)[0]
+
+    # Limpiar
     t = re.sub(r"[^\w\s]", " ", t)
     t = re.sub(r"\s+", " ", t)
-    
-    # Quitar solo lo que realmente estorba para agrupar
-    t = re.sub(r"\s+(part|parte|cd|disc|pt)\s*\d+.*$", "", t)
-    t = re.sub(r"\s+(ova|special|sp|especial)\s*\d*.*$", "", t)
-    
-    # Quitar subtítulos en inglés más comunes (de forma cuidadosa)
-    t = re.sub(r"\s+(heavens? lost property|heaven’s lost property).*$", "", t)
-    t = re.sub(r"\s+(worlds? end harem|world’s end harem).*$", "", t)
-    t = re.sub(r"\s+(the movie|movie|edit|final).*$", "", t)
-    
+
+    # Quitar indicadores de parte / ova al final
+    t = re.sub(r"\s+(part|parte|cd|disc|pt|ova|special|sp)\s*\d*.*$", "", t)
+
     return t.strip()
 
 
@@ -383,15 +383,13 @@ async def home(
 
         g = grouped[key]
 
-        # Preferir título más largo
+        # Preferir el título más largo
         if item.get("title") and len(item["title"]) > len(g["title"] or ""):
             g["title"] = item["title"]
 
-        # Preferir imagen si no tiene
         if item.get("thumbnail") and not g["thumbnail"]:
             g["thumbnail"] = item["thumbnail"]
 
-        # Preferir valores más largos / completos
         for field in ["year", "genero", "sinopsis", "quality", "estudio", "episodios",
                       "secuela", "precuela", "resolucion", "duracion", "audios", "subtitulos", "fansub", "formato", "peso"]:
             if item.get(field):

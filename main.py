@@ -48,14 +48,15 @@ def verify_credentials(credentials: HTTPBasicCredentials = Depends(security)):
 
 
 def normalize_title(title: str) -> str:
+    """Solo se usa para AGRUPAR, no para mostrar"""
     if not title:
         return "sin título"
     t = title.lower().strip()
     t = re.sub(r"[^\w\s]", "", t)
     t = re.sub(r"\s+", " ", t)
-    # Quitamos subtítulos en inglés y "part" para agrupar mejor
-    t = re.sub(r"\s*(heavens? lost property|heaven’s lost property|the movie|the angeloid of clockwork).*$", "", t)
+    # Quitamos partes y subtítulos en inglés solo para el key de agrupación
     t = re.sub(r"\s*(part|parte|cd|disc)\s*\d+.*$", "", t)
+    t = re.sub(r"\s*(heavens? lost property|heaven’s lost property|the movie|the angeloid of clockwork).*$", "", t)
     return t.strip()
 
 
@@ -108,10 +109,12 @@ def parse_caption(caption: str) -> Dict[str, Any]:
 def extract_info(filename: str, caption: str = "") -> Dict[str, Any]:
     parsed = parse_caption(caption)
 
+    # Si no hay nombre en el caption, intentamos sacarlo del filename
     if not parsed["nombre"]:
         clean = re.sub(r"\.(mkv|mp4|avi|mov|rar|zip)$", "", filename, flags=re.I)
         clean = re.sub(r"[\._]", " ", clean)
         clean = re.sub(r"\[.*?\]", "", clean)
+        # Quitamos solo la parte final de part/ova para el título base
         clean = re.sub(r"\s*[-–]\s*(ova|special|sp|especial|part|parte|cd|disc)?\s*\d{0,3}.*$", "", clean, flags=re.I)
         parsed["nombre"] = re.sub(r"\s+", " ", clean).strip()
 
@@ -121,20 +124,20 @@ def extract_info(filename: str, caption: str = "") -> Dict[str, Any]:
     special_type = None
     fname = filename.lower()
 
-    # ========== DETECCIÓN DE PARTES (RAR / Part 1, Part 2...) ==========
+    # Detección de PARTES
     part_match = re.search(r"(?:part|parte|cd|disc|pt)\s*[-–.]?\s*(\d{1,2})", fname)
     if part_match:
         is_part = True
         special_type = "Part"
         episode = int(part_match.group(1))
-    elif re.search(r"\.(part\d+|r\d{2})\.", fname):  # .part1.rar o .r00
+    elif re.search(r"\.(part\d+|r\d{2})\.", fname):
         is_part = True
         special_type = "Part"
         num = re.search(r"(?:part|r)(\d+)", fname)
         if num:
             episode = int(num.group(1))
 
-    # ========== DETECCIÓN DE OVA ==========
+    # Detección de OVA
     elif "ova" in fname:
         is_ova = True
         special_type = "OVA"
@@ -156,7 +159,6 @@ def extract_info(filename: str, caption: str = "") -> Dict[str, Any]:
             if numbers:
                 episode = int(numbers[0])
     else:
-        # Episodio normal
         match = re.search(r"[-–]\s*(\d{1,3})\b", fname)
         if match:
             episode = int(match.group(1))
@@ -269,7 +271,7 @@ async def process_message(msg):
         "special_type": info["special_type"],
         "size_mb": round(size / (1024 * 1024), 2) if size else 0,
         "mime": mime,
-        "caption": caption[:800],
+        "caption": caption[:1000],
         "date": msg.date.strftime("%Y-%m-%d") if msg.date else "",
         "link": f"https://t.me/c/{str(CHANNEL_ID)[4:]}/{msg.id}",
         "thumbnail": f"data:image/jpeg;base64,{thumbnail_b64}" if thumbnail_b64 else None,
@@ -350,7 +352,7 @@ async def home(
     else:
         raw_items = catalog.get(category, [])
 
-    # Agrupar primero
+    # Agrupar
     grouped = {}
     for item in raw_items:
         key = normalize_title(item["title"])
@@ -378,7 +380,7 @@ async def home(
 
         g = grouped[key]
 
-        # Preferir siempre el título más largo (el completo)
+        # ===== PREFERIR SIEMPRE EL TÍTULO MÁS LARGO Y COMPLETO =====
         if item.get("title") and len(item["title"]) > len(g["title"] or ""):
             g["title"] = item["title"]
 
@@ -387,8 +389,10 @@ async def home(
 
         for field in ["year", "genero", "sinopsis", "quality", "estudio", "episodios",
                       "secuela", "precuela", "resolucion", "duracion", "audios", "subtitulos", "fansub", "formato", "peso"]:
-            if item.get(field) and not g.get(field):
-                g[field] = item[field]
+            # También preferimos el valor más largo en secuela/precuela
+            if item.get(field):
+                if not g.get(field) or len(str(item[field])) > len(str(g.get(field) or "")):
+                    g[field] = item[field]
 
         if not item.get("is_photo") and item.get("size_mb", 0) > 0:
             g["episodes"].append(item)
@@ -401,7 +405,7 @@ async def home(
 
     all_series = list(grouped.values())
 
-    # ========== FILTRO ==========
+    # Filtro
     if q:
         q_lower = q.lower().strip()
         q_clean = re.sub(r"[^\w\s]", "", q_lower)

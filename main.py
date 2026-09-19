@@ -48,20 +48,25 @@ def verify_credentials(credentials: HTTPBasicCredentials = Depends(security)):
 
 
 def normalize_title(title: str) -> str:
-    """Solo se usa para AGRUPAR, no para mostrar"""
+    """Usado SOLO para agrupar. Debe ser conservador."""
     if not title:
         return "sin título"
+    
     t = title.lower().strip()
-
-    # Quitar caracteres especiales
+    
+    # Quitar puntuación y normalizar espacios
     t = re.sub(r"[^\w\s]", " ", t)
     t = re.sub(r"\s+", " ", t)
-
-    # Quitar subtítulos en inglés y palabras comunes
-    t = re.sub(r"\s*(worlds? end harem|world’s end harem|edit|movie|the movie|ova|special).*$", "", t)
-    t = re.sub(r"\s*(heavens? lost property|heaven’s lost property|the angeloid of clockwork).*$", "", t)
-    t = re.sub(r"\s*(part|parte|cd|disc)\s*\d+.*$", "", t)
-
+    
+    # Quitar solo lo que realmente estorba para agrupar
+    t = re.sub(r"\s+(part|parte|cd|disc|pt)\s*\d+.*$", "", t)
+    t = re.sub(r"\s+(ova|special|sp|especial)\s*\d*.*$", "", t)
+    
+    # Quitar subtítulos en inglés más comunes (de forma cuidadosa)
+    t = re.sub(r"\s+(heavens? lost property|heaven’s lost property).*$", "", t)
+    t = re.sub(r"\s+(worlds? end harem|world’s end harem).*$", "", t)
+    t = re.sub(r"\s+(the movie|movie|edit|final).*$", "", t)
+    
     return t.strip()
 
 
@@ -127,7 +132,7 @@ def extract_info(filename: str, caption: str = "") -> Dict[str, Any]:
     special_type = None
     fname = filename.lower()
 
-    # Detección de PARTES
+    # PARTES
     part_match = re.search(r"(?:part|parte|cd|disc|pt)\s*[-–.]?\s*(\d{1,2})", fname)
     if part_match:
         is_part = True
@@ -140,7 +145,7 @@ def extract_info(filename: str, caption: str = "") -> Dict[str, Any]:
         if num:
             episode = int(num.group(1))
 
-    # Detección de OVA
+    # OVA
     elif "ova" in fname:
         is_ova = True
         special_type = "OVA"
@@ -157,10 +162,6 @@ def extract_info(filename: str, caption: str = "") -> Dict[str, Any]:
         match = re.search(r"(?:special|especial|sp)\s*[-–]?\s*(\d{1,3})", fname)
         if match:
             episode = int(match.group(1))
-        else:
-            numbers = re.findall(r"\d{1,3}", fname)
-            if numbers:
-                episode = int(numbers[0])
     else:
         match = re.search(r"[-–]\s*(\d{1,3})\b", fname)
         if match:
@@ -355,7 +356,6 @@ async def home(
     else:
         raw_items = catalog.get(category, [])
 
-    # Agrupar
     grouped = {}
     for item in raw_items:
         key = normalize_title(item["title"])
@@ -383,13 +383,15 @@ async def home(
 
         g = grouped[key]
 
-        # Preferir siempre el título más largo
+        # Preferir título más largo
         if item.get("title") and len(item["title"]) > len(g["title"] or ""):
             g["title"] = item["title"]
 
+        # Preferir imagen si no tiene
         if item.get("thumbnail") and not g["thumbnail"]:
             g["thumbnail"] = item["thumbnail"]
 
+        # Preferir valores más largos / completos
         for field in ["year", "genero", "sinopsis", "quality", "estudio", "episodios",
                       "secuela", "precuela", "resolucion", "duracion", "audios", "subtitulos", "fansub", "formato", "peso"]:
             if item.get(field):
@@ -407,7 +409,6 @@ async def home(
 
     all_series = list(grouped.values())
 
-    # Filtro
     if q:
         q_lower = q.lower().strip()
         q_clean = re.sub(r"[^\w\s]", "", q_lower)
@@ -484,4 +485,4 @@ async def health():
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 8000))
-    uvicorn.run(app, host="0.0.0.0", port=port)
+    uvicorn.run(app, host="0.0.0.0", port=port)*

@@ -79,6 +79,14 @@
                                 ▼ Ver ficha completa
                             </summary>
                             <div class="mt-3 text-sm text-gray-300 space-y-1.5 bg-gray-900/60 p-4 rounded-xl">
+                                {% if series.precuela %}
+                                <p>
+                                    <span class="text-gray-400">Precuela:</span> 
+                                    <a href="/?q={{ series.precuela|urlencode }}" class="text-blue-400 hover:underline">
+                                        {{ series.precuela }}
+                                    </a>
+                                </p>
+                                {% endif %}
                                 {% if series.secuela %}
                                 <p>
                                     <span class="text-gray-400">Secuela:</span> 
@@ -109,7 +117,15 @@
                                 {% for ep in series.episodes %}
                                 <a href="{{ ep.link }}" target="_blank"
                                    class="flex items-center justify-between px-3 py-2 bg-gray-700 hover:bg-blue-600 rounded-lg text-sm transition">
-                                    <span>{% if ep.episode %}Ep {{ ep.episode }}{% else %}Archivo{% endif %}</span>
+                                    <span>
+                                        {% if ep.is_ova %}
+                                            <span class="text-yellow-400 font-medium">{{ ep.special_type or "OVA" }}{% if ep.episode %} {{ ep.episode }}{% endif %}</span>
+                                        {% elif ep.episode %}
+                                            Ep {{ ep.episode }}
+                                        {% else %}
+                                            Archivo
+                                        {% endif %}
+                                    </span>
                                     <span class="text-xs opacity-70">{{ ep.size_mb }} MB</span>
                                 </a>
                                 {% endfor %}

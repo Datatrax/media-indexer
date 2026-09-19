@@ -49,23 +49,38 @@ def verify_credentials(credentials: HTTPBasicCredentials = Depends(security)):
 
 def normalize_title(title: str) -> str:
     """
-    Versión más robusta para agrupar.
-    Toma la parte principal del título (antes de la primera coma o dos puntos).
+    Normalización robusta y general para agrupar series/películas.
+    Evita que se mezclen títulos con subtítulos en inglés.
     """
     if not title:
         return "sin título"
 
     t = title.lower().strip()
 
-    # Tomar solo la parte antes de la primera coma o dos puntos
-    t = re.split(r"[,:]", t)[0]
+    # 1. Quitar contenido entre paréntesis y corchetes
+    t = re.sub(r"[\(\[\{].*?[\)\]\}]", "", t)
 
-    # Limpiar
+    # 2. Si hay coma, quedarnos con la parte antes de la primera coma
+    #    (normalmente el título original en japonés/romaji)
+    if "," in t:
+        t = t.split(",")[0]
+
+    # 3. Quitar dos puntos y lo que sigue si parece subtítulo
+    if ":" in t:
+        parts = t.split(":", 1)
+        # Solo cortamos si la segunda parte es larga (probable subtítulo)
+        if len(parts[1].strip()) > 10:
+            t = parts[0]
+
+    # 4. Limpiar signos de puntuación
     t = re.sub(r"[^\w\s]", " ", t)
-    t = re.sub(r"\s+", " ", t)
+    t = re.sub(r"\s+", " ", t).strip()
 
-    # Quitar indicadores de parte / ova al final
-    t = re.sub(r"\s+(part|parte|cd|disc|pt|ova|special|sp)\s*\d*.*$", "", t)
+    # 5. Quitar indicadores de parte / ova / special al final
+    t = re.sub(r"\s+(part|parte|cd|disc|pt|ova|special|sp|especial)\s*\d*.*$", "", t)
+
+    # 6. Quitar palabras muy comunes de subtítulos en inglés
+    t = re.sub(r"\s+(the movie|movie|edit|final|complete|uncensored|bluray|bd).*$", "", t)
 
     return t.strip()
 

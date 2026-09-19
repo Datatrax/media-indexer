@@ -71,7 +71,14 @@
                         </div>
 
                         {% if series.genero %}
-                        <p class="text-sm text-purple-400 mb-3">{{ series.genero }}</p>
+                        <p class="text-sm mb-3">
+                            {% for g in series.genero.split(',') %}
+                                <a href="/?q={{ g.strip()|urlencode }}" 
+                                   class="text-purple-400 hover:text-purple-300 hover:underline mr-2">
+                                    {{ g.strip() }}
+                                </a>
+                            {% endfor %}
+                        </p>
                         {% endif %}
 
                         <details class="mb-4">

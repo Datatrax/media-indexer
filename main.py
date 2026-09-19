@@ -52,11 +52,16 @@ def normalize_title(title: str) -> str:
     if not title:
         return "sin título"
     t = title.lower().strip()
-    t = re.sub(r"[^\w\s]", "", t)
+
+    # Quitar caracteres especiales
+    t = re.sub(r"[^\w\s]", " ", t)
     t = re.sub(r"\s+", " ", t)
-    # Quitamos partes y subtítulos en inglés solo para el key de agrupación
+
+    # Quitar subtítulos en inglés y palabras comunes
+    t = re.sub(r"\s*(worlds? end harem|world’s end harem|edit|movie|the movie|ova|special).*$", "", t)
+    t = re.sub(r"\s*(heavens? lost property|heaven’s lost property|the angeloid of clockwork).*$", "", t)
     t = re.sub(r"\s*(part|parte|cd|disc)\s*\d+.*$", "", t)
-    t = re.sub(r"\s*(heavens? lost property|heaven’s lost property|the movie|the angeloid of clockwork).*$", "", t)
+
     return t.strip()
 
 
@@ -109,12 +114,10 @@ def parse_caption(caption: str) -> Dict[str, Any]:
 def extract_info(filename: str, caption: str = "") -> Dict[str, Any]:
     parsed = parse_caption(caption)
 
-    # Si no hay nombre en el caption, intentamos sacarlo del filename
     if not parsed["nombre"]:
         clean = re.sub(r"\.(mkv|mp4|avi|mov|rar|zip)$", "", filename, flags=re.I)
         clean = re.sub(r"[\._]", " ", clean)
         clean = re.sub(r"\[.*?\]", "", clean)
-        # Quitamos solo la parte final de part/ova para el título base
         clean = re.sub(r"\s*[-–]\s*(ova|special|sp|especial|part|parte|cd|disc)?\s*\d{0,3}.*$", "", clean, flags=re.I)
         parsed["nombre"] = re.sub(r"\s+", " ", clean).strip()
 
@@ -380,7 +383,7 @@ async def home(
 
         g = grouped[key]
 
-        # ===== PREFERIR SIEMPRE EL TÍTULO MÁS LARGO Y COMPLETO =====
+        # Preferir siempre el título más largo
         if item.get("title") and len(item["title"]) > len(g["title"] or ""):
             g["title"] = item["title"]
 
@@ -389,7 +392,6 @@ async def home(
 
         for field in ["year", "genero", "sinopsis", "quality", "estudio", "episodios",
                       "secuela", "precuela", "resolucion", "duracion", "audios", "subtitulos", "fansub", "formato", "peso"]:
-            # También preferimos el valor más largo en secuela/precuela
             if item.get(field):
                 if not g.get(field) or len(str(item[field])) > len(str(g.get(field) or "")):
                     g[field] = item[field]

@@ -48,42 +48,39 @@ def verify_credentials(credentials: HTTPBasicCredentials = Depends(security)):
 
 
 def normalize_title(title: str) -> str:
-    """
-    Normalización robusta y general para agrupar series/películas.
-    Evita que se mezclen títulos con subtítulos en inglés.
-    """
     if not title:
         return "sin título"
 
     t = title.lower().strip()
 
-    # 1. Quitar contenido entre paréntesis y corchetes
+    # Casos especiales para no mezclar la película con la serie
+    if "tokeijikake" in t or "angeloid of clockwork" in t:
+        return "sora no otoshimono tokeijikake movie"
+
+    if "final" in t and ("eternal" in t or "my master" in t):
+        return "sora no otoshimono final"
+
+    if "forte" in t:
+        return "sora no otoshimono forte"
+
+    # --- Lógica general (la que ya teníamos) ---
     t = re.sub(r"[\(\[\{].*?[\)\]\}]", "", t)
 
-    # 2. Si hay coma, quedarnos con la parte antes de la primera coma
-    #    (normalmente el título original en japonés/romaji)
     if "," in t:
         t = t.split(",")[0]
 
-    # 3. Quitar dos puntos y lo que sigue si parece subtítulo
     if ":" in t:
         parts = t.split(":", 1)
-        # Solo cortamos si la segunda parte es larga (probable subtítulo)
         if len(parts[1].strip()) > 10:
             t = parts[0]
 
-    # 4. Limpiar signos de puntuación
     t = re.sub(r"[^\w\s]", " ", t)
     t = re.sub(r"\s+", " ", t).strip()
 
-    # 5. Quitar indicadores de parte / ova / special al final
     t = re.sub(r"\s+(part|parte|cd|disc|pt|ova|special|sp|especial)\s*\d*.*$", "", t)
-
-    # 6. Quitar palabras muy comunes de subtítulos en inglés
     t = re.sub(r"\s+(the movie|movie|edit|final|complete|uncensored|bluray|bd).*$", "", t)
 
     return t.strip()
-
 
 def parse_caption(caption: str) -> Dict[str, Any]:
     data = {

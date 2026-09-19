@@ -54,7 +54,6 @@ def normalize_title(title: str) -> str:
     t = title.lower().strip()
     t = re.sub(r"[^\w\s]", "", t)
     t = re.sub(r"\s+", " ", t)
-    # Quitar subtítulos en inglés para agrupar mejor
     t = re.sub(r"\s*(heavens? lost property|heaven’s lost property).*$", "", t)
     return t.strip()
 
@@ -108,7 +107,7 @@ def parse_caption(caption: str) -> Dict[str, Any]:
 def extract_info(filename: str, caption: str = "") -> Dict[str, Any]:
     parsed = parse_caption(caption)
 
-    # --- Título ---
+    # Título
     if not parsed["nombre"]:
         clean = re.sub(r"\.(mkv|mp4|avi|mov)$", "", filename, flags=re.I)
         clean = re.sub(r"[\._]", " ", clean)
@@ -117,44 +116,28 @@ def extract_info(filename: str, caption: str = "") -> Dict[str, Any]:
         parsed["nombre"] = re.sub(r"\s+", " ", clean).strip()
 
     episode = None
-    season = 1
     is_ova = False
     special_type = None
 
     fname = filename.lower()
 
-    # ========== DETECCIÓN MUY AGRESIVA DE OVA ==========
-    # Buscamos cualquier variación de OVA / Special + número
-
-    patterns = [
-        r"[-–\s](ova|special|sp|especial)\s*(\d{1,3})\b",   # - OVA 1  |  OVA 1
-        r"[-–\s](\d{1,3})\s*(ova|special|sp|especial)\b",   # - 14 OVA
-        r"\b(ova|special|sp|especial)\s*(\d{1,3})\b",        # OVA1 o OVA 1
-    ]
-
-    for pattern in patterns:
-        match = re.search(pattern, fname)
-        if match:
-            is_ova = True
-            groups = match.groups()
-            if groups[0].isdigit():
-                episode = int(groups[0])
-                special_type = groups[1].upper()
-            else:
-                special_type = groups[0].upper()
-                episode = int(groups[1]) if groups[1].isdigit() else None
-
-            if special_type in ["SP", "ESPECIAL"]:
-                special_type = "Special"
-            break
-
-    # Si solo dice OVA sin número
-    if not is_ova and re.search(r"\b(ova|special|sp|especial)\b", fname):
+    # ========== DETECCIÓN SUPER AGRESIVA ==========
+    # Si contiene la palabra "ova" → es OVA
+    if "ova" in fname or "special" in fname or " sp " in fname or "especial" in fname:
         is_ova = True
         special_type = "OVA"
 
-    # Episodio normal
-    if episode is None and not is_ova:
+        # Intentamos sacar el número
+        num_match = re.search(r"(?:ova|special|sp|especial)\s*[-–]?\s*(\d{1,3})", fname)
+        if not num_match:
+            num_match = re.search(r"(\d{1,3})\s*(?:ova|special|sp|especial)", fname)
+        if not num_match:
+            num_match = re.search(r"[-–]\s*(\d{1,3})", fname)
+
+        if num_match:
+            episode = int(num_match.group(1))
+    else:
+        # Episodio normal
         match = re.search(r"[-–]\s*(\d{1,3})\b", fname)
         if match:
             episode = int(match.group(1))
@@ -177,7 +160,7 @@ def extract_info(filename: str, caption: str = "") -> Dict[str, Any]:
         "formato": parsed["formato"],
         "peso": parsed["peso"],
         "sinopsis": parsed["sinopsis"],
-        "season": season,
+        "season": 1,
         "episode": episode,
         "is_ova": is_ova,
         "special_type": special_type
@@ -224,6 +207,9 @@ async def process_message(msg):
     elif isinstance(msg.media, MessageMediaPhoto):
         filename = f"photo_{msg.id}.jpg"
         mime = "image/jpeg"
+
+    # Debug: imprimir el nombre real que ve el bot
+    print(f"Archivo detectado: {filename}")
 
     info = extract_info(filename, caption)
     tipo_detectado = classify(filename, mime, caption, info.get("tipo"))
@@ -289,7 +275,7 @@ async def reindex():
         async for msg in client.iter_messages(entity, limit=None):
             await process_message(msg)
             count += 1
-            if count % 50 == 0:
+            if count % 20 == 0:
                 print(f"Indexados {count} archivos...")
 
         for key in catalog:
@@ -372,7 +358,7 @@ async def home(
 
         g = grouped[key]
 
-        # Preferir el título más largo (el que tiene el nombre en inglés)
+        # Preferir el título más largo
         if item.get("title") and len(item["title"]) > len(g["title"] or ""):
             g["title"] = item["title"]
 

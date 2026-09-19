@@ -119,21 +119,31 @@ def extract_info(filename: str, caption: str = "") -> Dict[str, Any]:
 
     fname = filename.lower()
 
-    # ========== DETECCIÓN INFALIBLE ==========
+    # ========== DETECCIÓN CORREGIDA ==========
     if "ova" in fname:
         is_ova = True
         special_type = "OVA"
-        # Buscar el número más cercano
-        numbers = re.findall(r"\d{1,3}", fname)
-        if numbers:
-            # Preferimos el número que está cerca de la palabra ova
-            episode = int(numbers[-1])  # normalmente el último número es el del OVA
-    elif "special" in fname or "especial" in fname or " sp " in fname:
+
+        # Buscar el número justo después de "ova"
+        match = re.search(r"ova\s*[-–]?\s*(\d{1,3})", fname)
+        if match:
+            episode = int(match.group(1))
+        else:
+            # Fallback: buscar cualquier número
+            numbers = re.findall(r"\d{1,3}", fname)
+            if numbers:
+                episode = int(numbers[0])  # el primero suele ser el del OVA
+
+    elif "special" in fname or "especial" in fname or re.search(r"\bsp\b", fname):
         is_ova = True
         special_type = "Special"
-        numbers = re.findall(r"\d{1,3}", fname)
-        if numbers:
-            episode = int(numbers[-1])
+        match = re.search(r"(?:special|especial|sp)\s*[-–]?\s*(\d{1,3})", fname)
+        if match:
+            episode = int(match.group(1))
+        else:
+            numbers = re.findall(r"\d{1,3}", fname)
+            if numbers:
+                episode = int(numbers[0])
     else:
         # Episodio normal
         match = re.search(r"[-–]\s*(\d{1,3})\b", fname)
@@ -209,8 +219,7 @@ async def process_message(msg):
     print(f"Archivo detectado: {filename}")
 
     info = extract_info(filename, caption)
-    
-    # Debug extra
+
     if "ova" in filename.lower():
         print(f"→ OVA detectado: is_ova={info['is_ova']}, episode={info['episode']}, special_type={info['special_type']}")
 

@@ -387,22 +387,36 @@ async def home(
         q_clean = re.sub(r"\s+", " ", q_clean).strip()
 
         if exact == "1":
-            # ===== MODO ESTRICTO (Precuela / Secuela) =====
-            filtered = []
+            # ===== MODO SUPER ESTRICTO (solo Precuela / Secuela) =====
+            best_score = 0
+            best_series = None
+
             for series in all_series:
                 title = (series["title"] or "").lower().strip()
                 title_clean = re.sub(r"[^\w\s]", "", title)
                 title_clean = re.sub(r"\s+", " ", title_clean).strip()
 
-                # Solo acepta si el título es casi idéntico
-                if (q_lower == title or 
-                    q_clean == title_clean or
-                    (q_clean in title_clean and len(q_clean) >= len(title_clean) * 0.85) or
-                    (title_clean in q_clean and len(title_clean) >= len(q_clean) * 0.85)):
-                    filtered.append(series)
-            all_series = filtered
+                if q_lower == title:
+                    score = 100
+                elif q_clean == title_clean:
+                    score = 95
+                elif title.startswith(q_lower) or q_lower.startswith(title):
+                    score = 80
+                elif q_clean in title_clean:
+                    score = 50 * (len(q_clean) / max(len(title_clean), 1))
+                else:
+                    score = 0
+
+                if score > best_score:
+                    best_score = score
+                    best_series = series
+
+            if best_series and best_score >= 80:
+                all_series = [best_series]
+            else:
+                all_series = []
         else:
-            # ===== MODO NORMAL (parcial permitido) =====
+            # ===== MODO NORMAL =====
             filtered = []
             for series in all_series:
                 if (q_lower in (series["title"] or "").lower() or

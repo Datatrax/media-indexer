@@ -31,16 +31,31 @@
             </p>
         </div>
 
-        <div class="flex flex-wrap gap-2 mb-6">
+        <!-- Filtros de categoría -->
+        <div class="flex flex-wrap gap-2 mb-4">
             <a href="/?category=all" class="px-4 py-2 rounded-full text-sm font-medium {{ 'bg-blue-600' if category=='all' else 'bg-gray-700 hover:bg-gray-600' }}">Todos</a>
             <a href="/?category=movies" class="px-4 py-2 rounded-full text-sm font-medium {{ 'bg-blue-600' if category=='movies' else 'bg-gray-700 hover:bg-gray-600' }}">Películas ({{ counts.movies }})</a>
             <a href="/?category=series" class="px-4 py-2 rounded-full text-sm font-medium {{ 'bg-blue-600' if category=='series' else 'bg-gray-700 hover:bg-gray-600' }}">Series ({{ counts.series }})</a>
             <a href="/?category=music" class="px-4 py-2 rounded-full text-sm font-medium {{ 'bg-blue-600' if category=='music' else 'bg-gray-700 hover:bg-gray-600' }}">Música ({{ counts.music }})</a>
         </div>
 
+        <!-- Barra de géneros -->
+        {% if all_genres %}
+        <div class="flex flex-wrap gap-2 mb-6">
+            <span class="text-sm text-gray-400 self-center mr-1">Géneros:</span>
+            {% for genre in all_genres %}
+            <a href="/?q={{ genre|urlencode }}" 
+               class="px-3 py-1 rounded-full text-xs font-medium bg-purple-900/60 hover:bg-purple-700 text-purple-200 transition">
+                {{ genre }}
+            </a>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        <!-- Buscador -->
         <form method="get" class="mb-8">
             <input type="hidden" name="category" value="{{ category }}">
-            <input type="text" name="q" value="{{ q }}" placeholder="Buscar título, género, año..."
+            <input type="text" name="q" value="{{ q }}" placeholder="Buscar título, género, precuela, secuela..."
                    class="w-full px-5 py-3 rounded-xl bg-gray-800 border border-gray-700 focus:outline-none focus:border-blue-500 text-white">
         </form>
 
@@ -71,7 +86,14 @@
                         </div>
 
                         {% if series.genero %}
-                        <p class="text-sm text-purple-400 mb-3">{{ series.genero }}</p>
+                        <p class="text-sm mb-3">
+                            {% for g in series.genero.split(',') %}
+                                <a href="/?q={{ g.strip()|urlencode }}" 
+                                   class="text-purple-400 hover:text-purple-300 hover:underline mr-2">
+                                    {{ g.strip() }}
+                                </a>
+                            {% endfor %}
+                        </p>
                         {% endif %}
 
                         <details class="mb-4">
@@ -82,7 +104,7 @@
                                 {% if series.precuela %}
                                 <p>
                                     <span class="text-gray-400">Precuela:</span> 
-                                    <a href="/?q={{ series.precuela|urlencode }}" class="text-blue-400 hover:underline">
+                                    <a href="/?q={{ series.precuela|urlencode }}&exact=1" class="text-blue-400 hover:underline">
                                         {{ series.precuela }}
                                     </a>
                                 </p>
@@ -90,7 +112,7 @@
                                 {% if series.secuela %}
                                 <p>
                                     <span class="text-gray-400">Secuela:</span> 
-                                    <a href="/?q={{ series.secuela|urlencode }}" class="text-blue-400 hover:underline">
+                                    <a href="/?q={{ series.secuela|urlencode }}&exact=1" class="text-blue-400 hover:underline">
                                         {{ series.secuela }}
                                     </a>
                                 </p>

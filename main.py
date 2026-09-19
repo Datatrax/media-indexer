@@ -119,21 +119,16 @@ def extract_info(filename: str, caption: str = "") -> Dict[str, Any]:
 
     fname = filename.lower()
 
-    # ========== DETECCIÓN CORREGIDA ==========
     if "ova" in fname:
         is_ova = True
         special_type = "OVA"
-
-        # Buscar el número justo después de "ova"
         match = re.search(r"ova\s*[-–]?\s*(\d{1,3})", fname)
         if match:
             episode = int(match.group(1))
         else:
-            # Fallback: buscar cualquier número
             numbers = re.findall(r"\d{1,3}", fname)
             if numbers:
-                episode = int(numbers[0])  # el primero suele ser el del OVA
-
+                episode = int(numbers[0])
     elif "special" in fname or "especial" in fname or re.search(r"\bsp\b", fname):
         is_ova = True
         special_type = "Special"
@@ -145,7 +140,6 @@ def extract_info(filename: str, caption: str = "") -> Dict[str, Any]:
             if numbers:
                 episode = int(numbers[0])
     else:
-        # Episodio normal
         match = re.search(r"[-–]\s*(\d{1,3})\b", fname)
         if match:
             episode = int(match.group(1))
@@ -216,13 +210,7 @@ async def process_message(msg):
         filename = f"photo_{msg.id}.jpg"
         mime = "image/jpeg"
 
-    print(f"Archivo detectado: {filename}")
-
     info = extract_info(filename, caption)
-
-    if "ova" in filename.lower():
-        print(f"→ OVA detectado: is_ova={info['is_ova']}, episode={info['episode']}, special_type={info['special_type']}")
-
     tipo_detectado = classify(filename, mime, caption, info.get("tipo"))
 
     thumbnail_b64 = None
@@ -330,15 +318,19 @@ async def home(
     else:
         raw_items = catalog.get(category, [])
 
+    # Búsqueda mejorada (incluye título, caption y género)
     if q:
-        q_lower = q.lower()
+        q_lower = q.lower().strip()
         raw_items = [
             i for i in raw_items
             if q_lower in (i["title"] or "").lower()
             or q_lower in (i.get("caption") or "").lower()
             or q_lower in (i.get("genero") or "").lower()
+            or q_lower in (i.get("secuela") or "").lower()
+            or q_lower in (i.get("precuela") or "").lower()
         ]
 
+    # Agrupar
     grouped = {}
     for item in raw_items:
         key = normalize_title(item["title"])

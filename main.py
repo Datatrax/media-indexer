@@ -54,7 +54,7 @@ def normalize_title(title: str) -> str:
     t = title.lower().strip()
 
     # ========== CASOS ESPECIALES SORA NO OTOSHIMONO ==========
-    if "tokeijikake" in t or "angeloid of clockwork" in t:
+    if "tokeijikake" in t or "angeloid of clockwork" in t or "angeloid of clockwork" in t:
         return "sora no otoshimono tokeijikake movie"
 
     if "final" in t and ("eternal" in t or "my master" in t):
@@ -143,12 +143,13 @@ def extract_info(filename: str, caption: str = "") -> Dict[str, Any]:
         parsed["nombre"] = re.sub(r"\s+", " ", clean).strip()
 
     fname_lower = filename.lower()
+    caption_lower = (caption or "").lower()
 
-    # Títulos forzados
+    # ========== TÍTULOS FORZADOS ==========
     if "forte" in fname_lower and ("sora" in fname_lower or "otoshimono" in fname_lower):
         parsed["nombre"] = "Sora no Otoshimono Forte, Heaven’s Lost Property 2"
 
-    if "tokeijikake" in fname_lower or "angeloid of clockwork" in fname_lower:
+    if any(x in fname_lower or x in caption_lower for x in ["tokeijikake", "angeloid of clockwork", "angeloid of clockwork", "clockwork"]):
         parsed["nombre"] = "Sora no Otoshimono: Tokeijikake no Angeloid, Heaven’s Lost Property the Movie: The Angeloid of Clockwork"
 
     if "final" in fname_lower and ("eternal" in fname_lower or "my master" in fname_lower):
@@ -160,10 +161,7 @@ def extract_info(filename: str, caption: str = "") -> Dict[str, Any]:
     special_type = None
     fname = filename.lower()
 
-    is_sora_movie = (
-        "sora no otoshimono" in fname and 
-        any(x in fname for x in ["final", "eternal", "my master", "tokeijikake", "angeloid of clockwork"])
-    )
+    is_sora_movie = any(x in fname for x in ["tokeijikake", "angeloid of clockwork", "final eternal", "eternal my master", "my master"])
 
     if is_sora_movie:
         episode = None
@@ -234,16 +232,17 @@ def classify(filename: str, mime: str = "", caption: str = "", tipo: str = None)
     caption_lower = (caption or "").lower()
     text = fname_lower + " " + caption_lower
 
-    # ========== FORZAR CATEGORÍAS DE SORA NO OTOSHIMONO ==========
+    # ========== FORZAR CATEGORÍAS SORA NO OTOSHIMONO (MUY AGRESIVO) ==========
     if "forte" in text and ("sora" in text or "otoshimono" in text):
         return "series"
 
+    # Cualquier cosa que parezca la película Tokeijikake → movies
+    if any(x in text for x in ["tokeijikake", "angeloid of clockwork", "angeloid of clockwork", "clockwork angeloid", "the angeloid of clockwork"]):
+        return "movies"
+
+    # Otras películas de Sora
     if "sora no otoshimono" in text or "heaven's lost property" in text or "heavens lost property" in text:
-        if any(x in text for x in [
-            "tokeijikake", "angeloid of clockwork", "clockwork",
-            "final eternal", "eternal my master", "my master",
-            "the movie", "movie", "film", "pelicula", "película"
-        ]):
+        if any(x in text for x in ["final", "eternal", "my master", "the movie", "movie", "film", "pelicula", "película"]):
             return "movies"
 
     if tipo:

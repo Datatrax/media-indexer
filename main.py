@@ -53,8 +53,8 @@ def normalize_title(title: str) -> str:
 
     t = title.lower().strip()
 
-    # ========== CASOS ESPECIALES SORA NO OTOSHIMONO ==========
-    if "tokeijikake" in t or "angeloid of clockwork" in t or "angeloid of clockwork" in t:
+    # Casos especiales Sora no Otoshimono
+    if "tokeijikake" in t or "angeloid of clockwork" in t:
         return "sora no otoshimono tokeijikake movie"
 
     if "final" in t and ("eternal" in t or "my master" in t):
@@ -63,10 +63,7 @@ def normalize_title(title: str) -> str:
     if "forte" in t:
         return "sora no otoshimono forte"
 
-    if "sora no otoshimono" in t and any(x in t for x in ["movie", "film", "pelicula", "película"]):
-        return "sora no otoshimono movie"
-
-    # --- Lógica general ---
+    # Lógica general
     t = re.sub(r"[\(\[\{].*?[\)\]\}]", "", t)
 
     if "," in t:
@@ -143,16 +140,13 @@ def extract_info(filename: str, caption: str = "") -> Dict[str, Any]:
         parsed["nombre"] = re.sub(r"\s+", " ", clean).strip()
 
     fname_lower = filename.lower()
-    caption_lower = (caption or "").lower()
 
-    # ========== TÍTULOS FORZADOS ==========
-    if "forte" in fname_lower and ("sora" in fname_lower or "otoshimono" in fname_lower):
+    # Títulos limpios
+    if "forte" in fname_lower:
         parsed["nombre"] = "Sora no Otoshimono Forte, Heaven’s Lost Property 2"
-
-    if any(x in fname_lower or x in caption_lower for x in ["tokeijikake", "angeloid of clockwork", "angeloid of clockwork", "clockwork"]):
+    elif "tokeijikake" in fname_lower or "angeloid of clockwork" in fname_lower:
         parsed["nombre"] = "Sora no Otoshimono: Tokeijikake no Angeloid, Heaven’s Lost Property the Movie: The Angeloid of Clockwork"
-
-    if "final" in fname_lower and ("eternal" in fname_lower or "my master" in fname_lower):
+    elif "final" in fname_lower and ("eternal" in fname_lower or "my master" in fname_lower):
         parsed["nombre"] = "Sora no Otoshimono Final: Eternal My Master, Heaven’s Lost Property: My Eternal Master"
 
     episode = None
@@ -161,35 +155,21 @@ def extract_info(filename: str, caption: str = "") -> Dict[str, Any]:
     special_type = None
     fname = filename.lower()
 
-    is_sora_movie = any(x in fname for x in ["tokeijikake", "angeloid of clockwork", "final eternal", "eternal my master", "my master"])
-
-    if is_sora_movie:
-        episode = None
-        is_ova = False
-        is_part = False
-        special_type = None
+    # No detectar episodios en las películas
+    if any(x in fname for x in ["tokeijikake", "angeloid of clockwork", "final eternal", "eternal my master"]):
+        pass
     else:
         part_match = re.search(r"(?:part|parte|cd|disc|pt)\s*[-–.]?\s*(\d{1,2})", fname)
         if part_match:
             is_part = True
             special_type = "Part"
             episode = int(part_match.group(1))
-        elif re.search(r"\.(part\d+|r\d{2})\.", fname):
-            is_part = True
-            special_type = "Part"
-            num = re.search(r"(?:part|r)(\d+)", fname)
-            if num:
-                episode = int(num.group(1))
         elif "ova" in fname:
             is_ova = True
             special_type = "OVA"
             match = re.search(r"ova\s*[-–]?\s*(\d{1,3})", fname)
             if match:
                 episode = int(match.group(1))
-            else:
-                numbers = re.findall(r"\d{1,3}", fname)
-                if numbers:
-                    episode = int(numbers[0])
         elif "special" in fname or "especial" in fname or re.search(r"\bsp\b", fname):
             is_ova = True
             special_type = "Special"
@@ -228,22 +208,13 @@ def extract_info(filename: str, caption: str = "") -> Dict[str, Any]:
 
 
 def classify(filename: str, mime: str = "", caption: str = "", tipo: str = None) -> str:
-    fname_lower = (filename or "").lower()
-    caption_lower = (caption or "").lower()
-    text = fname_lower + " " + caption_lower
+    text = (filename + " " + (caption or "")).lower()
 
-    # ========== FORZAR CATEGORÍAS SORA NO OTOSHIMONO (MUY AGRESIVO) ==========
     if "forte" in text and ("sora" in text or "otoshimono" in text):
         return "series"
 
-    # Cualquier cosa que parezca la película Tokeijikake → movies
-    if any(x in text for x in ["tokeijikake", "angeloid of clockwork", "angeloid of clockwork", "clockwork angeloid", "the angeloid of clockwork"]):
+    if any(x in text for x in ["tokeijikake", "angeloid of clockwork", "final eternal", "eternal my master", "my master"]):
         return "movies"
-
-    # Otras películas de Sora
-    if "sora no otoshimono" in text or "heaven's lost property" in text or "heavens lost property" in text:
-        if any(x in text for x in ["final", "eternal", "my master", "the movie", "movie", "film", "pelicula", "película"]):
-            return "movies"
 
     if tipo:
         t = tipo.lower()
@@ -260,7 +231,7 @@ def classify(filename: str, mime: str = "", caption: str = "", tipo: str = None)
     if re.search(r"(s\d{1,2}e\d{1,2}|season|temporada|[-–]\s*\d{1,3})", text) and "part" not in text:
         return "series"
 
-    if any(x in text for x in [".mkv", ".mp4", "1080p", "720p", "bluray", "bd", "movie", "pelicula", "película"]):
+    if any(x in text for x in [".mkv", ".mp4", "1080p", "720p", "bluray", "bd", "movie", "pelicula"]):
         return "movies"
 
     return "other"
@@ -298,11 +269,8 @@ async def process_message(msg):
         elif isinstance(msg.media, MessageMediaDocument) and msg.media.document.thumbs:
             thumb_bytes = await client.download_media(msg.media, thumb=-1, file=BytesIO())
             thumbnail_b64 = base64.b64encode(thumb_bytes.getvalue()).decode()
-        elif isinstance(msg.media, MessageMediaDocument) and mime.startswith("image/"):
-            thumb_bytes = await client.download_media(msg.media, file=BytesIO())
-            thumbnail_b64 = base64.b64encode(thumb_bytes.getvalue()).decode()
-    except Exception as e:
-        print(f"Error descargando thumbnail de {filename}: {e}")
+    except Exception:
+        pass
 
     item = {
         "id": msg.id,
@@ -471,6 +439,7 @@ async def home(
         if item.get("title") and len(item["title"]) > len(g["title"] or ""):
             g["title"] = item["title"]
 
+        # Mantener el mejor thumbnail disponible
         if item.get("thumbnail"):
             g["thumbnail"] = item["thumbnail"]
 
@@ -486,13 +455,13 @@ async def home(
         if not item.get("is_photo") and item.get("size_mb", 0) > 0:
             g["episodes"].append(item)
 
-    # ========== FORZAR TÍTULOS COMPLETOS ==========
+    # Forzar títulos bonitos
     for key, g in grouped.items():
         if "forte" in key:
             g["title"] = "Sora no Otoshimono Forte, Heaven’s Lost Property 2"
-        if "tokeijikake" in key:
+        elif "tokeijikake" in key:
             g["title"] = "Sora no Otoshimono: Tokeijikake no Angeloid, Heaven’s Lost Property the Movie: The Angeloid of Clockwork"
-        if "final eternal" in key or "my master" in key:
+        elif "final eternal" in key or "my master" in key:
             g["title"] = "Sora no Otoshimono Final: Eternal My Master, Heaven’s Lost Property: My Eternal Master"
 
     for g in grouped.values():
@@ -508,62 +477,22 @@ async def home(
 
     if genero:
         genero_lower = genero.lower().strip()
-        all_series = [
-            s for s in all_series 
-            if s.get("genero") and genero_lower in s["genero"].lower()
-        ]
+        all_series = [s for s in all_series if s.get("genero") and genero_lower in s["genero"].lower()]
 
     if estudio:
         estudio_lower = estudio.lower().strip()
-        all_series = [
-            s for s in all_series 
-            if s.get("estudio") and estudio_lower in s["estudio"].lower()
-        ]
+        all_series = [s for s in all_series if s.get("estudio") and estudio_lower in s["estudio"].lower()]
 
     if q:
         q_lower = q.lower().strip()
-        q_clean = re.sub(r"[^\w\s]", "", q_lower)
-        q_clean = re.sub(r"\s+", " ", q_clean).strip()
-
-        if exact == "1":
-            candidates = []
-            for series in all_series:
-                title = (series["title"] or "").lower().strip()
-                title_clean = re.sub(r"[^\w\s]", "", title)
-                title_clean = re.sub(r"\s+", " ", title_clean).strip()
-
-                score = 0
-                if q_lower == title:
-                    score = 100
-                elif q_clean == title_clean:
-                    score = 98
-                elif title.startswith(q_lower):
-                    score = 90
-                elif q_lower.startswith(title):
-                    score = 85
-                elif q_clean in title_clean:
-                    ratio = len(q_clean) / max(len(title_clean), 1)
-                    score = 70 * ratio
-
-                if score >= 85:
-                    candidates.append((score, series))
-
-            if candidates:
-                candidates.sort(key=lambda x: x[0], reverse=True)
-                all_series = [candidates[0][1]]
-            else:
-                all_series = []
-        else:
-            filtered = []
-            for series in all_series:
-                if (q_lower in (series["title"] or "").lower() or
-                    q_lower in (series.get("genero") or "").lower() or
-                    q_lower in (series.get("secuela") or "").lower() or
-                    q_lower in (series.get("precuela") or "").lower() or
-                    q_lower in (series.get("sinopsis") or "").lower() or
-                    q_lower in (series.get("estudio") or "").lower()):
-                    filtered.append(series)
-            all_series = filtered
+        filtered = []
+        for series in all_series:
+            if (q_lower in (series["title"] or "").lower() or
+                q_lower in (series.get("genero") or "").lower() or
+                q_lower in (series.get("sinopsis") or "").lower() or
+                q_lower in (series.get("estudio") or "").lower()):
+                filtered.append(series)
+        all_series = filtered
 
     if sort == "year":
         all_series.sort(key=lambda x: int(x["year"]) if x.get("year") and str(x["year"]).isdigit() else 0, reverse=True)

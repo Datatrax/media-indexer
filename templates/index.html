@@ -47,30 +47,87 @@
             </p>
         </div>
 
+        <!-- Categorías -->
         <div class="flex flex-wrap gap-2 mb-4">
-            <a href="/?category=all" class="px-4 py-2 rounded-full text-sm font-medium {{ 'bg-blue-600' if category=='all' else 'bg-gray-700 hover:bg-gray-600' }}">Todos</a>
-            <a href="/?category=movies" class="px-4 py-2 rounded-full text-sm font-medium {{ 'bg-blue-600' if category=='movies' else 'bg-gray-700 hover:bg-gray-600' }}">Películas ({{ counts.movies }})</a>
-            <a href="/?category=series" class="px-4 py-2 rounded-full text-sm font-medium {{ 'bg-blue-600' if category=='series' else 'bg-gray-700 hover:bg-gray-600' }}">Series ({{ counts.series }})</a>
-            <a href="/?category=music" class="px-4 py-2 rounded-full text-sm font-medium {{ 'bg-blue-600' if category=='music' else 'bg-gray-700 hover:bg-gray-600' }}">Música ({{ counts.music }})</a>
+            <a href="/?category=all&sort={{ sort }}" class="px-4 py-2 rounded-full text-sm font-medium {{ 'bg-blue-600' if category=='all' else 'bg-gray-700 hover:bg-gray-600' }}">Todos</a>
+            <a href="/?category=movies&sort={{ sort }}" class="px-4 py-2 rounded-full text-sm font-medium {{ 'bg-blue-600' if category=='movies' else 'bg-gray-700 hover:bg-gray-600' }}">Películas ({{ counts.movies }})</a>
+            <a href="/?category=series&sort={{ sort }}" class="px-4 py-2 rounded-full text-sm font-medium {{ 'bg-blue-600' if category=='series' else 'bg-gray-700 hover:bg-gray-600' }}">Series ({{ counts.series }})</a>
+            <a href="/?category=music&sort={{ sort }}" class="px-4 py-2 rounded-full text-sm font-medium {{ 'bg-blue-600' if category=='music' else 'bg-gray-700 hover:bg-gray-600' }}">Música ({{ counts.music }})</a>
         </div>
 
-        {% if all_genres %}
-        <div class="flex flex-wrap gap-2 mb-6">
-            <span class="text-sm text-gray-400 self-center mr-1">Géneros:</span>
-            {% for genre in all_genres %}
-            <a href="/?q={{ genre|urlencode }}" 
-               class="px-3 py-1 rounded-full text-xs font-medium bg-purple-900/60 hover:bg-purple-700 text-purple-200 transition">
-                {{ genre }}
+        <!-- Ordenar por -->
+        <div class="flex flex-wrap items-center gap-3 mb-6">
+            <span class="text-sm text-gray-400">Ordenar por:</span>
+            <a href="?category={{ category }}&q={{ q }}&year={{ year }}&genero={{ genero }}&estudio={{ estudio }}&sort=title" 
+               class="px-3 py-1.5 rounded-full text-sm {{ 'bg-blue-600' if sort=='title' else 'bg-gray-700 hover:bg-gray-600' }}">
+                Título (A-Z)
             </a>
-            {% endfor %}
+            <a href="?category={{ category }}&q={{ q }}&year={{ year }}&genero={{ genero }}&estudio={{ estudio }}&sort=year" 
+               class="px-3 py-1.5 rounded-full text-sm {{ 'bg-blue-600' if sort=='year' else 'bg-gray-700 hover:bg-gray-600' }}">
+                Año (reciente)
+            </a>
+            <a href="?category={{ category }}&q={{ q }}&year={{ year }}&genero={{ genero }}&estudio={{ estudio }}&sort=date" 
+               class="px-3 py-1.5 rounded-full text-sm {{ 'bg-blue-600' if sort=='date' else 'bg-gray-700 hover:bg-gray-600' }}">
+                Fecha añadido
+            </a>
         </div>
-        {% endif %}
 
-        <form method="get" class="mb-8">
-            <input type="hidden" name="category" value="{{ category }}">
-            <input type="text" name="q" value="{{ q }}" placeholder="Buscar título, género, precuela, secuela..."
-                   class="w-full px-5 py-3 rounded-xl bg-gray-800 border border-gray-700 focus:outline-none focus:border-blue-500 text-white">
-        </form>
+        <!-- Búsqueda avanzada -->
+        <details class="mb-6 bg-gray-800 rounded-xl p-4">
+            <summary class="cursor-pointer text-sm font-medium text-blue-400 hover:text-blue-300">
+                🔍 Búsqueda avanzada
+            </summary>
+            
+            <form method="get" class="mt-4 grid grid-cols-1 md:grid-cols-4 gap-4">
+                <input type="hidden" name="category" value="{{ category }}">
+                <input type="hidden" name="sort" value="{{ sort }}">
+                
+                <div>
+                    <label class="block text-xs text-gray-400 mb-1">Buscar texto</label>
+                    <input type="text" name="q" value="{{ q }}" placeholder="Título, sinopsis..."
+                           class="w-full px-3 py-2 rounded-lg bg-gray-700 border border-gray-600 text-sm focus:outline-none focus:border-blue-500">
+                </div>
+
+                <div>
+                    <label class="block text-xs text-gray-400 mb-1">Año</label>
+                    <select name="year" class="w-full px-3 py-2 rounded-lg bg-gray-700 border border-gray-600 text-sm focus:outline-none focus:border-blue-500">
+                        <option value="">Todos los años</option>
+                        {% for y in all_years %}
+                        <option value="{{ y }}" {{ 'selected' if year == y|string else '' }}>{{ y }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div>
+                    <label class="block text-xs text-gray-400 mb-1">Género</label>
+                    <select name="genero" class="w-full px-3 py-2 rounded-lg bg-gray-700 border border-gray-600 text-sm focus:outline-none focus:border-blue-500">
+                        <option value="">Todos los géneros</option>
+                        {% for g in all_genres %}
+                        <option value="{{ g }}" {{ 'selected' if genero == g else '' }}>{{ g }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div>
+                    <label class="block text-xs text-gray-400 mb-1">Estudio</label>
+                    <select name="estudio" class="w-full px-3 py-2 rounded-lg bg-gray-700 border border-gray-600 text-sm focus:outline-none focus:border-blue-500">
+                        <option value="">Todos los estudios</option>
+                        {% for s in all_studios %}
+                        <option value="{{ s }}" {{ 'selected' if estudio == s else '' }}>{{ s }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="md:col-span-4 flex gap-3">
+                    <button type="submit" class="px-5 py-2 bg-blue-600 hover:bg-blue-500 rounded-lg text-sm font-medium">
+                        Aplicar filtros
+                    </button>
+                    <a href="/?category={{ category }}&sort={{ sort }}" class="px-5 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm">
+                        Limpiar filtros
+                    </a>
+                </div>
+            </form>
+        </details>
 
         <div class="space-y-6">
             {% for series in items %}
@@ -105,7 +162,7 @@
                         {% if series.genero %}
                         <p class="text-sm mb-3">
                             {% for g in series.genero.split(',') %}
-                                <a href="/?q={{ g.strip()|urlencode }}" 
+                                <a href="/?q={{ g.strip()|urlencode }}&sort={{ sort }}" 
                                    class="text-purple-400 hover:text-purple-300 hover:underline mr-2">
                                     {{ g.strip() }}
                                 </a>
@@ -121,7 +178,7 @@
                                 {% if series.precuela %}
                                 <p>
                                     <span class="text-gray-400">Precuela:</span> 
-                                    <a href="/?q={{ series.precuela|urlencode }}&exact=1" class="text-blue-400 hover:underline">
+                                    <a href="/?q={{ series.precuela|urlencode }}&exact=1&sort={{ sort }}" class="text-blue-400 hover:underline">
                                         {{ series.precuela }}
                                     </a>
                                 </p>
@@ -129,7 +186,7 @@
                                 {% if series.secuela %}
                                 <p>
                                     <span class="text-gray-400">Secuela:</span> 
-                                    <a href="/?q={{ series.secuela|urlencode }}&exact=1" class="text-blue-400 hover:underline">
+                                    <a href="/?q={{ series.secuela|urlencode }}&exact=1&sort={{ sort }}" class="text-blue-400 hover:underline">
                                         {{ series.secuela }}
                                     </a>
                                 </p>
@@ -196,20 +253,18 @@
             </p>
             
             <div class="flex flex-wrap justify-center items-center gap-1">
-                <!-- Primera -->
                 {% if page > 1 %}
-                <a href="?category={{ category }}&q={{ q }}&page=1" 
+                <a href="?category={{ category }}&q={{ q }}&year={{ year }}&genero={{ genero }}&estudio={{ estudio }}&sort={{ sort }}&page=1" 
                    class="px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm">« Primera</a>
-                <a href="?category={{ category }}&q={{ q }}&page={{ page-1 }}" 
+                <a href="?category={{ category }}&q={{ q }}&year={{ year }}&genero={{ genero }}&estudio={{ estudio }}&sort={{ sort }}&page={{ page-1 }}" 
                    class="px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm">← Anterior</a>
                 {% endif %}
 
-                <!-- Números de página -->
                 {% set start_page = [1, page - 2]|max %}
                 {% set end_page = [total_pages, page + 2]|min %}
 
                 {% if start_page > 1 %}
-                    <a href="?category={{ category }}&q={{ q }}&page=1" 
+                    <a href="?category={{ category }}&q={{ q }}&year={{ year }}&genero={{ genero }}&estudio={{ estudio }}&sort={{ sort }}&page=1" 
                        class="px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm">1</a>
                     {% if start_page > 2 %}
                         <span class="px-2 text-gray-500">...</span>
@@ -220,7 +275,7 @@
                     {% if p == page %}
                         <span class="px-3 py-2 bg-blue-600 rounded-lg text-sm font-medium">{{ p }}</span>
                     {% else %}
-                        <a href="?category={{ category }}&q={{ q }}&page={{ p }}" 
+                        <a href="?category={{ category }}&q={{ q }}&year={{ year }}&genero={{ genero }}&estudio={{ estudio }}&sort={{ sort }}&page={{ p }}" 
                            class="px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm">{{ p }}</a>
                     {% endif %}
                 {% endfor %}
@@ -229,15 +284,14 @@
                     {% if end_page < total_pages - 1 %}
                         <span class="px-2 text-gray-500">...</span>
                     {% endif %}
-                    <a href="?category={{ category }}&q={{ q }}&page={{ total_pages }}" 
+                    <a href="?category={{ category }}&q={{ q }}&year={{ year }}&genero={{ genero }}&estudio={{ estudio }}&sort={{ sort }}&page={{ total_pages }}" 
                        class="px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm">{{ total_pages }}</a>
                 {% endif %}
 
-                <!-- Última -->
                 {% if page < total_pages %}
-                <a href="?category={{ category }}&q={{ q }}&page={{ page+1 }}" 
+                <a href="?category={{ category }}&q={{ q }}&year={{ year }}&genero={{ genero }}&estudio={{ estudio }}&sort={{ sort }}&page={{ page+1 }}" 
                    class="px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm">Siguiente →</a>
-                <a href="?category={{ category }}&q={{ q }}&page={{ total_pages }}" 
+                <a href="?category={{ category }}&q={{ q }}&year={{ year }}&genero={{ genero }}&estudio={{ estudio }}&sort={{ sort }}&page={{ total_pages }}" 
                    class="px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm">Última »</a>
                 {% endif %}
             </div>
@@ -264,7 +318,6 @@
             document.body.style.overflow = '';
         }
 
-        // Cerrar con tecla Escape
         document.addEventListener('keydown', function(e) {
             if (e.key === 'Escape') closeLightbox();
         });

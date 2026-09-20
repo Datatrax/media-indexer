@@ -395,14 +395,14 @@ def build_groups(all_items: List[Dict]) -> Dict[str, Dict]:
                 if not g.get(field) or len(str(item[field])) > len(str(g.get(field) or "")):
                     g[field] = item[field]
 
-        # Guardamos la categoría original para decidir después
+        # Guardamos la categoría original
         g["categories"].append(item.get("original_category", "other"))
 
-        # Solo archivos reales (no fotos sueltas)
+        # Solo archivos reales
         if not item.get("is_photo") and item.get("size_mb", 0) > 0:
             g["episodes"].append(item)
 
-    # Decidir categoría final del grupo + títulos bonitos
+    # Decidir categoría final + títulos bonitos
     for key, g in grouped.items():
         # Título bonito Sora
         if "forte" in key:
@@ -412,18 +412,29 @@ def build_groups(all_items: List[Dict]) -> Dict[str, Dict]:
         elif "final eternal" in key or "my master" in key:
             g["title"] = "Sora no Otoshimono Final: Eternal My Master, Heaven’s Lost Property: My Eternal Master"
 
-        # Categoría final por mayoría
-        if g["categories"]:
+        # ========== DECISIÓN INTELIGENTE DE CATEGORÍA ==========
+        num_episodes = len(g["episodes"])
+
+        # 1. Reglas especiales Sora (prioridad máxima)
+        if "tokeijikake" in key or "final eternal" in key or "my master" in key:
+            g["final_category"] = "movies"
+        elif "forte" in key:
+            g["final_category"] = "series"
+
+        # 2. Si tiene muchos episodios → serie
+        elif num_episodes >= 4:
+            g["final_category"] = "series"
+
+        # 3. Si tiene 1-2 archivos y son partes → película
+        elif num_episodes <= 2 and any(ep.get("is_part") for ep in g["episodes"]):
+            g["final_category"] = "movies"
+
+        # 4. Por mayoría
+        elif g["categories"]:
             most_common = Counter(g["categories"]).most_common(1)[0][0]
             g["final_category"] = most_common
         else:
             g["final_category"] = "other"
-
-        # Reglas especiales que mandan sobre la mayoría
-        if "tokeijikake" in key or "final eternal" in key or "my master" in key:
-            g["final_category"] = "movies"
-        if "forte" in key:
-            g["final_category"] = "series"
 
         # Ordenar episodios
         g["episodes"].sort(key=lambda x: (

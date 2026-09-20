@@ -53,7 +53,6 @@ def normalize_title(title: str) -> str:
 
     t = title.lower().strip()
 
-    # Casos especiales Sora no Otoshimono
     if "tokeijikake" in t or "angeloid of clockwork" in t:
         return "sora no otoshimono tokeijikake movie"
 
@@ -63,7 +62,6 @@ def normalize_title(title: str) -> str:
     if "forte" in t:
         return "sora no otoshimono forte"
 
-    # Lógica general
     t = re.sub(r"[\(\[\{].*?[\)\]\}]", "", t)
 
     if "," in t:
@@ -141,7 +139,6 @@ def extract_info(filename: str, caption: str = "") -> Dict[str, Any]:
 
     fname_lower = filename.lower()
 
-    # Títulos limpios
     if "forte" in fname_lower:
         parsed["nombre"] = "Sora no Otoshimono Forte, Heaven’s Lost Property 2"
     elif "tokeijikake" in fname_lower or "angeloid of clockwork" in fname_lower:
@@ -155,9 +152,8 @@ def extract_info(filename: str, caption: str = "") -> Dict[str, Any]:
     special_type = None
     fname = filename.lower()
 
-    # No detectar episodios en las películas
     if any(x in fname for x in ["tokeijikake", "angeloid of clockwork", "final eternal", "eternal my master"]):
-        pass
+        pass  # películas → sin episodio
     else:
         part_match = re.search(r"(?:part|parte|cd|disc|pt)\s*[-–.]?\s*(\d{1,2})", fname)
         if part_match:
@@ -210,10 +206,20 @@ def extract_info(filename: str, caption: str = "") -> Dict[str, Any]:
 def classify(filename: str, mime: str = "", caption: str = "", tipo: str = None) -> str:
     text = (filename + " " + (caption or "")).lower()
 
+    # ===== FORZAR FORTE A SERIES =====
     if "forte" in text and ("sora" in text or "otoshimono" in text):
         return "series"
 
-    if any(x in text for x in ["tokeijikake", "angeloid of clockwork", "final eternal", "eternal my master", "my master"]):
+    # ===== FORZAR TOKEIJIKAKE Y FINAL A MOVIES (MUY AGRESIVO) =====
+    if any(x in text for x in [
+        "tokeijikake",
+        "angeloid of clockwork",
+        "the angeloid of clockwork",
+        "clockwork",
+        "final eternal",
+        "eternal my master",
+        "my master"
+    ]):
         return "movies"
 
     if tipo:
@@ -439,7 +445,6 @@ async def home(
         if item.get("title") and len(item["title"]) > len(g["title"] or ""):
             g["title"] = item["title"]
 
-        # Mantener el mejor thumbnail disponible
         if item.get("thumbnail"):
             g["thumbnail"] = item["thumbnail"]
 
@@ -455,7 +460,7 @@ async def home(
         if not item.get("is_photo") and item.get("size_mb", 0) > 0:
             g["episodes"].append(item)
 
-    # Forzar títulos bonitos
+    # Títulos finales
     for key, g in grouped.items():
         if "forte" in key:
             g["title"] = "Sora no Otoshimono Forte, Heaven’s Lost Property 2"

@@ -1,571 +1,329 @@
-import os
-import re
-import secrets
-import base64
-from io import BytesIO
-from typing import Dict, Any, Set
-
-from telethon import TelegramClient, events
-from telethon.sessions import StringSession
-from telethon.tl.types import MessageMediaDocument, MessageMediaPhoto
-
-from fastapi import FastAPI, Request, Depends, HTTPException, status
-from fastapi.responses import HTMLResponse
-from fastapi.templating import Jinja2Templates
-from fastapi.security import HTTPBasic, HTTPBasicCredentials
-import uvicorn
-from dotenv import load_dotenv
-
-load_dotenv()
-
-API_ID = int(os.getenv("API_ID"))
-API_HASH = os.getenv("API_HASH")
-BOT_TOKEN = os.getenv("BOT_TOKEN")
-CHANNEL_ID = int(os.getenv("CHANNEL_ID"))
-SESSION_STRING = os.getenv("SESSION_STRING")
-ADMIN_USER = os.getenv("ADMIN_USER", "admin")
-ADMIN_PASS = os.getenv("ADMIN_PASS", "cambia_esta_password")
-ITEMS_PER_PAGE = 12
-
-app = FastAPI(title="Biblioteca de Prozac")
-templates = Jinja2Templates(directory="templates")
-security = HTTPBasic()
-
-catalog = {"movies": [], "series": [], "music": [], "other": []}
-client = TelegramClient(StringSession(SESSION_STRING), API_ID, API_HASH)
-
-
-def verify_credentials(credentials: HTTPBasicCredentials = Depends(security)):
-    correct_user = secrets.compare_digest(credentials.username, ADMIN_USER)
-    correct_pass = secrets.compare_digest(credentials.password, ADMIN_PASS)
-    if not (correct_user and correct_pass):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Credenciales incorrectas",
-            headers={"WWW-Authenticate": "Basic"},
-        )
-    return credentials.username
-
-
-def normalize_title(title: str) -> str:
-    if not title:
-        return "sin título"
-
-    t = title.lower().strip()
-
-    # Casos especiales para no mezclar la película con la serie
-    if "tokeijikake" in t or "angeloid of clockwork" in t:
-        return "sora no otoshimono tokeijikake movie"
-
-    if "final" in t and ("eternal" in t or "my master" in t):
-        return "sora no otoshimono final"
-
-    if "forte" in t:
-        return "sora no otoshimono forte"
-
-    # --- Lógica general ---
-    t = re.sub(r"[\(\[\{].*?[\)\]\}]", "", t)
-
-    if "," in t:
-        t = t.split(",")[0]
-
-    if ":" in t:
-        parts = t.split(":", 1)
-        if len(parts[1].strip()) > 10:
-            t = parts[0]
-
-    t = re.sub(r"[^\w\s]", " ", t)
-    t = re.sub(r"\s+", " ", t).strip()
-
-    t = re.sub(r"\s+(part|parte|cd|disc|pt|ova|special|sp|especial)\s*\d*.*$", "", t)
-    t = re.sub(r"\s+(the movie|movie|edit|final|complete|uncensored|bluray|bd).*$", "", t)
-
-    return t.strip()
-
-
-def parse_caption(caption: str) -> Dict[str, Any]:
-    data = {
-        "nombre": None, "secuela": None, "precuela": None, "tipo": None, "episodios": None,
-        "estudio": None, "año": None, "genero": None, "resolucion": None,
-        "calidad": None, "duracion": None, "audios": None, "subtitulos": None,
-        "fansub": None, "formato": None, "peso": None, "sinopsis": None
-    }
-    if not caption:
-        return data
-
-    clean_caption = re.sub(r"[*_`~]", "", caption)
-
-    sinopsis_match = re.search(r"Sinopsis:\s*(.+)", clean_caption, re.IGNORECASE | re.DOTALL)
-    if sinopsis_match:
-        data["sinopsis"] = sinopsis_match.group(1).strip()
-
-    for line in clean_caption.split("\n"):
-        line = line.strip()
-        if ":" in line:
-            key, value = line.split(":", 1)
-            key = key.strip().lower()
-            value = value.strip()
-
-            mapping = {
-                "nombre": "nombre", "title": "nombre",
-                "secuela": "secuela", "sequel": "secuela",
-                "precuela": "precuela", "prequel": "precuela",
-                "tipo": "tipo", "type": "tipo",
-                "episodios": "episodios", "episodes": "episodios", "eps": "episodios",
-                "estudio": "estudio", "studio": "estudio",
-                "año": "año", "year": "año", "ano": "año",
-                "género": "genero", "genero": "genero", "genre": "genero",
-                "resolución": "resolucion", "resolucion": "resolucion", "resolution": "resolucion",
-                "calidad": "calidad", "quality": "calidad",
-                "duración": "duracion", "duracion": "duracion", "duration": "duracion",
-                "audios": "audios", "audio": "audios",
-                "subtítulos": "subtitulos", "subtitulos": "subtitulos", "subtitles": "subtitulos", "subs": "subtitulos",
-                "fansub": "fansub", "sub": "fansub",
-                "formato": "formato", "format": "formato",
-                "peso": "peso", "size": "peso"
-            }
-            if key in mapping:
-                data[mapping[key]] = value
-    return data
-
-
-def extract_info(filename: str, caption: str = "") -> Dict[str, Any]:
-    parsed = parse_caption(caption)
-
-    if not parsed["nombre"]:
-        clean = re.sub(r"\.(mkv|mp4|avi|mov|rar|zip)$", "", filename, flags=re.I)
-        clean = re.sub(r"[\._]", " ", clean)
-        clean = re.sub(r"\[.*?\]", "", clean)
-        clean = re.sub(r"\s*[-–]\s*(ova|special|sp|especial|part|parte|cd|disc)?\s*\d{0,3}.*$", "", clean, flags=re.I)
-        parsed["nombre"] = re.sub(r"\s+", " ", clean).strip()
-
-    episode = None
-    is_ova = False
-    is_part = False
-    special_type = None
-    fname = filename.lower()
-
-    # PARTES
-    part_match = re.search(r"(?:part|parte|cd|disc|pt)\s*[-–.]?\s*(\d{1,2})", fname)
-    if part_match:
-        is_part = True
-        special_type = "Part"
-        episode = int(part_match.group(1))
-    elif re.search(r"\.(part\d+|r\d{2})\.", fname):
-        is_part = True
-        special_type = "Part"
-        num = re.search(r"(?:part|r)(\d+)", fname)
-        if num:
-            episode = int(num.group(1))
-
-    # OVA
-    elif "ova" in fname:
-        is_ova = True
-        special_type = "OVA"
-        match = re.search(r"ova\s*[-–]?\s*(\d{1,3})", fname)
-        if match:
-            episode = int(match.group(1))
-        else:
-            numbers = re.findall(r"\d{1,3}", fname)
-            if numbers:
-                episode = int(numbers[0])
-    elif "special" in fname or "especial" in fname or re.search(r"\bsp\b", fname):
-        is_ova = True
-        special_type = "Special"
-        match = re.search(r"(?:special|especial|sp)\s*[-–]?\s*(\d{1,3})", fname)
-        if match:
-            episode = int(match.group(1))
-    else:
-        match = re.search(r"[-–]\s*(\d{1,3})\b", fname)
-        if match:
-            episode = int(match.group(1))
-
-    return {
-        "title": parsed["nombre"],
-        "secuela": parsed["secuela"],
-        "precuela": parsed["precuela"],
-        "tipo": parsed["tipo"],
-        "episodios": parsed["episodios"],
-        "estudio": parsed["estudio"],
-        "year": parsed["año"],
-        "genero": parsed["genero"],
-        "resolucion": parsed["resolucion"],
-        "quality": parsed["calidad"],
-        "duracion": parsed["duracion"],
-        "audios": parsed["audios"],
-        "subtitulos": parsed["subtitulos"],
-        "fansub": parsed["fansub"],
-        "formato": parsed["formato"],
-        "peso": parsed["peso"],
-        "sinopsis": parsed["sinopsis"],
-        "season": 1,
-        "episode": episode,
-        "is_ova": is_ova,
-        "is_part": is_part,
-        "special_type": special_type
-    }
-
-
-def classify(filename: str, mime: str = "", caption: str = "", tipo: str = None) -> str:
-    if tipo:
-        t = tipo.lower()
-        if any(x in t for x in ["serie", "ova", "anime"]):
-            return "series"
-        if any(x in t for x in ["película", "pelicula", "movie"]):
-            return "movies"
-        if any(x in t for x in ["música", "musica", "music"]):
-            return "music"
-
-    text = (filename + " " + caption).lower()
-    if any(x in text for x in [".mp3", ".flac", ".m4a", "music", "ost"]) or "audio/" in mime:
-        return "music"
-    if re.search(r"(s\d{1,2}e\d{1,2}|season|temporada|[-–]\s*\d{1,3})", text) and "part" not in text:
-        return "series"
-    if any(x in text for x in [".mkv", ".mp4", "1080p", "720p", "bluray", "bd", "movie", "pelicula"]):
-        return "movies"
-    return "other"
-
-
-async def process_message(msg):
-    if not msg.media:
-        return None
-
-    filename = "Sin nombre"
-    mime = ""
-    size = 0
-    caption = msg.message or ""
-
-    if isinstance(msg.media, MessageMediaDocument):
-        doc = msg.media.document
-        for attr in doc.attributes:
-            if hasattr(attr, "file_name") and attr.file_name:
-                filename = attr.file_name
-                break
-        mime = doc.mime_type or ""
-        size = doc.size or 0
-    elif isinstance(msg.media, MessageMediaPhoto):
-        filename = f"photo_{msg.id}.jpg"
-        mime = "image/jpeg"
-
-    info = extract_info(filename, caption)
-    tipo_detectado = classify(filename, mime, caption, info.get("tipo"))
-
-    thumbnail_b64 = None
-    try:
-        if msg.photo:
-            thumb_bytes = await client.download_media(msg.photo, file=BytesIO())
-            thumbnail_b64 = base64.b64encode(thumb_bytes.getvalue()).decode()
-        elif isinstance(msg.media, MessageMediaDocument) and msg.media.document.thumbs:
-            thumb_bytes = await client.download_media(msg.media, thumb=-1, file=BytesIO())
-            thumbnail_b64 = base64.b64encode(thumb_bytes.getvalue()).decode()
-    except Exception:
-        pass
-
-    item = {
-        "id": msg.id,
-        "filename": filename,
-        "title": info["title"],
-        "secuela": info["secuela"],
-        "precuela": info["precuela"],
-        "tipo": info["tipo"],
-        "episodios": info["episodios"],
-        "estudio": info["estudio"],
-        "year": info["year"],
-        "genero": info["genero"],
-        "resolucion": info["resolucion"],
-        "quality": info["quality"],
-        "duracion": info["duracion"],
-        "audios": info["audios"],
-        "subtitulos": info["subtitulos"],
-        "fansub": info["fansub"],
-        "formato": info["formato"],
-        "peso": info["peso"],
-        "sinopsis": info["sinopsis"],
-        "season": info["season"],
-        "episode": info["episode"],
-        "is_ova": info["is_ova"],
-        "is_part": info["is_part"],
-        "special_type": info["special_type"],
-        "size_mb": round(size / (1024 * 1024), 2) if size else 0,
-        "mime": mime,
-        "caption": caption[:1000],
-        "date": msg.date.strftime("%Y-%m-%d") if msg.date else "",
-        "link": f"https://t.me/c/{str(CHANNEL_ID)[4:]}/{msg.id}",
-        "thumbnail": f"data:image/jpeg;base64,{thumbnail_b64}" if thumbnail_b64 else None,
-        "is_photo": isinstance(msg.media, MessageMediaPhoto)
-    }
-
-    catalog[tipo_detectado].append(item)
-    return item
-
-
-async def reindex():
-    global catalog
-    catalog = {"movies": [], "series": [], "music": [], "other": []}
-    print("Iniciando re-indexación completa...")
-
-    try:
-        entity = await client.get_entity(CHANNEL_ID)
-        print(f"Canal encontrado: {entity.title}")
-
-        count = 0
-        async for msg in client.iter_messages(entity, limit=None):
-            await process_message(msg)
-            count += 1
-
-        for key in catalog:
-            catalog[key].sort(key=lambda x: x["date"], reverse=True)
-
-        print(f"✅ Re-indexación completa: {count} archivos")
-
-    except Exception as e:
-        print(f"❌ Error: {e}")
-        raise
-
-
-def get_grouped_counts():
-    counts = {"movies": 0, "series": 0, "music": 0, "other": 0}
-    for cat_name, items in catalog.items():
-        titles = set(normalize_title(item["title"]) for item in items)
-        counts[cat_name] = len(titles)
-    return counts
-
-
-def get_all_genres() -> list:
-    genres: Set[str] = set()
-    for items in catalog.values():
-        for item in items:
-            if item.get("genero"):
-                for g in item["genero"].split(","):
-                    g = g.strip()
-                    if g:
-                        genres.add(g)
-    return sorted(list(genres))
-
-
-def get_all_years() -> list:
-    years = set()
-    for items in catalog.values():
-        for item in items:
-            if item.get("year"):
-                try:
-                    years.add(int(item["year"]))
-                except:
-                    pass
-    return sorted(list(years), reverse=True)
-
-
-def get_all_studios() -> list:
-    studios = set()
-    for items in catalog.values():
-        for item in items:
-            if item.get("estudio"):
-                for s in item["estudio"].split(","):
-                    s = s.strip()
-                    if s:
-                        studios.add(s)
-    return sorted(list(studios))
-
-
-@app.on_event("startup")
-async def startup_event():
-    await client.start(bot_token=BOT_TOKEN)
-    await reindex()
-
-    @client.on(events.NewMessage(chats=CHANNEL_ID))
-    async def handler(event):
-        await process_message(event.message)
-
-
-@app.get("/", response_class=HTMLResponse)
-async def home(
-    request: Request,
-    category: str = "all",
-    q: str = "",
-    exact: str = "",
-    page: int = 1,
-    sort: str = "title",
-    year: str = "",
-    genero: str = "",
-    estudio: str = "",
-    username: str = Depends(verify_credentials)
-):
-    if category == "all":
-        raw_items = []
-        for cat in catalog.values():
-            raw_items.extend(cat)
-    else:
-        raw_items = catalog.get(category, [])
-
-    grouped = {}
-    for item in raw_items:
-        key = normalize_title(item["title"])
-        if key not in grouped:
-            grouped[key] = {
-                "title": item["title"],
-                "year": item.get("year"),
-                "genero": item.get("genero"),
-                "sinopsis": item.get("sinopsis"),
-                "thumbnail": item.get("thumbnail"),
-                "quality": item.get("quality"),
-                "estudio": item.get("estudio"),
-                "episodios": item.get("episodios"),
-                "secuela": item.get("secuela"),
-                "precuela": item.get("precuela"),
-                "resolucion": item.get("resolucion"),
-                "duracion": item.get("duracion"),
-                "audios": item.get("audios"),
-                "subtitulos": item.get("subtitulos"),
-                "fansub": item.get("fansub"),
-                "formato": item.get("formato"),
-                "peso": item.get("peso"),
-                "episodes": [],
-                "latest_date": item.get("date", "")
-            }
-
-        g = grouped[key]
-
-        if item.get("title") and len(item["title"]) > len(g["title"] or ""):
-            g["title"] = item["title"]
-
-        if item.get("thumbnail") and not g["thumbnail"]:
-            g["thumbnail"] = item["thumbnail"]
-
-        if item.get("date") and item["date"] > (g.get("latest_date") or ""):
-            g["latest_date"] = item["date"]
-
-        for field in ["year", "genero", "sinopsis", "quality", "estudio", "episodios",
-                      "secuela", "precuela", "resolucion", "duracion", "audios", "subtitulos", "fansub", "formato", "peso"]:
-            if item.get(field):
-                if not g.get(field) or len(str(item[field])) > len(str(g.get(field) or "")):
-                    g[field] = item[field]
-
-        if not item.get("is_photo") and item.get("size_mb", 0) > 0:
-            g["episodes"].append(item)
-
-    for g in grouped.values():
-        g["episodes"].sort(key=lambda x: (
-            0 if x.get("is_ova") or x.get("is_part") else 1,
-            x.get("episode") or 999
-        ))
-
-    all_series = list(grouped.values())
-
-    # ========== FILTROS AVANZADOS ==========
-    if year:
-        all_series = [s for s in all_series if s.get("year") and str(s["year"]) == str(year)]
-
-    if genero:
-        genero_lower = genero.lower().strip()
-        all_series = [
-            s for s in all_series 
-            if s.get("genero") and genero_lower in s["genero"].lower()
-        ]
-
-    if estudio:
-        estudio_lower = estudio.lower().strip()
-        all_series = [
-            s for s in all_series 
-            if s.get("estudio") and estudio_lower in s["estudio"].lower()
-        ]
-
-    # ========== BÚSQUEDA DE TEXTO ==========
-    if q:
-        q_lower = q.lower().strip()
-        q_clean = re.sub(r"[^\w\s]", "", q_lower)
-        q_clean = re.sub(r"\s+", " ", q_clean).strip()
-
-        if exact == "1":
-            candidates = []
-            for series in all_series:
-                title = (series["title"] or "").lower().strip()
-                title_clean = re.sub(r"[^\w\s]", "", title)
-                title_clean = re.sub(r"\s+", " ", title_clean).strip()
-
-                score = 0
-                if q_lower == title:
-                    score = 100
-                elif q_clean == title_clean:
-                    score = 98
-                elif title.startswith(q_lower):
-                    score = 90
-                elif q_lower.startswith(title):
-                    score = 85
-                elif q_clean in title_clean:
-                    ratio = len(q_clean) / max(len(title_clean), 1)
-                    score = 70 * ratio
-
-                if score >= 85:
-                    candidates.append((score, series))
-
-            if candidates:
-                candidates.sort(key=lambda x: x[0], reverse=True)
-                all_series = [candidates[0][1]]
-            else:
-                all_series = []
-        else:
-            filtered = []
-            for series in all_series:
-                if (q_lower in (series["title"] or "").lower() or
-                    q_lower in (series.get("genero") or "").lower() or
-                    q_lower in (series.get("secuela") or "").lower() or
-                    q_lower in (series.get("precuela") or "").lower() or
-                    q_lower in (series.get("sinopsis") or "").lower() or
-                    q_lower in (series.get("estudio") or "").lower()):
-                    filtered.append(series)
-            all_series = filtered
-
-    # ========== ORDENAMIENTO ==========
-    if sort == "year":
-        # Solo por año (más reciente primero)
-        all_series.sort(key=lambda x: int(x["year"]) if x.get("year") and str(x["year"]).isdigit() else 0, reverse=True)
-    elif sort == "date":
-        # Por fecha de añadido (más reciente primero)
-        all_series.sort(key=lambda x: x.get("latest_date") or "", reverse=True)
-    else:
-        # PREDETERMINADO: Título (A-Z) + Año (antiguo → reciente) como segundo criterio
-        all_series.sort(key=lambda x: (
-            (x.get("title") or "").lower(),
-            int(x["year"]) if x.get("year") and str(x["year"]).isdigit() else 0
-        ))
-
-    total_series = len(all_series)
-    counts = get_grouped_counts()
-
-    start = (page - 1) * ITEMS_PER_PAGE
-    end = start + ITEMS_PER_PAGE
-    items = all_series[start:end]
-    total_pages = max(1, (total_series + ITEMS_PER_PAGE - 1) // ITEMS_PER_PAGE)
-
-    return templates.TemplateResponse(
-        request,
-        "index.html",
-        {
-            "request": request,
-            "items": items,
-            "total": sum(len(v) for v in catalog.values()),
-            "total_series": total_series,
-            "counts": counts,
-            "category": category,
-            "q": q,
-            "page": page,
-            "total_pages": total_pages,
-            "all_genres": get_all_genres(),
-            "all_years": get_all_years(),
-            "all_studios": get_all_studios(),
-            "sort": sort,
-            "year": year,
-            "genero": genero,
-            "estudio": estudio,
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Biblioteca de Prozac</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        details > summary {
+            list-style: none;
         }
-    )
+        details > summary::-webkit-details-marker {
+            display: none;
+        }
+        
+        /* Lightbox */
+        .lightbox {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.92);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+            cursor: zoom-out;
+        }
+        .lightbox.active {
+            display: flex;
+        }
+        .lightbox img {
+            max-width: 95vw;
+            max-height: 95vh;
+            object-fit: contain;
+            border-radius: 8px;
+            box-shadow: 0 0 40px rgba(0,0,0,0.6);
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-white min-h-screen">
+    <div class="container mx-auto px-4 py-6 max-w-6xl">
 
+        <!-- ENCABEZADO -->
+        <div class="mb-6">
+            <h1 class="text-3xl md:text-4xl font-bold tracking-tight">Biblioteca de Prozac</h1>
+            <p class="text-gray-400 mt-2 text-sm md:text-base">
+                Total archivos: <span class="font-semibold text-white">{{ total }}</span> · 
+                Series: <span class="font-semibold text-white">{{ counts.series }}</span> · 
+                Películas: <span class="font-semibold text-white">{{ counts.movies }}</span> · 
+                Música: <span class="font-semibold text-white">{{ counts.music }}</span>
+            </p>
+        </div>
 
-@app.get("/health")
-async def health():
-    return {"status": "ok", "total_files": sum(len(v) for v in catalog.values())}
+        <!-- Categorías -->
+        <div class="flex flex-wrap gap-2 mb-4">
+            <a href="/?category=all&sort={{ sort }}" class="px-4 py-2 rounded-full text-sm font-medium {{ 'bg-blue-600' if category=='all' else 'bg-gray-700 hover:bg-gray-600' }}">Todos</a>
+            <a href="/?category=movies&sort={{ sort }}" class="px-4 py-2 rounded-full text-sm font-medium {{ 'bg-blue-600' if category=='movies' else 'bg-gray-700 hover:bg-gray-600' }}">Películas ({{ counts.movies }})</a>
+            <a href="/?category=series&sort={{ sort }}" class="px-4 py-2 rounded-full text-sm font-medium {{ 'bg-blue-600' if category=='series' else 'bg-gray-700 hover:bg-gray-600' }}">Series ({{ counts.series }})</a>
+            <a href="/?category=music&sort={{ sort }}" class="px-4 py-2 rounded-full text-sm font-medium {{ 'bg-blue-600' if category=='music' else 'bg-gray-700 hover:bg-gray-600' }}">Música ({{ counts.music }})</a>
+        </div>
 
+        <!-- Ordenar por -->
+        <div class="flex flex-wrap items-center gap-3 mb-6">
+            <span class="text-sm text-gray-400">Ordenar por:</span>
+            <a href="?category={{ category }}&q={{ q }}&year={{ year }}&genero={{ genero }}&estudio={{ estudio }}&sort=title" 
+               class="px-3 py-1.5 rounded-full text-sm {{ 'bg-blue-600' if sort=='title' else 'bg-gray-700 hover:bg-gray-600' }}">
+                Título (A-Z)
+            </a>
+            <a href="?category={{ category }}&q={{ q }}&year={{ year }}&genero={{ genero }}&estudio={{ estudio }}&sort=year" 
+               class="px-3 py-1.5 rounded-full text-sm {{ 'bg-blue-600' if sort=='year' else 'bg-gray-700 hover:bg-gray-600' }}">
+                Año (reciente)
+            </a>
+            <a href="?category={{ category }}&q={{ q }}&year={{ year }}&genero={{ genero }}&estudio={{ estudio }}&sort=date" 
+               class="px-3 py-1.5 rounded-full text-sm {{ 'bg-blue-600' if sort=='date' else 'bg-gray-700 hover:bg-gray-600' }}">
+                Fecha añadido
+            </a>
+        </div>
 
-if __name__ == "__main__":
-    port = int(os.getenv("PORT", 8000))
-    uvicorn.run(app, host="0.0.0.0", port=port)
+        <!-- Búsqueda avanzada -->
+        <details class="mb-6 bg-gray-800 rounded-xl p-4">
+            <summary class="cursor-pointer text-sm font-medium text-blue-400 hover:text-blue-300">
+                🔍 Búsqueda avanzada
+            </summary>
+            
+            <form method="get" class="mt-4 grid grid-cols-1 md:grid-cols-4 gap-4">
+                <input type="hidden" name="category" value="{{ category }}">
+                <input type="hidden" name="sort" value="{{ sort }}">
+                
+                <div>
+                    <label class="block text-xs text-gray-400 mb-1">Buscar texto</label>
+                    <input type="text" name="q" value="{{ q }}" placeholder="Título, sinopsis..."
+                           class="w-full px-3 py-2 rounded-lg bg-gray-700 border border-gray-600 text-sm focus:outline-none focus:border-blue-500">
+                </div>
+
+                <div>
+                    <label class="block text-xs text-gray-400 mb-1">Año</label>
+                    <select name="year" class="w-full px-3 py-2 rounded-lg bg-gray-700 border border-gray-600 text-sm focus:outline-none focus:border-blue-500">
+                        <option value="">Todos los años</option>
+                        {% for y in all_years %}
+                        <option value="{{ y }}" {{ 'selected' if year == y|string else '' }}>{{ y }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div>
+                    <label class="block text-xs text-gray-400 mb-1">Género</label>
+                    <select name="genero" class="w-full px-3 py-2 rounded-lg bg-gray-700 border border-gray-600 text-sm focus:outline-none focus:border-blue-500">
+                        <option value="">Todos los géneros</option>
+                        {% for g in all_genres %}
+                        <option value="{{ g }}" {{ 'selected' if genero == g else '' }}>{{ g }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div>
+                    <label class="block text-xs text-gray-400 mb-1">Estudio</label>
+                    <select name="estudio" class="w-full px-3 py-2 rounded-lg bg-gray-700 border border-gray-600 text-sm focus:outline-none focus:border-blue-500">
+                        <option value="">Todos los estudios</option>
+                        {% for s in all_studios %}
+                        <option value="{{ s }}" {{ 'selected' if estudio == s else '' }}>{{ s }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="md:col-span-4 flex gap-3">
+                    <button type="submit" class="px-5 py-2 bg-blue-600 hover:bg-blue-500 rounded-lg text-sm font-medium">
+                        Aplicar filtros
+                    </button>
+                    <a href="/?category={{ category }}&sort={{ sort }}" class="px-5 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm">
+                        Limpiar filtros
+                    </a>
+                </div>
+            </form>
+        </details>
+
+        <div class="space-y-6">
+            {% for series in items %}
+            <div class="bg-gray-800 rounded-2xl overflow-hidden shadow-lg">
+                <div class="flex flex-col md:flex-row">
+                    
+                    <!-- IMAGEN CLICKEABLE -->
+                    <div class="md:w-52 lg:w-60 flex-shrink-0 bg-gray-700 cursor-zoom-in" 
+                         {% if series.thumbnail %}onclick="openLightbox('{{ series.thumbnail }}')"{% endif %}>
+                        {% if series.thumbnail %}
+                        <img src="{{ series.thumbnail }}" alt="{{ series.title }}" 
+                             class="w-full h-72 md:h-full object-cover object-top hover:opacity-90 transition">
+                        {% else %}
+                        <div class="w-full h-72 md:h-full flex items-center justify-center text-gray-500">
+                            Sin imagen
+                        </div>
+                        {% endif %}
+                    </div>
+
+                    <div class="flex-1 p-5">
+                        <h2 class="text-xl font-bold mb-1 leading-snug break-words">
+                            {{ series.title }}
+                        </h2>
+
+                        <div class="text-sm text-gray-400 mb-2 flex flex-wrap gap-x-3 gap-y-1">
+                            {% if series.year %}<span>{{ series.year }}</span>{% endif %}
+                            {% if series.quality %}<span class="text-blue-400">{{ series.quality }}</span>{% endif %}
+                            {% if series.estudio %}<span>{{ series.estudio }}</span>{% endif %}
+                            {% if series.episodios %}<span>{{ series.episodios }}</span>{% endif %}
+                        </div>
+
+                        {% if series.genero %}
+                        <p class="text-sm mb-3">
+                            {% for g in series.genero.split(',') %}
+                                <a href="/?q={{ g.strip()|urlencode }}&sort={{ sort }}" 
+                                   class="text-purple-400 hover:text-purple-300 hover:underline mr-2">
+                                    {{ g.strip() }}
+                                </a>
+                            {% endfor %}
+                        </p>
+                        {% endif %}
+
+                        <details class="mb-4">
+                            <summary class="cursor-pointer text-sm text-blue-400 hover:text-blue-300">
+                                ▼ Ver ficha completa
+                            </summary>
+                            <div class="mt-3 text-sm text-gray-300 space-y-1.5 bg-gray-900/60 p-4 rounded-xl">
+                                {% if series.precuela %}
+                                <p>
+                                    <span class="text-gray-400">Precuela:</span> 
+                                    <a href="/?q={{ series.precuela|urlencode }}&exact=1&sort={{ sort }}" class="text-blue-400 hover:underline">
+                                        {{ series.precuela }}
+                                    </a>
+                                </p>
+                                {% endif %}
+                                {% if series.secuela %}
+                                <p>
+                                    <span class="text-gray-400">Secuela:</span> 
+                                    <a href="/?q={{ series.secuela|urlencode }}&exact=1&sort={{ sort }}" class="text-blue-400 hover:underline">
+                                        {{ series.secuela }}
+                                    </a>
+                                </p>
+                                {% endif %}
+                                {% if series.resolucion %}<p><span class="text-gray-400">Resolución:</span> {{ series.resolucion }}</p>{% endif %}
+                                {% if series.duracion %}<p><span class="text-gray-400">Duración:</span> {{ series.duracion }}</p>{% endif %}
+                                {% if series.audios %}<p><span class="text-gray-400">Audios:</span> {{ series.audios }}</p>{% endif %}
+                                {% if series.subtitulos %}<p><span class="text-gray-400">Subtítulos:</span> {{ series.subtitulos }}</p>{% endif %}
+                                {% if series.fansub %}<p><span class="text-gray-400">Fansub:</span> {{ series.fansub }}</p>{% endif %}
+                                {% if series.formato %}<p><span class="text-gray-400">Formato:</span> {{ series.formato }}</p>{% endif %}
+                                {% if series.peso %}<p><span class="text-gray-400">Peso:</span> {{ series.peso }}</p>{% endif %}
+                                {% if series.sinopsis %}
+                                <div class="mt-3 pt-3 border-t border-gray-700">
+                                    <p class="text-gray-400 mb-1">Sinopsis:</p>
+                                    <p>{{ series.sinopsis }}</p>
+                                </div>
+                                {% endif %}
+                            </div>
+                        </details>
+
+                        <div class="border-t border-gray-700 pt-4">
+                            <h3 class="text-sm font-semibold text-gray-300 mb-2">
+                                {% if series.episodes and series.episodes[0].is_part %}
+                                    Partes ({{ series.episodes|length }})
+                                {% else %}
+                                    Episodios ({{ series.episodes|length }})
+                                {% endif %}
+                            </h3>
+                            <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+                                {% for ep in series.episodes %}
+                                <a href="{{ ep.link }}" target="_blank"
+                                   class="flex items-center justify-between px-3 py-2 bg-gray-700 hover:bg-blue-600 rounded-lg text-sm transition">
+                                    <span>
+                                        {% if ep.is_part %}
+                                            <span class="text-green-400 font-medium">Part {{ ep.episode or "?" }}</span>
+                                        {% elif ep.is_ova %}
+                                            <span class="text-yellow-400 font-medium">{{ ep.special_type or "OVA" }}{% if ep.episode %} {{ ep.episode }}{% endif %}</span>
+                                        {% elif ep.episode %}
+                                            Ep {{ ep.episode }}
+                                        {% else %}
+                                            Archivo
+                                        {% endif %}
+                                    </span>
+                                    <span class="text-xs opacity-70">{{ ep.size_mb }} MB</span>
+                                </a>
+                                {% endfor %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% else %}
+            <div class="text-center py-16 text-gray-500">
+                <p class="text-lg">No se encontraron resultados</p>
+            </div>
+            {% endfor %}
+        </div>
+
+        <!-- PAGINACIÓN MEJORADA -->
+        {% if total_pages > 1 %}
+        <div class="flex flex-col items-center gap-4 mt-12">
+            <p class="text-sm text-gray-400">
+                Página {{ page }} de {{ total_pages }}
+            </p>
+            
+            <div class="flex flex-wrap justify-center items-center gap-1">
+                {% if page > 1 %}
+                <a href="?category={{ category }}&q={{ q }}&year={{ year }}&genero={{ genero }}&estudio={{ estudio }}&sort={{ sort }}&page=1" 
+                   class="px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm">« Primera</a>
+                <a href="?category={{ category }}&q={{ q }}&year={{ year }}&genero={{ genero }}&estudio={{ estudio }}&sort={{ sort }}&page={{ page-1 }}" 
+                   class="px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm">← Anterior</a>
+                {% endif %}
+
+                {% set start_page = [1, page - 2]|max %}
+                {% set end_page = [total_pages, page + 2]|min %}
+
+                {% if start_page > 1 %}
+                    <a href="?category={{ category }}&q={{ q }}&year={{ year }}&genero={{ genero }}&estudio={{ estudio }}&sort={{ sort }}&page=1" 
+                       class="px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm">1</a>
+                    {% if start_page > 2 %}
+                        <span class="px-2 text-gray-500">...</span>
+                    {% endif %}
+                {% endif %}
+
+                {% for p in range(start_page, end_page + 1) %}
+                    {% if p == page %}
+                        <span class="px-3 py-2 bg-blue-600 rounded-lg text-sm font-medium">{{ p }}</span>
+                    {% else %}
+                        <a href="?category={{ category }}&q={{ q }}&year={{ year }}&genero={{ genero }}&estudio={{ estudio }}&sort={{ sort }}&page={{ p }}" 
+                           class="px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm">{{ p }}</a>
+                    {% endif %}
+                {% endfor %}
+
+                {% if end_page < total_pages %}
+                    {% if end_page < total_pages - 1 %}
+                        <span class="px-2 text-gray-500">...</span>
+                    {% endif %}
+                    <a href="?category={{ category }}&q={{ q }}&year={{ year }}&genero={{ genero }}&estudio={{ estudio }}&sort={{ sort }}&page={{ total_pages }}" 
+                       class="px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm">{{ total_pages }}</a>
+                {% endif %}
+
+                {% if page < total_pages %}
+                <a href="?category={{ category }}&q={{ q }}&year={{ year }}&genero={{ genero }}&estudio={{ estudio }}&sort={{ sort }}&page={{ page+1 }}" 
+                   class="px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm">Siguiente →</a>
+                <a href="?category={{ category }}&q={{ q }}&year={{ year }}&genero={{ genero }}&estudio={{ estudio }}&sort={{ sort }}&page={{ total_pages }}" 
+                   class="px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm">Última »</a>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- LIGHTBOX -->
+    <div id="lightbox" class="lightbox" onclick="closeLightbox()">
+        <img id="lightbox-img" src="" alt="Imagen completa">
+    </div>
+
+    <script>
+        function openLightbox(src) {
+            const lightbox = document.getElementById('lightbox');
+            const img = document.getElementById('lightbox-img');
+            img.src = src;
+            lightbox.classList.add('active');
+            document.body.style.overflow = 'hidden';
+        }
+
+        function closeLightbox() {
+            document.getElementById('lightbox').classList.remove('active');
+            document.body.style.overflow = '';
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') closeLightbox();
+        });
+    </script>
+</body>
+</html>

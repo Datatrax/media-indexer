@@ -153,7 +153,7 @@ def extract_info(filename: str, caption: str = "") -> Dict[str, Any]:
     fname = filename.lower()
 
     if any(x in fname for x in ["tokeijikake", "angeloid of clockwork", "final eternal", "eternal my master"]):
-        pass  # películas → sin episodio
+        pass
     else:
         part_match = re.search(r"(?:part|parte|cd|disc|pt)\s*[-–.]?\s*(\d{1,2})", fname)
         if part_match:
@@ -206,20 +206,10 @@ def extract_info(filename: str, caption: str = "") -> Dict[str, Any]:
 def classify(filename: str, mime: str = "", caption: str = "", tipo: str = None) -> str:
     text = (filename + " " + (caption or "")).lower()
 
-    # ===== FORZAR FORTE A SERIES =====
     if "forte" in text and ("sora" in text or "otoshimono" in text):
         return "series"
 
-    # ===== FORZAR TOKEIJIKAKE Y FINAL A MOVIES (MUY AGRESIVO) =====
-    if any(x in text for x in [
-        "tokeijikake",
-        "angeloid of clockwork",
-        "the angeloid of clockwork",
-        "clockwork",
-        "final eternal",
-        "eternal my master",
-        "my master"
-    ]):
+    if any(x in text for x in ["tokeijikake", "angeloid of clockwork", "final eternal", "eternal my master", "my master"]):
         return "movies"
 
     if tipo:
@@ -407,13 +397,17 @@ async def home(
     estudio: str = "",
     username: str = Depends(verify_credentials)
 ):
+    # ========== TOMAR TODOS LOS ITEMS PARA PODER PRESTAR METADATA ==========
+    all_raw_items = []
+    for cat in catalog.values():
+        all_raw_items.extend(cat)
+
     if category == "all":
-        raw_items = []
-        for cat in catalog.values():
-            raw_items.extend(cat)
+        raw_items = all_raw_items
     else:
         raw_items = catalog.get(category, [])
 
+    # Primero agrupamos con los items de la categoría actual
     grouped = {}
     for item in raw_items:
         key = normalize_title(item["title"])
@@ -460,7 +454,22 @@ async def home(
         if not item.get("is_photo") and item.get("size_mb", 0) > 0:
             g["episodes"].append(item)
 
-    # Títulos finales
+    # ========== PRESTAR THUMBNAIL Y METADATA DESDE OTRAS CATEGORÍAS SI FALTAN ==========
+    if category != "all":
+        for item in all_raw_items:
+            key = normalize_title(item["title"])
+            if key in grouped:
+                g = grouped[key]
+                # Si no tiene thumbnail, tomar prestado
+                if not g.get("thumbnail") and item.get("thumbnail"):
+                    g["thumbnail"] = item["thumbnail"]
+                # Completar otros campos si faltan
+                for field in ["year", "genero", "sinopsis", "quality", "estudio", "episodios",
+                              "secuela", "precuela", "resolucion", "duracion", "audios", "subtitulos", "fansub", "formato", "peso"]:
+                    if item.get(field) and (not g.get(field) or len(str(item[field])) > len(str(g.get(field) or ""))):
+                        g[field] = item[field]
+
+    # Forzar títulos bonitos
     for key, g in grouped.items():
         if "forte" in key:
             g["title"] = "Sora no Otoshimono Forte, Heaven’s Lost Property 2"

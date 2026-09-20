@@ -63,7 +63,7 @@ def normalize_title(title: str) -> str:
     if "forte" in t:
         return "sora no otoshimono forte"
 
-    if "sora no otoshimono" in t and ("movie" in t or "film" in t or "pelicula" in t or "película" in t):
+    if "sora no otoshimono" in t and any(x in t for x in ["movie", "film", "pelicula", "película"]):
         return "sora no otoshimono movie"
 
     # --- Lógica general ---
@@ -148,11 +148,17 @@ def extract_info(filename: str, caption: str = "") -> Dict[str, Any]:
     special_type = None
     fname = filename.lower()
 
-    # Evitar que películas de Sora no Otoshimono se detecten como episodio
-    if "sora no otoshimono" in fname and ("final" in fname or "eternal" in fname or "my master" in fname or "tokeijikake" in fname):
+    # ========== EVITAR QUE LAS PELÍCULAS DE SORA SE DETECTEN COMO EPISODIOS ==========
+    is_sora_movie = (
+        "sora no otoshimono" in fname and 
+        any(x in fname for x in ["final", "eternal", "my master", "tokeijikake", "angeloid of clockwork"])
+    )
+
+    if is_sora_movie:
         episode = None
         is_ova = False
         is_part = False
+        special_type = None
     else:
         # PARTES
         part_match = re.search(r"(?:part|parte|cd|disc|pt)\s*[-–.]?\s*(\d{1,2})", fname)
@@ -167,7 +173,7 @@ def extract_info(filename: str, caption: str = "") -> Dict[str, Any]:
             if num:
                 episode = int(num.group(1))
 
-        # OVA
+        # OVA / Special
         elif "ova" in fname:
             is_ova = True
             special_type = "OVA"
@@ -216,13 +222,23 @@ def extract_info(filename: str, caption: str = "") -> Dict[str, Any]:
 
 
 def classify(filename: str, mime: str = "", caption: str = "", tipo: str = None) -> str:
-    fname_lower = filename.lower()
+    fname_lower = (filename or "").lower()
     caption_lower = (caption or "").lower()
+    text = fname_lower + " " + caption_lower
 
-    # Forzar películas conocidas de Sora no Otoshimono
-    if "sora no otoshimono" in fname_lower or "sora no otoshimono" in caption_lower:
-        if any(x in fname_lower or x in caption_lower for x in ["final", "eternal", "my master", "tokeijikake", "angeloid of clockwork", "movie", "film", "pelicula", "película"]):
+    # ========== FORZAR PELÍCULAS DE SORA NO OTOSHIMONO ==========
+    if "sora no otoshimono" in text:
+        # Películas conocidas
+        if any(x in text for x in [
+            "final eternal", "eternal my master", "my master",
+            "tokeijikake", "angeloid of clockwork",
+            "the movie", "movie", "film", "pelicula", "película"
+        ]):
             return "movies"
+
+        # Forte es serie (segunda temporada)
+        if "forte" in text:
+            return "series"
 
     if tipo:
         t = tipo.lower()
@@ -233,13 +249,15 @@ def classify(filename: str, mime: str = "", caption: str = "", tipo: str = None)
         if any(x in t for x in ["música", "musica", "music"]):
             return "music"
 
-    text = (filename + " " + caption).lower()
     if any(x in text for x in [".mp3", ".flac", ".m4a", "music", "ost"]) or "audio/" in mime:
         return "music"
+
     if re.search(r"(s\d{1,2}e\d{1,2}|season|temporada|[-–]\s*\d{1,3})", text) and "part" not in text:
         return "series"
-    if any(x in text for x in [".mkv", ".mp4", "1080p", "720p", "bluray", "bd", "movie", "pelicula"]):
+
+    if any(x in text for x in [".mkv", ".mp4", "1080p", "720p", "bluray", "bd", "movie", "pelicula", "película"]):
         return "movies"
+
     return "other"
 
 

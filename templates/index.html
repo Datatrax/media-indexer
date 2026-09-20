@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Mi Biblioteca</title>
+    <title>Biblioteca de Prozac</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         details > summary {
@@ -39,11 +39,14 @@
 <body class="bg-gray-900 text-white min-h-screen">
     <div class="container mx-auto px-4 py-6 max-w-6xl">
 
+        <!-- ENCABEZADO -->
         <div class="mb-6">
-            <h1 class="text-3xl md:text-4xl font-bold">🎬 Mi Biblioteca</h1>
-            <p class="text-gray-400 mt-1">
+            <h1 class="text-3xl md:text-4xl font-bold tracking-tight">Biblioteca de Prozac</h1>
+            <p class="text-gray-400 mt-2 text-sm md:text-base">
                 Total archivos: <span class="font-semibold text-white">{{ total }}</span> · 
-                Series: <span class="font-semibold text-white">{{ total_series }}</span>
+                Series: <span class="font-semibold text-white">{{ counts.series }}</span> · 
+                Películas: <span class="font-semibold text-white">{{ counts.movies }}</span> · 
+                Música: <span class="font-semibold text-white">{{ counts.music }}</span>
             </p>
         </div>
 

@@ -3,7 +3,8 @@ import re
 import secrets
 import base64
 from io import BytesIO
-from typing import Dict, Any, Set
+from typing import Dict, Any, Set, List
+from collections import Counter
 
 from telethon import TelegramClient, events
 from telethon.sessions import StringSession
@@ -53,20 +54,17 @@ def normalize_title(title: str) -> str:
 
     t = title.lower().strip()
 
+    # Casos especiales Sora no Otoshimono
     if "tokeijikake" in t or "angeloid of clockwork" in t:
         return "sora no otoshimono tokeijikake movie"
-
     if "final" in t and ("eternal" in t or "my master" in t):
         return "sora no otoshimono final eternal my master"
-
     if "forte" in t:
         return "sora no otoshimono forte"
 
     t = re.sub(r"[\(\[\{].*?[\)\]\}]", "", t)
-
     if "," in t:
         t = t.split(",")[0]
-
     if ":" in t:
         parts = t.split(":", 1)
         if len(parts[1].strip()) > 10:
@@ -74,7 +72,6 @@ def normalize_title(title: str) -> str:
 
     t = re.sub(r"[^\w\s]", " ", t)
     t = re.sub(r"\s+", " ", t).strip()
-
     t = re.sub(r"\s+(part|parte|cd|disc|pt|ova|special|sp|especial)\s*\d*.*$", "", t)
     t = re.sub(r"\s+(the movie|movie|edit|final|complete|uncensored|bluray|bd).*$", "", t)
 
@@ -139,6 +136,7 @@ def extract_info(filename: str, caption: str = "") -> Dict[str, Any]:
 
     fname_lower = filename.lower()
 
+    # Títulos forzados Sora
     if "forte" in fname_lower:
         parsed["nombre"] = "Sora no Otoshimono Forte, Heaven’s Lost Property 2"
     elif "tokeijikake" in fname_lower or "angeloid of clockwork" in fname_lower:
@@ -152,7 +150,7 @@ def extract_info(filename: str, caption: str = "") -> Dict[str, Any]:
     special_type = None
     fname = filename.lower()
 
-        # Detectar partes incluso en películas (para los RAR part1, part2, etc.)
+    # Partes (válido también para películas)
     part_match = re.search(r"(?:part|parte|cd|disc|pt)\s*[-–.]?\s*(\d{1,2})", fname)
     if part_match:
         is_part = True
@@ -164,32 +162,11 @@ def extract_info(filename: str, caption: str = "") -> Dict[str, Any]:
         num = re.search(r"(?:part|r)(\d+)", fname)
         if num:
             episode = int(num.group(1))
-    # Si es película conocida, no detectamos episodio normal ni OVA
+    # No detectar episodio normal en las películas conocidas
     elif any(x in fname for x in ["tokeijikake", "angeloid of clockwork", "final eternal", "eternal my master"]):
         pass
     else:
         if "ova" in fname:
-            is_ova = True
-            special_type = "OVA"
-            match = re.search(r"ova\s*[-–]?\s*(\d{1,3})", fname)
-            if match:
-                episode = int(match.group(1))
-        elif "special" in fname or "especial" in fname or re.search(r"\bsp\b", fname):
-            is_ova = True
-            special_type = "Special"
-            match = re.search(r"(?:special|especial|sp)\s*[-–]?\s*(\d{1,3})", fname)
-            if match:
-                episode = int(match.group(1))
-        else:
-            match = re.search(r"[-–]\s*(\d{1,3})\b", fname)
-            if match:
-                episode = int(match.group(1))
-        part_match = re.search(r"(?:part|parte|cd|disc|pt)\s*[-–.]?\s*(\d{1,2})", fname)
-        if part_match:
-            is_part = True
-            special_type = "Part"
-            episode = int(part_match.group(1))
-        elif "ova" in fname:
             is_ova = True
             special_type = "OVA"
             match = re.search(r"ova\s*[-–]?\s*(\d{1,3})", fname)
@@ -328,7 +305,8 @@ async def process_message(msg):
         "date": msg.date.strftime("%Y-%m-%d") if msg.date else "",
         "link": f"https://t.me/c/{str(CHANNEL_ID)[4:]}/{msg.id}",
         "thumbnail": f"data:image/jpeg;base64,{thumbnail_b64}" if thumbnail_b64 else None,
-        "is_photo": isinstance(msg.media, MessageMediaPhoto)
+        "is_photo": isinstance(msg.media, MessageMediaPhoto),
+        "original_category": tipo_detectado
     }
 
     catalog[tipo_detectado].append(item)
@@ -359,28 +337,112 @@ async def reindex():
         raise
 
 
+def get_all_items() -> List[Dict]:
+    items = []
+    for cat in catalog.values():
+        items.extend(cat)
+    return items
+
+
+def build_groups(all_items: List[Dict]) -> Dict[str, Dict]:
+    grouped = {}
+
+    for item in all_items:
+        key = normalize_title(item["title"])
+
+        if key not in grouped:
+            grouped[key] = {
+                "title": item["title"],
+                "year": item.get("year"),
+                "genero": item.get("genero"),
+                "sinopsis": item.get("sinopsis"),
+                "thumbnail": item.get("thumbnail"),
+                "quality": item.get("quality"),
+                "estudio": item.get("estudio"),
+                "episodios": item.get("episodios"),
+                "secuela": item.get("secuela"),
+                "precuela": item.get("precuela"),
+                "resolucion": item.get("resolucion"),
+                "duracion": item.get("duracion"),
+                "audios": item.get("audios"),
+                "subtitulos": item.get("subtitulos"),
+                "fansub": item.get("fansub"),
+                "formato": item.get("formato"),
+                "peso": item.get("peso"),
+                "episodes": [],
+                "latest_date": item.get("date", ""),
+                "categories": []
+            }
+
+        g = grouped[key]
+
+        # Mejor título
+        if item.get("title") and len(item["title"]) > len(g["title"] or ""):
+            g["title"] = item["title"]
+
+        # Mejor thumbnail
+        if item.get("thumbnail"):
+            g["thumbnail"] = item["thumbnail"]
+
+        if item.get("date") and item["date"] > (g.get("latest_date") or ""):
+            g["latest_date"] = item["date"]
+
+        # Mejor metadata
+        for field in ["year", "genero", "sinopsis", "quality", "estudio", "episodios",
+                      "secuela", "precuela", "resolucion", "duracion", "audios",
+                      "subtitulos", "fansub", "formato", "peso"]:
+            if item.get(field):
+                if not g.get(field) or len(str(item[field])) > len(str(g.get(field) or "")):
+                    g[field] = item[field]
+
+        # Guardamos la categoría original para decidir después
+        g["categories"].append(item.get("original_category", "other"))
+
+        # Solo archivos reales (no fotos sueltas)
+        if not item.get("is_photo") and item.get("size_mb", 0) > 0:
+            g["episodes"].append(item)
+
+    # Decidir categoría final del grupo + títulos bonitos
+    for key, g in grouped.items():
+        # Título bonito Sora
+        if "forte" in key:
+            g["title"] = "Sora no Otoshimono Forte, Heaven’s Lost Property 2"
+        elif "tokeijikake" in key:
+            g["title"] = "Sora no Otoshimono: Tokeijikake no Angeloid, Heaven’s Lost Property the Movie: The Angeloid of Clockwork"
+        elif "final eternal" in key or "my master" in key:
+            g["title"] = "Sora no Otoshimono Final: Eternal My Master, Heaven’s Lost Property: My Eternal Master"
+
+        # Categoría final por mayoría
+        if g["categories"]:
+            most_common = Counter(g["categories"]).most_common(1)[0][0]
+            g["final_category"] = most_common
+        else:
+            g["final_category"] = "other"
+
+        # Reglas especiales que mandan sobre la mayoría
+        if "tokeijikake" in key or "final eternal" in key or "my master" in key:
+            g["final_category"] = "movies"
+        if "forte" in key:
+            g["final_category"] = "series"
+
+        # Ordenar episodios
+        g["episodes"].sort(key=lambda x: (
+            0 if x.get("is_ova") or x.get("is_part") else 1,
+            x.get("episode") or 999
+        ))
+
+    return grouped
+
+
 def get_grouped_counts():
+    all_items = get_all_items()
+    groups = build_groups(all_items)
+
     counts = {"movies": 0, "series": 0, "music": 0, "other": 0}
-    
-    # Títulos que son películas y no deben contarse como series
-    movie_keys = {
-        "sora no otoshimono tokeijikake movie",
-        "sora no otoshimono final eternal my master"
-    }
-    
-    for cat_name, items in catalog.items():
-        titles = set()
-        for item in items:
-            key = normalize_title(item["title"])
-            
-            # Si estamos contando series, saltamos las películas conocidas
-            if cat_name == "series" and key in movie_keys:
-                continue
-                
-            titles.add(key)
-        
-        counts[cat_name] = len(titles)
-    
+    for g in groups.values():
+        cat = g.get("final_category", "other")
+        if cat in counts:
+            counts[cat] += 1
     return counts
 
 
@@ -443,99 +505,16 @@ async def home(
     estudio: str = "",
     username: str = Depends(verify_credentials)
 ):
-    all_raw_items = []
-    for cat in catalog.values():
-        all_raw_items.extend(cat)
+    all_items = get_all_items()
+    groups = build_groups(all_items)
 
-    if category == "all":
-        raw_items = all_raw_items
-    else:
-        raw_items = catalog.get(category, [])
-
-    grouped = {}
-    for item in raw_items:
-        key = normalize_title(item["title"])
-        if key not in grouped:
-            grouped[key] = {
-                "title": item["title"],
-                "year": item.get("year"),
-                "genero": item.get("genero"),
-                "sinopsis": item.get("sinopsis"),
-                "thumbnail": item.get("thumbnail"),
-                "quality": item.get("quality"),
-                "estudio": item.get("estudio"),
-                "episodios": item.get("episodios"),
-                "secuela": item.get("secuela"),
-                "precuela": item.get("precuela"),
-                "resolucion": item.get("resolucion"),
-                "duracion": item.get("duracion"),
-                "audios": item.get("audios"),
-                "subtitulos": item.get("subtitulos"),
-                "fansub": item.get("fansub"),
-                "formato": item.get("formato"),
-                "peso": item.get("peso"),
-                "episodes": [],
-                "latest_date": item.get("date", "")
-            }
-
-        g = grouped[key]
-
-        if item.get("title") and len(item["title"]) > len(g["title"] or ""):
-            g["title"] = item["title"]
-
-        if item.get("thumbnail"):
-            g["thumbnail"] = item["thumbnail"]
-
-        if item.get("date") and item["date"] > (g.get("latest_date") or ""):
-            g["latest_date"] = item["date"]
-
-        for field in ["year", "genero", "sinopsis", "quality", "estudio", "episodios",
-                      "secuela", "precuela", "resolucion", "duracion", "audios", "subtitulos", "fansub", "formato", "peso"]:
-            if item.get(field):
-                if not g.get(field) or len(str(item[field])) > len(str(g.get(field) or "")):
-                    g[field] = item[field]
-
-        if not item.get("is_photo") and item.get("size_mb", 0) > 0:
-            g["episodes"].append(item)
-
-    # Prestar thumbnail y metadata si faltan
+    # Filtrar por categoría final
     if category != "all":
-        for item in all_raw_items:
-            key = normalize_title(item["title"])
-            if key in grouped:
-                g = grouped[key]
-                if not g.get("thumbnail") and item.get("thumbnail"):
-                    g["thumbnail"] = item["thumbnail"]
-                for field in ["year", "genero", "sinopsis", "quality", "estudio", "episodios",
-                              "secuela", "precuela", "resolucion", "duracion", "audios", "subtitulos", "fansub", "formato", "peso"]:
-                    if item.get(field) and (not g.get(field) or len(str(item[field])) > len(str(g.get(field) or ""))):
-                        g[field] = item[field]
+        all_series = [g for g in groups.values() if g.get("final_category") == category]
+    else:
+        all_series = list(groups.values())
 
-    # Forzar títulos
-    for key, g in grouped.items():
-        if "forte" in key:
-            g["title"] = "Sora no Otoshimono Forte, Heaven’s Lost Property 2"
-        elif "tokeijikake" in key:
-            g["title"] = "Sora no Otoshimono: Tokeijikake no Angeloid, Heaven’s Lost Property the Movie: The Angeloid of Clockwork"
-        elif "final eternal" in key or "my master" in key:
-            g["title"] = "Sora no Otoshimono Final: Eternal My Master, Heaven’s Lost Property: My Eternal Master"
-
-    for g in grouped.values():
-        g["episodes"].sort(key=lambda x: (
-            0 if x.get("is_ova") or x.get("is_part") else 1,
-            x.get("episode") or 999
-        ))
-
-    all_series = list(grouped.values())
-
-    # ========== ELIMINAR LA PELÍCULA TOKEIJIKAKE DE LA PESTAÑA SERIES ==========
-    if category == "series":
-        all_series = [
-            s for s in all_series 
-            if "tokeijikake" not in (s.get("title") or "").lower() 
-            and "angeloid of clockwork" not in (s.get("title") or "").lower()
-        ]
-
+    # Filtros avanzados
     if year:
         all_series = [s for s in all_series if s.get("year") and str(s["year"]) == str(year)]
 
@@ -558,6 +537,7 @@ async def home(
                 filtered.append(series)
         all_series = filtered
 
+    # Orden
     if sort == "year":
         all_series.sort(key=lambda x: int(x["year"]) if x.get("year") and str(x["year"]).isdigit() else 0, reverse=True)
     elif sort == "date":

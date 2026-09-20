@@ -142,13 +142,18 @@ def extract_info(filename: str, caption: str = "") -> Dict[str, Any]:
         clean = re.sub(r"\s*[-–]\s*(ova|special|sp|especial|part|parte|cd|disc)?\s*\d{0,3}.*$", "", clean, flags=re.I)
         parsed["nombre"] = re.sub(r"\s+", " ", clean).strip()
 
+    # ========== TÍTULO LIMPIO PARA FORTE ==========
+    fname_lower = filename.lower()
+    if "forte" in fname_lower and "sora" in fname_lower:
+        parsed["nombre"] = "Sora no Otoshimono Forte"
+
     episode = None
     is_ova = False
     is_part = False
     special_type = None
     fname = filename.lower()
 
-    # ========== EVITAR QUE LAS PELÍCULAS DE SORA SE DETECTEN COMO EPISODIOS ==========
+    # Evitar que las películas de Sora se detecten como episodios
     is_sora_movie = (
         "sora no otoshimono" in fname and 
         any(x in fname for x in ["final", "eternal", "my master", "tokeijikake", "angeloid of clockwork"])
@@ -228,7 +233,6 @@ def classify(filename: str, mime: str = "", caption: str = "", tipo: str = None)
 
     # ========== FORZAR PELÍCULAS DE SORA NO OTOSHIMONO ==========
     if "sora no otoshimono" in text:
-        # Películas conocidas
         if any(x in text for x in [
             "final eternal", "eternal my master", "my master",
             "tokeijikake", "angeloid of clockwork",
@@ -236,7 +240,6 @@ def classify(filename: str, mime: str = "", caption: str = "", tipo: str = None)
         ]):
             return "movies"
 
-        # Forte es serie (segunda temporada)
         if "forte" in text:
             return "series"
 
@@ -460,9 +463,11 @@ async def home(
 
         g = grouped[key]
 
+        # Preferir el título más largo y limpio
         if item.get("title") and len(item["title"]) > len(g["title"] or ""):
             g["title"] = item["title"]
 
+        # Preferir cualquier thumbnail disponible
         if item.get("thumbnail") and not g["thumbnail"]:
             g["thumbnail"] = item["thumbnail"]
 
@@ -556,7 +561,6 @@ async def home(
     elif sort == "date":
         all_series.sort(key=lambda x: x.get("latest_date") or "", reverse=True)
     else:
-        # Solo alfabético por título (A-Z)
         all_series.sort(key=lambda x: (x.get("title") or "").lower())
 
     total_series = len(all_series)

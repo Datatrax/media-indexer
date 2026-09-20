@@ -152,9 +152,38 @@ def extract_info(filename: str, caption: str = "") -> Dict[str, Any]:
     special_type = None
     fname = filename.lower()
 
-    if any(x in fname for x in ["tokeijikake", "angeloid of clockwork", "final eternal", "eternal my master"]):
+        # Detectar partes incluso en películas (para los RAR part1, part2, etc.)
+    part_match = re.search(r"(?:part|parte|cd|disc|pt)\s*[-–.]?\s*(\d{1,2})", fname)
+    if part_match:
+        is_part = True
+        special_type = "Part"
+        episode = int(part_match.group(1))
+    elif re.search(r"\.(part\d+|r\d{2})\.", fname):
+        is_part = True
+        special_type = "Part"
+        num = re.search(r"(?:part|r)(\d+)", fname)
+        if num:
+            episode = int(num.group(1))
+    # Si es película conocida, no detectamos episodio normal ni OVA
+    elif any(x in fname for x in ["tokeijikake", "angeloid of clockwork", "final eternal", "eternal my master"]):
         pass
     else:
+        if "ova" in fname:
+            is_ova = True
+            special_type = "OVA"
+            match = re.search(r"ova\s*[-–]?\s*(\d{1,3})", fname)
+            if match:
+                episode = int(match.group(1))
+        elif "special" in fname or "especial" in fname or re.search(r"\bsp\b", fname):
+            is_ova = True
+            special_type = "Special"
+            match = re.search(r"(?:special|especial|sp)\s*[-–]?\s*(\d{1,3})", fname)
+            if match:
+                episode = int(match.group(1))
+        else:
+            match = re.search(r"[-–]\s*(\d{1,3})\b", fname)
+            if match:
+                episode = int(match.group(1))
         part_match = re.search(r"(?:part|parte|cd|disc|pt)\s*[-–.]?\s*(\d{1,2})", fname)
         if part_match:
             is_part = True

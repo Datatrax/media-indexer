@@ -397,7 +397,6 @@ async def home(
     estudio: str = "",
     username: str = Depends(verify_credentials)
 ):
-    # ========== TOMAR TODOS LOS ITEMS PARA PODER PRESTAR METADATA ==========
     all_raw_items = []
     for cat in catalog.values():
         all_raw_items.extend(cat)
@@ -407,7 +406,6 @@ async def home(
     else:
         raw_items = catalog.get(category, [])
 
-    # Primero agrupamos con los items de la categoría actual
     grouped = {}
     for item in raw_items:
         key = normalize_title(item["title"])
@@ -454,22 +452,20 @@ async def home(
         if not item.get("is_photo") and item.get("size_mb", 0) > 0:
             g["episodes"].append(item)
 
-    # ========== PRESTAR THUMBNAIL Y METADATA DESDE OTRAS CATEGORÍAS SI FALTAN ==========
+    # Prestar thumbnail y metadata si faltan
     if category != "all":
         for item in all_raw_items:
             key = normalize_title(item["title"])
             if key in grouped:
                 g = grouped[key]
-                # Si no tiene thumbnail, tomar prestado
                 if not g.get("thumbnail") and item.get("thumbnail"):
                     g["thumbnail"] = item["thumbnail"]
-                # Completar otros campos si faltan
                 for field in ["year", "genero", "sinopsis", "quality", "estudio", "episodios",
                               "secuela", "precuela", "resolucion", "duracion", "audios", "subtitulos", "fansub", "formato", "peso"]:
                     if item.get(field) and (not g.get(field) or len(str(item[field])) > len(str(g.get(field) or ""))):
                         g[field] = item[field]
 
-    # Forzar títulos bonitos
+    # Forzar títulos
     for key, g in grouped.items():
         if "forte" in key:
             g["title"] = "Sora no Otoshimono Forte, Heaven’s Lost Property 2"
@@ -485,6 +481,14 @@ async def home(
         ))
 
     all_series = list(grouped.values())
+
+    # ========== ELIMINAR LA PELÍCULA TOKEIJIKAKE DE LA PESTAÑA SERIES ==========
+    if category == "series":
+        all_series = [
+            s for s in all_series 
+            if "tokeijikake" not in (s.get("title") or "").lower() 
+            and "angeloid of clockwork" not in (s.get("title") or "").lower()
+        ]
 
     if year:
         all_series = [s for s in all_series if s.get("year") and str(s["year"]) == str(year)]

@@ -27,7 +27,7 @@ ADMIN_USER = os.getenv("ADMIN_USER", "admin")
 ADMIN_PASS = os.getenv("ADMIN_PASS", "cambia_esta_password")
 ITEMS_PER_PAGE = 12
 
-app = FastAPI(title="Media Indexer")
+app = FastAPI(title="Biblioteca de Prozac")
 templates = Jinja2Templates(directory="templates")
 security = HTTPBasic()
 
@@ -384,7 +384,7 @@ async def home(
     q: str = "",
     exact: str = "",
     page: int = 1,
-    sort: str = "title",          # title | year | date
+    sort: str = "title",
     year: str = "",
     genero: str = "",
     estudio: str = "",
@@ -517,14 +517,20 @@ async def home(
 
     # ========== ORDENAMIENTO ==========
     if sort == "year":
+        # Solo por año (más reciente primero)
         all_series.sort(key=lambda x: int(x["year"]) if x.get("year") and str(x["year"]).isdigit() else 0, reverse=True)
     elif sort == "date":
+        # Por fecha de añadido (más reciente primero)
         all_series.sort(key=lambda x: x.get("latest_date") or "", reverse=True)
     else:
-        # Por título (A-Z) - PREDETERMINADO
-        all_series.sort(key=lambda x: (x.get("title") or "").lower())
+        # PREDETERMINADO: Título (A-Z) + Año (antiguo → reciente) como segundo criterio
+        all_series.sort(key=lambda x: (
+            (x.get("title") or "").lower(),
+            int(x["year"]) if x.get("year") and str(x["year"]).isdigit() else 0
+        ))
 
     total_series = len(all_series)
+    counts = get_grouped_counts()
 
     start = (page - 1) * ITEMS_PER_PAGE
     end = start + ITEMS_PER_PAGE
@@ -539,7 +545,7 @@ async def home(
             "items": items,
             "total": sum(len(v) for v in catalog.values()),
             "total_series": total_series,
-            "counts": get_grouped_counts(),
+            "counts": counts,
             "category": category,
             "q": q,
             "page": page,

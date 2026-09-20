@@ -63,7 +63,7 @@ def normalize_title(title: str) -> str:
     if "forte" in t:
         return "sora no otoshimono forte"
 
-    # --- Lógica general (la que ya teníamos) ---
+    # --- Lógica general ---
     t = re.sub(r"[\(\[\{].*?[\)\]\}]", "", t)
 
     if "," in t:
@@ -81,6 +81,7 @@ def normalize_title(title: str) -> str:
     t = re.sub(r"\s+(the movie|movie|edit|final|complete|uncensored|bluray|bd).*$", "", t)
 
     return t.strip()
+
 
 def parse_caption(caption: str) -> Dict[str, Any]:
     data = {
@@ -342,6 +343,30 @@ def get_all_genres() -> list:
     return sorted(list(genres))
 
 
+def get_all_years() -> list:
+    years = set()
+    for items in catalog.values():
+        for item in items:
+            if item.get("year"):
+                try:
+                    years.add(int(item["year"]))
+                except:
+                    pass
+    return sorted(list(years), reverse=True)
+
+
+def get_all_studios() -> list:
+    studios = set()
+    for items in catalog.values():
+        for item in items:
+            if item.get("estudio"):
+                for s in item["estudio"].split(","):
+                    s = s.strip()
+                    if s:
+                        studios.add(s)
+    return sorted(list(studios))
+
+
 @app.on_event("startup")
 async def startup_event():
     await client.start(bot_token=BOT_TOKEN)
@@ -359,6 +384,10 @@ async def home(
     q: str = "",
     exact: str = "",
     page: int = 1,
+    sort: str = "title",          # title | year | date
+    year: str = "",
+    genero: str = "",
+    estudio: str = "",
     username: str = Depends(verify_credentials)
 ):
     if category == "all":
@@ -390,17 +419,20 @@ async def home(
                 "fansub": item.get("fansub"),
                 "formato": item.get("formato"),
                 "peso": item.get("peso"),
-                "episodes": []
+                "episodes": [],
+                "latest_date": item.get("date", "")
             }
 
         g = grouped[key]
 
-        # Preferir el título más largo
         if item.get("title") and len(item["title"]) > len(g["title"] or ""):
             g["title"] = item["title"]
 
         if item.get("thumbnail") and not g["thumbnail"]:
             g["thumbnail"] = item["thumbnail"]
+
+        if item.get("date") and item["date"] > (g.get("latest_date") or ""):
+            g["latest_date"] = item["date"]
 
         for field in ["year", "genero", "sinopsis", "quality", "estudio", "episodios",
                       "secuela", "precuela", "resolucion", "duracion", "audios", "subtitulos", "fansub", "formato", "peso"]:
@@ -419,6 +451,25 @@ async def home(
 
     all_series = list(grouped.values())
 
+    # ========== FILTROS AVANZADOS ==========
+    if year:
+        all_series = [s for s in all_series if s.get("year") and str(s["year"]) == str(year)]
+
+    if genero:
+        genero_lower = genero.lower().strip()
+        all_series = [
+            s for s in all_series 
+            if s.get("genero") and genero_lower in s["genero"].lower()
+        ]
+
+    if estudio:
+        estudio_lower = estudio.lower().strip()
+        all_series = [
+            s for s in all_series 
+            if s.get("estudio") and estudio_lower in s["estudio"].lower()
+        ]
+
+    # ========== BÚSQUEDA DE TEXTO ==========
     if q:
         q_lower = q.lower().strip()
         q_clean = re.sub(r"[^\w\s]", "", q_lower)
@@ -459,9 +510,19 @@ async def home(
                     q_lower in (series.get("genero") or "").lower() or
                     q_lower in (series.get("secuela") or "").lower() or
                     q_lower in (series.get("precuela") or "").lower() or
-                    q_lower in (series.get("sinopsis") or "").lower()):
+                    q_lower in (series.get("sinopsis") or "").lower() or
+                    q_lower in (series.get("estudio") or "").lower()):
                     filtered.append(series)
             all_series = filtered
+
+    # ========== ORDENAMIENTO ==========
+    if sort == "year":
+        all_series.sort(key=lambda x: int(x["year"]) if x.get("year") and str(x["year"]).isdigit() else 0, reverse=True)
+    elif sort == "date":
+        all_series.sort(key=lambda x: x.get("latest_date") or "", reverse=True)
+    else:
+        # Por título (A-Z) - PREDETERMINADO
+        all_series.sort(key=lambda x: (x.get("title") or "").lower())
 
     total_series = len(all_series)
 
@@ -483,7 +544,13 @@ async def home(
             "q": q,
             "page": page,
             "total_pages": total_pages,
-            "all_genres": get_all_genres()
+            "all_genres": get_all_genres(),
+            "all_years": get_all_years(),
+            "all_studios": get_all_studios(),
+            "sort": sort,
+            "year": year,
+            "genero": genero,
+            "estudio": estudio,
         }
     )
 

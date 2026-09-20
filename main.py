@@ -53,15 +53,18 @@ def normalize_title(title: str) -> str:
 
     t = title.lower().strip()
 
-    # Casos especiales para no mezclar la película con la serie
+    # ========== CASOS ESPECIALES SORA NO OTOSHIMONO ==========
     if "tokeijikake" in t or "angeloid of clockwork" in t:
         return "sora no otoshimono tokeijikake movie"
 
     if "final" in t and ("eternal" in t or "my master" in t):
-        return "sora no otoshimono final"
+        return "sora no otoshimono final eternal my master"
 
     if "forte" in t:
         return "sora no otoshimono forte"
+
+    if "sora no otoshimono" in t and ("movie" in t or "film" in t or "pelicula" in t or "película" in t):
+        return "sora no otoshimono movie"
 
     # --- Lógica general ---
     t = re.sub(r"[\(\[\{].*?[\)\]\}]", "", t)
@@ -145,40 +148,46 @@ def extract_info(filename: str, caption: str = "") -> Dict[str, Any]:
     special_type = None
     fname = filename.lower()
 
-    # PARTES
-    part_match = re.search(r"(?:part|parte|cd|disc|pt)\s*[-–.]?\s*(\d{1,2})", fname)
-    if part_match:
-        is_part = True
-        special_type = "Part"
-        episode = int(part_match.group(1))
-    elif re.search(r"\.(part\d+|r\d{2})\.", fname):
-        is_part = True
-        special_type = "Part"
-        num = re.search(r"(?:part|r)(\d+)", fname)
-        if num:
-            episode = int(num.group(1))
-
-    # OVA
-    elif "ova" in fname:
-        is_ova = True
-        special_type = "OVA"
-        match = re.search(r"ova\s*[-–]?\s*(\d{1,3})", fname)
-        if match:
-            episode = int(match.group(1))
-        else:
-            numbers = re.findall(r"\d{1,3}", fname)
-            if numbers:
-                episode = int(numbers[0])
-    elif "special" in fname or "especial" in fname or re.search(r"\bsp\b", fname):
-        is_ova = True
-        special_type = "Special"
-        match = re.search(r"(?:special|especial|sp)\s*[-–]?\s*(\d{1,3})", fname)
-        if match:
-            episode = int(match.group(1))
+    # Evitar que películas de Sora no Otoshimono se detecten como episodio
+    if "sora no otoshimono" in fname and ("final" in fname or "eternal" in fname or "my master" in fname or "tokeijikake" in fname):
+        episode = None
+        is_ova = False
+        is_part = False
     else:
-        match = re.search(r"[-–]\s*(\d{1,3})\b", fname)
-        if match:
-            episode = int(match.group(1))
+        # PARTES
+        part_match = re.search(r"(?:part|parte|cd|disc|pt)\s*[-–.]?\s*(\d{1,2})", fname)
+        if part_match:
+            is_part = True
+            special_type = "Part"
+            episode = int(part_match.group(1))
+        elif re.search(r"\.(part\d+|r\d{2})\.", fname):
+            is_part = True
+            special_type = "Part"
+            num = re.search(r"(?:part|r)(\d+)", fname)
+            if num:
+                episode = int(num.group(1))
+
+        # OVA
+        elif "ova" in fname:
+            is_ova = True
+            special_type = "OVA"
+            match = re.search(r"ova\s*[-–]?\s*(\d{1,3})", fname)
+            if match:
+                episode = int(match.group(1))
+            else:
+                numbers = re.findall(r"\d{1,3}", fname)
+                if numbers:
+                    episode = int(numbers[0])
+        elif "special" in fname or "especial" in fname or re.search(r"\bsp\b", fname):
+            is_ova = True
+            special_type = "Special"
+            match = re.search(r"(?:special|especial|sp)\s*[-–]?\s*(\d{1,3})", fname)
+            if match:
+                episode = int(match.group(1))
+        else:
+            match = re.search(r"[-–]\s*(\d{1,3})\b", fname)
+            if match:
+                episode = int(match.group(1))
 
     return {
         "title": parsed["nombre"],
@@ -207,6 +216,14 @@ def extract_info(filename: str, caption: str = "") -> Dict[str, Any]:
 
 
 def classify(filename: str, mime: str = "", caption: str = "", tipo: str = None) -> str:
+    fname_lower = filename.lower()
+    caption_lower = (caption or "").lower()
+
+    # Forzar películas conocidas de Sora no Otoshimono
+    if "sora no otoshimono" in fname_lower or "sora no otoshimono" in caption_lower:
+        if any(x in fname_lower or x in caption_lower for x in ["final", "eternal", "my master", "tokeijikake", "angeloid of clockwork", "movie", "film", "pelicula", "película"]):
+            return "movies"
+
     if tipo:
         t = tipo.lower()
         if any(x in t for x in ["serie", "ova", "anime"]):
@@ -517,17 +534,12 @@ async def home(
 
     # ========== ORDENAMIENTO ==========
     if sort == "year":
-        # Solo por año (más reciente primero)
         all_series.sort(key=lambda x: int(x["year"]) if x.get("year") and str(x["year"]).isdigit() else 0, reverse=True)
     elif sort == "date":
-        # Por fecha de añadido (más reciente primero)
         all_series.sort(key=lambda x: x.get("latest_date") or "", reverse=True)
     else:
-        # PREDETERMINADO: Título (A-Z) + Año (antiguo → reciente) como segundo criterio
-        all_series.sort(key=lambda x: (
-            (x.get("title") or "").lower(),
-            int(x["year"]) if x.get("year") and str(x["year"]).isdigit() else 0
-        ))
+        # Solo alfabético por título (A-Z)
+        all_series.sort(key=lambda x: (x.get("title") or "").lower())
 
     total_series = len(all_series)
     counts = get_grouped_counts()

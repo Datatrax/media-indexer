@@ -332,9 +332,26 @@ async def reindex():
 
 def get_grouped_counts():
     counts = {"movies": 0, "series": 0, "music": 0, "other": 0}
+    
+    # Títulos que son películas y no deben contarse como series
+    movie_keys = {
+        "sora no otoshimono tokeijikake movie",
+        "sora no otoshimono final eternal my master"
+    }
+    
     for cat_name, items in catalog.items():
-        titles = set(normalize_title(item["title"]) for item in items)
+        titles = set()
+        for item in items:
+            key = normalize_title(item["title"])
+            
+            # Si estamos contando series, saltamos las películas conocidas
+            if cat_name == "series" and key in movie_keys:
+                continue
+                
+            titles.add(key)
+        
         counts[cat_name] = len(titles)
+    
     return counts
 
 

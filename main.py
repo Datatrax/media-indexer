@@ -144,7 +144,7 @@ def extract_info(filename: str, caption: str = "") -> Dict[str, Any]:
 
     fname_lower = filename.lower()
 
-    # ========== FORZAR TÍTULO COMPLETO PARA FORTE ==========
+    # Forzar título completo para Forte
     if "forte" in fname_lower and ("sora" in fname_lower or "otoshimono" in fname_lower):
         parsed["nombre"] = "Sora no Otoshimono Forte, Heaven’s Lost Property 2"
 
@@ -228,6 +228,11 @@ def classify(filename: str, mime: str = "", caption: str = "", tipo: str = None)
     caption_lower = (caption or "").lower()
     text = fname_lower + " " + caption_lower
 
+    # ========== FORZAR FORTE SIEMPRE A SERIES ==========
+    if "forte" in text and ("sora" in text or "otoshimono" in text):
+        return "series"
+
+    # Películas de Sora
     if "sora no otoshimono" in text:
         if any(x in text for x in [
             "final eternal", "eternal my master", "my master",
@@ -235,8 +240,6 @@ def classify(filename: str, mime: str = "", caption: str = "", tipo: str = None)
             "the movie", "movie", "film", "pelicula", "película"
         ]):
             return "movies"
-        if "forte" in text:
-            return "series"
 
     if tipo:
         t = tipo.lower()
@@ -461,11 +464,10 @@ async def home(
 
         g = grouped[key]
 
-        # Preferir el título más largo
         if item.get("title") and len(item["title"]) > len(g["title"] or ""):
             g["title"] = item["title"]
 
-        # Preferir cualquier thumbnail disponible
+        # Preferir cualquier thumbnail que exista
         if item.get("thumbnail"):
             g["thumbnail"] = item["thumbnail"]
 
@@ -481,7 +483,7 @@ async def home(
         if not item.get("is_photo") and item.get("size_mb", 0) > 0:
             g["episodes"].append(item)
 
-    # ========== FORZAR TÍTULO COMPLETO DESPUÉS DE AGRUPAR ==========
+    # Forzar título completo
     for key, g in grouped.items():
         if "forte" in key:
             g["title"] = "Sora no Otoshimono Forte, Heaven’s Lost Property 2"
@@ -494,7 +496,6 @@ async def home(
 
     all_series = list(grouped.values())
 
-    # ========== FILTROS AVANZADOS ==========
     if year:
         all_series = [s for s in all_series if s.get("year") and str(s["year"]) == str(year)]
 
@@ -512,7 +513,6 @@ async def home(
             if s.get("estudio") and estudio_lower in s["estudio"].lower()
         ]
 
-    # ========== BÚSQUEDA DE TEXTO ==========
     if q:
         q_lower = q.lower().strip()
         q_clean = re.sub(r"[^\w\s]", "", q_lower)
@@ -558,7 +558,6 @@ async def home(
                     filtered.append(series)
             all_series = filtered
 
-    # ========== ORDENAMIENTO ==========
     if sort == "year":
         all_series.sort(key=lambda x: int(x["year"]) if x.get("year") and str(x["year"]).isdigit() else 0, reverse=True)
     elif sort == "date":

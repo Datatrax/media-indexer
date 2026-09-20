@@ -12,6 +12,28 @@
         details > summary::-webkit-details-marker {
             display: none;
         }
+        
+        /* Lightbox */
+        .lightbox {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.92);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+            cursor: zoom-out;
+        }
+        .lightbox.active {
+            display: flex;
+        }
+        .lightbox img {
+            max-width: 95vw;
+            max-height: 95vh;
+            object-fit: contain;
+            border-radius: 8px;
+            box-shadow: 0 0 40px rgba(0,0,0,0.6);
+        }
     </style>
 </head>
 <body class="bg-gray-900 text-white min-h-screen">
@@ -55,10 +77,12 @@
             <div class="bg-gray-800 rounded-2xl overflow-hidden shadow-lg">
                 <div class="flex flex-col md:flex-row">
                     
-                    <div class="md:w-52 lg:w-60 flex-shrink-0 bg-gray-700">
+                    <!-- IMAGEN CLICKEABLE -->
+                    <div class="md:w-52 lg:w-60 flex-shrink-0 bg-gray-700 cursor-zoom-in" 
+                         {% if series.thumbnail %}onclick="openLightbox('{{ series.thumbnail }}')"{% endif %}>
                         {% if series.thumbnail %}
                         <img src="{{ series.thumbnail }}" alt="{{ series.title }}" 
-                             class="w-full h-72 md:h-full object-cover object-top">
+                             class="w-full h-72 md:h-full object-cover object-top hover:opacity-90 transition">
                         {% else %}
                         <div class="w-full h-72 md:h-full flex items-center justify-center text-gray-500">
                             Sin imagen
@@ -67,7 +91,6 @@
                     </div>
 
                     <div class="flex-1 p-5">
-                        <!-- Título completo con wrap -->
                         <h2 class="text-xl font-bold mb-1 leading-snug break-words">
                             {{ series.title }}
                         </h2>
@@ -165,17 +188,86 @@
             {% endfor %}
         </div>
 
+        <!-- PAGINACIÓN MEJORADA -->
         {% if total_pages > 1 %}
-        <div class="flex justify-center gap-2 mt-10">
-            {% if page > 1 %}
-            <a href="?category={{ category }}&q={{ q }}&page={{ page-1 }}" class="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg">← Anterior</a>
-            {% endif %}
-            <span class="px-4 py-2 bg-blue-600 rounded-lg">{{ page }} / {{ total_pages }}</span>
-            {% if page < total_pages %}
-            <a href="?category={{ category }}&q={{ q }}&page={{ page+1 }}" class="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg">Siguiente →</a>
-            {% endif %}
+        <div class="flex flex-col items-center gap-4 mt-12">
+            <p class="text-sm text-gray-400">
+                Página {{ page }} de {{ total_pages }}
+            </p>
+            
+            <div class="flex flex-wrap justify-center items-center gap-1">
+                <!-- Primera -->
+                {% if page > 1 %}
+                <a href="?category={{ category }}&q={{ q }}&page=1" 
+                   class="px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm">« Primera</a>
+                <a href="?category={{ category }}&q={{ q }}&page={{ page-1 }}" 
+                   class="px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm">← Anterior</a>
+                {% endif %}
+
+                <!-- Números de página -->
+                {% set start_page = [1, page - 2]|max %}
+                {% set end_page = [total_pages, page + 2]|min %}
+
+                {% if start_page > 1 %}
+                    <a href="?category={{ category }}&q={{ q }}&page=1" 
+                       class="px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm">1</a>
+                    {% if start_page > 2 %}
+                        <span class="px-2 text-gray-500">...</span>
+                    {% endif %}
+                {% endif %}
+
+                {% for p in range(start_page, end_page + 1) %}
+                    {% if p == page %}
+                        <span class="px-3 py-2 bg-blue-600 rounded-lg text-sm font-medium">{{ p }}</span>
+                    {% else %}
+                        <a href="?category={{ category }}&q={{ q }}&page={{ p }}" 
+                           class="px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm">{{ p }}</a>
+                    {% endif %}
+                {% endfor %}
+
+                {% if end_page < total_pages %}
+                    {% if end_page < total_pages - 1 %}
+                        <span class="px-2 text-gray-500">...</span>
+                    {% endif %}
+                    <a href="?category={{ category }}&q={{ q }}&page={{ total_pages }}" 
+                       class="px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm">{{ total_pages }}</a>
+                {% endif %}
+
+                <!-- Última -->
+                {% if page < total_pages %}
+                <a href="?category={{ category }}&q={{ q }}&page={{ page+1 }}" 
+                   class="px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm">Siguiente →</a>
+                <a href="?category={{ category }}&q={{ q }}&page={{ total_pages }}" 
+                   class="px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm">Última »</a>
+                {% endif %}
+            </div>
         </div>
         {% endif %}
     </div>
+
+    <!-- LIGHTBOX -->
+    <div id="lightbox" class="lightbox" onclick="closeLightbox()">
+        <img id="lightbox-img" src="" alt="Imagen completa">
+    </div>
+
+    <script>
+        function openLightbox(src) {
+            const lightbox = document.getElementById('lightbox');
+            const img = document.getElementById('lightbox-img');
+            img.src = src;
+            lightbox.classList.add('active');
+            document.body.style.overflow = 'hidden';
+        }
+
+        function closeLightbox() {
+            document.getElementById('lightbox').classList.remove('active');
+            document.body.style.overflow = '';
+        }
+
+        // Cerrar con tecla Escape
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') closeLightbox();
+        });
+    </script>
 </body>
 </html>

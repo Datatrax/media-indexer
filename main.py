@@ -142,10 +142,11 @@ def extract_info(filename: str, caption: str = "") -> Dict[str, Any]:
         clean = re.sub(r"\s*[-–]\s*(ova|special|sp|especial|part|parte|cd|disc)?\s*\d{0,3}.*$", "", clean, flags=re.I)
         parsed["nombre"] = re.sub(r"\s+", " ", clean).strip()
 
-    # ========== TÍTULO LIMPIO PARA FORTE ==========
     fname_lower = filename.lower()
-    if "forte" in fname_lower and "sora" in fname_lower:
-        parsed["nombre"] = "Sora no Otoshimono Forte"
+
+    # ========== FORZAR TÍTULO COMPLETO PARA FORTE ==========
+    if "forte" in fname_lower and ("sora" in fname_lower or "otoshimono" in fname_lower):
+        parsed["nombre"] = "Sora no Otoshimono Forte, Heaven’s Lost Property 2"
 
     episode = None
     is_ova = False
@@ -153,7 +154,6 @@ def extract_info(filename: str, caption: str = "") -> Dict[str, Any]:
     special_type = None
     fname = filename.lower()
 
-    # Evitar que las películas de Sora se detecten como episodios
     is_sora_movie = (
         "sora no otoshimono" in fname and 
         any(x in fname for x in ["final", "eternal", "my master", "tokeijikake", "angeloid of clockwork"])
@@ -165,7 +165,6 @@ def extract_info(filename: str, caption: str = "") -> Dict[str, Any]:
         is_part = False
         special_type = None
     else:
-        # PARTES
         part_match = re.search(r"(?:part|parte|cd|disc|pt)\s*[-–.]?\s*(\d{1,2})", fname)
         if part_match:
             is_part = True
@@ -177,8 +176,6 @@ def extract_info(filename: str, caption: str = "") -> Dict[str, Any]:
             num = re.search(r"(?:part|r)(\d+)", fname)
             if num:
                 episode = int(num.group(1))
-
-        # OVA / Special
         elif "ova" in fname:
             is_ova = True
             special_type = "OVA"
@@ -231,7 +228,6 @@ def classify(filename: str, mime: str = "", caption: str = "", tipo: str = None)
     caption_lower = (caption or "").lower()
     text = fname_lower + " " + caption_lower
 
-    # ========== FORZAR PELÍCULAS DE SORA NO OTOSHIMONO ==========
     if "sora no otoshimono" in text:
         if any(x in text for x in [
             "final eternal", "eternal my master", "my master",
@@ -239,7 +235,6 @@ def classify(filename: str, mime: str = "", caption: str = "", tipo: str = None)
             "the movie", "movie", "film", "pelicula", "película"
         ]):
             return "movies"
-
         if "forte" in text:
             return "series"
 
@@ -296,8 +291,11 @@ async def process_message(msg):
         elif isinstance(msg.media, MessageMediaDocument) and msg.media.document.thumbs:
             thumb_bytes = await client.download_media(msg.media, thumb=-1, file=BytesIO())
             thumbnail_b64 = base64.b64encode(thumb_bytes.getvalue()).decode()
-    except Exception:
-        pass
+        elif isinstance(msg.media, MessageMediaDocument) and mime.startswith("image/"):
+            thumb_bytes = await client.download_media(msg.media, file=BytesIO())
+            thumbnail_b64 = base64.b64encode(thumb_bytes.getvalue()).decode()
+    except Exception as e:
+        print(f"Error descargando thumbnail de {filename}: {e}")
 
     item = {
         "id": msg.id,
@@ -463,12 +461,12 @@ async def home(
 
         g = grouped[key]
 
-        # Preferir el título más largo y limpio
+        # Preferir el título más largo
         if item.get("title") and len(item["title"]) > len(g["title"] or ""):
             g["title"] = item["title"]
 
         # Preferir cualquier thumbnail disponible
-        if item.get("thumbnail") and not g["thumbnail"]:
+        if item.get("thumbnail"):
             g["thumbnail"] = item["thumbnail"]
 
         if item.get("date") and item["date"] > (g.get("latest_date") or ""):
@@ -482,6 +480,11 @@ async def home(
 
         if not item.get("is_photo") and item.get("size_mb", 0) > 0:
             g["episodes"].append(item)
+
+    # ========== FORZAR TÍTULO COMPLETO DESPUÉS DE AGRUPAR ==========
+    for key, g in grouped.items():
+        if "forte" in key:
+            g["title"] = "Sora no Otoshimono Forte, Heaven’s Lost Property 2"
 
     for g in grouped.values():
         g["episodes"].sort(key=lambda x: (

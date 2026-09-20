@@ -144,9 +144,15 @@ def extract_info(filename: str, caption: str = "") -> Dict[str, Any]:
 
     fname_lower = filename.lower()
 
-    # Forzar título completo para Forte
+    # Títulos forzados
     if "forte" in fname_lower and ("sora" in fname_lower or "otoshimono" in fname_lower):
         parsed["nombre"] = "Sora no Otoshimono Forte, Heaven’s Lost Property 2"
+
+    if "tokeijikake" in fname_lower or "angeloid of clockwork" in fname_lower:
+        parsed["nombre"] = "Sora no Otoshimono: Tokeijikake no Angeloid, Heaven’s Lost Property the Movie: The Angeloid of Clockwork"
+
+    if "final" in fname_lower and ("eternal" in fname_lower or "my master" in fname_lower):
+        parsed["nombre"] = "Sora no Otoshimono Final: Eternal My Master, Heaven’s Lost Property: My Eternal Master"
 
     episode = None
     is_ova = False
@@ -228,15 +234,14 @@ def classify(filename: str, mime: str = "", caption: str = "", tipo: str = None)
     caption_lower = (caption or "").lower()
     text = fname_lower + " " + caption_lower
 
-    # ========== FORZAR FORTE SIEMPRE A SERIES ==========
+    # ========== FORZAR CATEGORÍAS DE SORA NO OTOSHIMONO ==========
     if "forte" in text and ("sora" in text or "otoshimono" in text):
         return "series"
 
-    # Películas de Sora
-    if "sora no otoshimono" in text:
+    if "sora no otoshimono" in text or "heaven's lost property" in text or "heavens lost property" in text:
         if any(x in text for x in [
+            "tokeijikake", "angeloid of clockwork", "clockwork",
             "final eternal", "eternal my master", "my master",
-            "tokeijikake", "angeloid of clockwork",
             "the movie", "movie", "film", "pelicula", "película"
         ]):
             return "movies"
@@ -467,7 +472,6 @@ async def home(
         if item.get("title") and len(item["title"]) > len(g["title"] or ""):
             g["title"] = item["title"]
 
-        # Preferir cualquier thumbnail que exista
         if item.get("thumbnail"):
             g["thumbnail"] = item["thumbnail"]
 
@@ -483,10 +487,14 @@ async def home(
         if not item.get("is_photo") and item.get("size_mb", 0) > 0:
             g["episodes"].append(item)
 
-    # Forzar título completo
+    # ========== FORZAR TÍTULOS COMPLETOS ==========
     for key, g in grouped.items():
         if "forte" in key:
             g["title"] = "Sora no Otoshimono Forte, Heaven’s Lost Property 2"
+        if "tokeijikake" in key:
+            g["title"] = "Sora no Otoshimono: Tokeijikake no Angeloid, Heaven’s Lost Property the Movie: The Angeloid of Clockwork"
+        if "final eternal" in key or "my master" in key:
+            g["title"] = "Sora no Otoshimono Final: Eternal My Master, Heaven’s Lost Property: My Eternal Master"
 
     for g in grouped.values():
         g["episodes"].sort(key=lambda x: (

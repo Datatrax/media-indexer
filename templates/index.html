@@ -46,12 +46,11 @@
             object-fit: contain;
             border-radius: 8px;
             box-shadow: 0 0 40px rgba(0,0,0,0.6);
-            pointer-events: none; /* evita que el navegador intente abrir la imagen */
+            pointer-events: none;
             user-select: none;
             -webkit-user-select: none;
         }
 
-        /* Evita el zoom accidental en móvil al hacer doble tap */
         .no-zoom {
             touch-action: manipulation;
         }
@@ -158,7 +157,7 @@
             <div class="bg-gray-800 rounded-2xl overflow-hidden shadow-lg">
                 <div class="flex flex-col md:flex-row">
                     
-                    <!-- IMAGEN CLICKEABLE (mejorada para móvil) -->
+                    <!-- IMAGEN CLICKEABLE -->
                     <div class="md:w-52 lg:w-60 flex-shrink-0 bg-gray-700 cursor-zoom-in no-zoom" 
                          {% if series.thumbnail %}
                          onclick="openLightbox(event, '{{ series.thumbnail }}')"
@@ -254,10 +253,8 @@
                                     Episodios ({{ series.episodes|length }})
                                 </h3>
 
-                                {% set multi_season = series.seasons|length > 1 or series.ovas %}
-                                
-                                {% if multi_season %}
-                                    <!-- Temporadas desplegables -->
+                                <!-- Siempre mostramos desplegables (más lógico y uniforme) -->
+                                {% if series.seasons or series.ovas %}
                                     {% for season_num, eps in series.seasons.items() %}
                                     <details class="mb-2 last:mb-0">
                                         <summary class="cursor-pointer select-none flex items-center gap-2 py-1.5 text-xs font-medium text-gray-400 hover:text-blue-300 tracking-wide uppercase transition">
@@ -277,7 +274,6 @@
                                     </details>
                                     {% endfor %}
 
-                                    <!-- OVAs / Especiales también desplegable -->
                                     {% if series.ovas %}
                                     <details class="mb-2 last:mb-0">
                                         <summary class="cursor-pointer select-none flex items-center gap-2 py-1.5 text-xs font-medium text-gray-400 hover:text-blue-300 tracking-wide uppercase transition">
@@ -299,7 +295,7 @@
                                     </details>
                                     {% endif %}
                                 {% else %}
-                                    <!-- Vista plana (una sola temporada o sin temporadas) -->
+                                    <!-- Fallback por si no hay temporadas detectadas -->
                                     <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
                                         {% for ep in series.episodes %}
                                         <a href="{{ ep.link }}" target="_blank"
@@ -330,7 +326,7 @@
             {% endfor %}
         </div>
 
-        <!-- PAGINACIÓN MEJORADA -->
+        <!-- PAGINACIÓN -->
         {% if total_pages > 1 %}
         <div class="flex flex-col items-center gap-4 mt-12">
             <p class="text-sm text-gray-400">
@@ -391,7 +387,6 @@
 
     <script>
         function openLightbox(event, src) {
-            // Evita que el navegador móvil abra la imagen nativa
             if (event) {
                 event.preventDefault();
                 event.stopPropagation();
@@ -409,12 +404,10 @@
             document.body.style.overflow = '';
         }
 
-        // Cerrar con Escape
         document.addEventListener('keydown', function(e) {
             if (e.key === 'Escape') closeLightbox();
         });
 
-        // También cerrar con botón atrás del móvil (history)
         window.addEventListener('popstate', function() {
             closeLightbox();
         });

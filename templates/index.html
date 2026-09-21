@@ -211,32 +211,83 @@
                         </details>
 
                         <div class="border-t border-gray-700 pt-4">
-                            <h3 class="text-sm font-semibold text-gray-300 mb-2">
-                                {% if series.episodes and series.episodes[0].is_part %}
-                                    Partes ({{ series.episodes|length }})
-                                {% else %}
+                            {% if series.parts %}
+                                <h3 class="text-sm font-semibold text-gray-300 mb-2">
+                                    Partes ({{ series.parts|length }})
+                                </h3>
+                                <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+                                    {% for ep in series.parts %}
+                                    <a href="{{ ep.link }}" target="_blank"
+                                       class="flex items-center justify-between px-3 py-2 bg-gray-700 hover:bg-blue-600 rounded-lg text-sm transition">
+                                        <span class="text-green-400 font-medium">Part {{ ep.episode or "?" }}</span>
+                                        <span class="text-xs opacity-70">{{ ep.size_mb }} MB</span>
+                                    </a>
+                                    {% endfor %}
+                                </div>
+                            {% else %}
+                                <h3 class="text-sm font-semibold text-gray-300 mb-2">
                                     Episodios ({{ series.episodes|length }})
+                                </h3>
+
+                                {% set multi_season = series.seasons|length > 1 or series.ovas %}
+                                
+                                {% if multi_season %}
+                                    {% for season_num, eps in series.seasons.items() %}
+                                        <div class="mt-3 first:mt-0">
+                                            <p class="text-xs font-medium text-gray-400 mb-1.5 tracking-wide uppercase">
+                                                Temporada {{ season_num }}
+                                            </p>
+                                            <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+                                                {% for ep in eps %}
+                                                <a href="{{ ep.link }}" target="_blank"
+                                                   class="flex items-center justify-between px-3 py-2 bg-gray-700 hover:bg-blue-600 rounded-lg text-sm transition">
+                                                    <span>Ep {{ ep.episode }}</span>
+                                                    <span class="text-xs opacity-70">{{ ep.size_mb }} MB</span>
+                                                </a>
+                                                {% endfor %}
+                                            </div>
+                                        </div>
+                                    {% endfor %}
+
+                                    {% if series.ovas %}
+                                        <div class="mt-4">
+                                            <p class="text-xs font-medium text-gray-400 mb-1.5 tracking-wide uppercase">
+                                                OVAs / Especiales
+                                            </p>
+                                            <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+                                                {% for ep in series.ovas %}
+                                                <a href="{{ ep.link }}" target="_blank"
+                                                   class="flex items-center justify-between px-3 py-2 bg-gray-700 hover:bg-blue-600 rounded-lg text-sm transition">
+                                                    <span class="text-yellow-400 font-medium">
+                                                        {{ ep.special_type or "OVA" }}{% if ep.episode %} {{ ep.episode }}{% endif %}
+                                                    </span>
+                                                    <span class="text-xs opacity-70">{{ ep.size_mb }} MB</span>
+                                                </a>
+                                                {% endfor %}
+                                            </div>
+                                        </div>
+                                    {% endif %}
+                                {% else %}
+                                    <!-- Vista plana (una sola temporada o sin temporadas) -->
+                                    <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+                                        {% for ep in series.episodes %}
+                                        <a href="{{ ep.link }}" target="_blank"
+                                           class="flex items-center justify-between px-3 py-2 bg-gray-700 hover:bg-blue-600 rounded-lg text-sm transition">
+                                            <span>
+                                                {% if ep.is_ova %}
+                                                    <span class="text-yellow-400 font-medium">{{ ep.special_type or "OVA" }}{% if ep.episode %} {{ ep.episode }}{% endif %}</span>
+                                                {% elif ep.episode %}
+                                                    Ep {{ ep.episode }}
+                                                {% else %}
+                                                    Archivo
+                                                {% endif %}
+                                            </span>
+                                            <span class="text-xs opacity-70">{{ ep.size_mb }} MB</span>
+                                        </a>
+                                        {% endfor %}
+                                    </div>
                                 {% endif %}
-                            </h3>
-                            <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
-                                {% for ep in series.episodes %}
-                                <a href="{{ ep.link }}" target="_blank"
-                                   class="flex items-center justify-between px-3 py-2 bg-gray-700 hover:bg-blue-600 rounded-lg text-sm transition">
-                                    <span>
-                                        {% if ep.is_part %}
-                                            <span class="text-green-400 font-medium">Part {{ ep.episode or "?" }}</span>
-                                        {% elif ep.is_ova %}
-                                            <span class="text-yellow-400 font-medium">{{ ep.special_type or "OVA" }}{% if ep.episode %} {{ ep.episode }}{% endif %}</span>
-                                        {% elif ep.episode %}
-                                            Ep {{ ep.episode }}
-                                        {% else %}
-                                            Archivo
-                                        {% endif %}
-                                    </span>
-                                    <span class="text-xs opacity-70">{{ ep.size_mb }} MB</span>
-                                </a>
-                                {% endfor %}
-                            </div>
+                            {% endif %}
                         </div>
                     </div>
                 </div>

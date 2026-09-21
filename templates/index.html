@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
     <title>Biblioteca de Prozac</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
@@ -24,26 +24,36 @@
             transform: rotate(90deg);
         }
         
-        /* Lightbox */
+        /* Lightbox mejorado para móvil */
         .lightbox {
             display: none;
             position: fixed;
             inset: 0;
             background: rgba(0, 0, 0, 0.92);
-            z-index: 1000;
+            z-index: 9999;
             justify-content: center;
             align-items: center;
             cursor: zoom-out;
+            -webkit-overflow-scrolling: touch;
+            overscroll-behavior: contain;
         }
         .lightbox.active {
             display: flex;
         }
         .lightbox img {
-            max-width: 95vw;
-            max-height: 95vh;
+            max-width: 92vw;
+            max-height: 85vh;
             object-fit: contain;
             border-radius: 8px;
             box-shadow: 0 0 40px rgba(0,0,0,0.6);
+            pointer-events: none; /* evita que el navegador intente abrir la imagen */
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        /* Evita el zoom accidental en móvil al hacer doble tap */
+        .no-zoom {
+            touch-action: manipulation;
         }
     </style>
 </head>
@@ -148,12 +158,16 @@
             <div class="bg-gray-800 rounded-2xl overflow-hidden shadow-lg">
                 <div class="flex flex-col md:flex-row">
                     
-                    <!-- IMAGEN CLICKEABLE -->
-                    <div class="md:w-52 lg:w-60 flex-shrink-0 bg-gray-700 cursor-zoom-in" 
-                         {% if series.thumbnail %}onclick="openLightbox('{{ series.thumbnail }}')"{% endif %}>
+                    <!-- IMAGEN CLICKEABLE (mejorada para móvil) -->
+                    <div class="md:w-52 lg:w-60 flex-shrink-0 bg-gray-700 cursor-zoom-in no-zoom" 
+                         {% if series.thumbnail %}
+                         onclick="openLightbox(event, '{{ series.thumbnail }}')"
+                         {% endif %}>
                         {% if series.thumbnail %}
-                        <img src="{{ series.thumbnail }}" alt="{{ series.title }}" 
-                             class="w-full h-72 md:h-full object-cover object-top hover:opacity-90 transition">
+                        <img src="{{ series.thumbnail }}" 
+                             alt="{{ series.title }}" 
+                             class="w-full h-72 md:h-full object-cover object-top hover:opacity-90 transition pointer-events-none select-none"
+                             draggable="false">
                         {% else %}
                         <div class="w-full h-72 md:h-full flex items-center justify-center text-gray-500">
                             Sin imagen
@@ -376,7 +390,13 @@
     </div>
 
     <script>
-        function openLightbox(src) {
+        function openLightbox(event, src) {
+            // Evita que el navegador móvil abra la imagen nativa
+            if (event) {
+                event.preventDefault();
+                event.stopPropagation();
+            }
+
             const lightbox = document.getElementById('lightbox');
             const img = document.getElementById('lightbox-img');
             img.src = src;
@@ -389,8 +409,14 @@
             document.body.style.overflow = '';
         }
 
+        // Cerrar con Escape
         document.addEventListener('keydown', function(e) {
             if (e.key === 'Escape') closeLightbox();
+        });
+
+        // También cerrar con botón atrás del móvil (history)
+        window.addEventListener('popstate', function() {
+            closeLightbox();
         });
     </script>
 </body>

@@ -4,7 +4,7 @@ import secrets
 import base64
 from io import BytesIO
 from typing import Dict, Any, Set, List
-from collections import Counter
+from collections import Counter, defaultdict
 
 from telethon import TelegramClient, events
 from telethon.sessions import StringSession
@@ -131,6 +131,12 @@ def extract_info(filename: str, caption: str = "") -> Dict[str, Any]:
         clean = re.sub(r"\.(mkv|mp4|avi|mov|rar|zip)$", "", filename, flags=re.I)
         clean = re.sub(r"[\._]", " ", clean)
         clean = re.sub(r"\[.*?\]", "", clean)
+
+        # Eliminar patrones de temporada/episodio (S01E07, 1x07, etc.)
+        clean = re.sub(r"(?i)\s*[-–.]?\s*s\d{1,2}e\d{1,3}.*$", "", clean)
+        clean = re.sub(r"(?i)\s*[-–.]?\s*\d{1,2}x\d{1,3}.*$", "", clean)
+
+        # Eliminar partes, OVAs, etc.
         clean = re.sub(r"\s*[-–]\s*(ova|special|sp|especial|part|parte|cd|disc)?\s*\d{0,3}.*$", "", clean, flags=re.I)
         parsed["nombre"] = re.sub(r"\s+", " ", clean).strip()
 
@@ -145,12 +151,13 @@ def extract_info(filename: str, caption: str = "") -> Dict[str, Any]:
         parsed["nombre"] = "Sora no Otoshimono Final: Eternal My Master, Heaven’s Lost Property: My Eternal Master"
 
     episode = None
+    season = 1
     is_ova = False
     is_part = False
     special_type = None
     fname = filename.lower()
 
-    # Partes (válido también para películas)
+    # 1. Partes (válido también para películas)
     part_match = re.search(r"(?:part|parte|cd|disc|pt)\s*[-–.]?\s*(\d{1,2})", fname)
     if part_match:
         is_part = True
@@ -162,9 +169,20 @@ def extract_info(filename: str, caption: str = "") -> Dict[str, Any]:
         num = re.search(r"(?:part|r)(\d+)", fname)
         if num:
             episode = int(num.group(1))
-    # No detectar episodio normal en las películas conocidas
+
+    # 2. Patrones de temporada + episodio (S01E07, S1E7, 1x07, etc.)
+    elif season_ep_match := re.search(r"[sS](\d{1,2})[eE](\d{1,3})", fname):
+        season = int(season_ep_match.group(1))
+        episode = int(season_ep_match.group(2))
+    elif x_match := re.search(r"(\d{1,2})[xX](\d{1,3})", fname):
+        season = int(x_match.group(1))
+        episode = int(x_match.group(2))
+
+    # 3. No detectar episodio normal en las películas conocidas
     elif any(x in fname for x in ["tokeijikake", "angeloid of clockwork", "final eternal", "eternal my master"]):
         pass
+
+    # 4. OVAs / Specials / episodio simple
     else:
         if "ova" in fname:
             is_ova = True
@@ -201,7 +219,7 @@ def extract_info(filename: str, caption: str = "") -> Dict[str, Any]:
         "formato": parsed["formato"],
         "peso": parsed["peso"],
         "sinopsis": parsed["sinopsis"],
-        "season": 1,
+        "season": season,
         "episode": episode,
         "is_ova": is_ova,
         "is_part": is_part,
@@ -402,7 +420,7 @@ def build_groups(all_items: List[Dict]) -> Dict[str, Dict]:
         if not item.get("is_photo") and item.get("size_mb", 0) > 0:
             g["episodes"].append(item)
 
-    # Decidir categoría final + títulos bonitos
+    # Decidir categoría final + títulos bonitos + agrupar por temporada
     for key, g in grouped.items():
         # Título bonito Sora
         if "forte" in key:
@@ -436,11 +454,29 @@ def build_groups(all_items: List[Dict]) -> Dict[str, Dict]:
         else:
             g["final_category"] = "other"
 
-        # Ordenar episodios
+        # Ordenar episodios: OVAs/Partes primero, luego por temporada + episodio
         g["episodes"].sort(key=lambda x: (
             0 if x.get("is_ova") or x.get("is_part") else 1,
+            x.get("season") or 0,
             x.get("episode") or 999
         ))
+
+        # Agrupar para la vista
+        seasons = defaultdict(list)
+        ovas = []
+        parts = []
+
+        for ep in g["episodes"]:
+            if ep.get("is_part"):
+                parts.append(ep)
+            elif ep.get("is_ova"):
+                ovas.append(ep)
+            else:
+                seasons[ep.get("season") or 1].append(ep)
+
+        g["seasons"] = dict(sorted(seasons.items()))  # {1: [...], 2: [...], ...}
+        g["ovas"] = ovas
+        g["parts"] = parts
 
     return grouped
 

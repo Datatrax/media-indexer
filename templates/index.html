@@ -13,7 +13,6 @@
             display: none;
         }
 
-        /* Flecha de los desplegables de temporada */
         .season-arrow {
             display: inline-block;
             transition: transform 0.15s ease;
@@ -24,7 +23,6 @@
             transform: rotate(90deg);
         }
         
-        /* Lightbox mejorado para móvil */
         .lightbox {
             display: none;
             position: fixed;
@@ -250,23 +248,36 @@
                                 </div>
                             {% else %}
                                 <h3 class="text-sm font-semibold text-gray-300 mb-3">
-                                    Episodios ({{ series.episodes|length }})
+                                    {% if series.final_category == 'movies' %}
+                                        Películas ({{ series.episodes|length }})
+                                    {% else %}
+                                        Episodios ({{ series.episodes|length }})
+                                    {% endif %}
                                 </h3>
 
-                                <!-- Siempre mostramos desplegables (más lógico y uniforme) -->
                                 {% if series.seasons or series.ovas %}
                                     {% for season_num, eps in series.seasons.items() %}
                                     <details class="mb-2 last:mb-0">
                                         <summary class="cursor-pointer select-none flex items-center gap-2 py-1.5 text-xs font-medium text-gray-400 hover:text-blue-300 tracking-wide uppercase transition">
                                             <span class="season-arrow">▶</span>
-                                            Temporada {{ season_num }}
+                                            {% if series.final_category == 'movies' %}
+                                                Película {{ season_num }}
+                                            {% else %}
+                                                Temporada {{ season_num }}
+                                            {% endif %}
                                             <span class="text-gray-500 normal-case font-normal">({{ eps|length }})</span>
                                         </summary>
                                         <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 mt-2 mb-3">
                                             {% for ep in eps %}
                                             <a href="{{ ep.link }}" target="_blank"
                                                class="flex items-center justify-between px-3 py-2 bg-gray-700 hover:bg-blue-600 rounded-lg text-sm transition">
-                                                <span>Ep {{ ep.episode }}</span>
+                                                <span>
+                                                    {% if series.final_category == 'movies' %}
+                                                        {% if ep.episode %}Película {{ ep.episode }}{% else %}Archivo{% endif %}
+                                                    {% else %}
+                                                        Ep {{ ep.episode }}
+                                                    {% endif %}
+                                                </span>
                                                 <span class="text-xs opacity-70">{{ ep.size_mb }} MB</span>
                                             </a>
                                             {% endfor %}
@@ -295,7 +306,7 @@
                                     </details>
                                     {% endif %}
                                 {% else %}
-                                    <!-- Fallback por si no hay temporadas detectadas -->
+                                    <!-- Fallback -->
                                     <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
                                         {% for ep in series.episodes %}
                                         <a href="{{ ep.link }}" target="_blank"
@@ -304,7 +315,11 @@
                                                 {% if ep.is_ova %}
                                                     <span class="text-yellow-400 font-medium">{{ ep.special_type or "OVA" }}{% if ep.episode %} {{ ep.episode }}{% endif %}</span>
                                                 {% elif ep.episode %}
-                                                    Ep {{ ep.episode }}
+                                                    {% if series.final_category == 'movies' %}
+                                                        Película {{ ep.episode }}
+                                                    {% else %}
+                                                        Ep {{ ep.episode }}
+                                                    {% endif %}
                                                 {% else %}
                                                     Archivo
                                                 {% endif %}

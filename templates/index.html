@@ -68,36 +68,96 @@
             </p>
         </div>
 
-        <!-- BÚSQUEDA NORMAL (siempre visible) -->
+        <!-- ========== BÚSQUEDA UNIFICADA ========== -->
         <form method="get" class="mb-6">
-            <input type="hidden" name="category" value="{{ category }}">
             <input type="hidden" name="sort" value="{{ sort }}">
-            <!-- Limpiamos filtros avanzados al usar la búsqueda rápida -->
-            <input type="hidden" name="year" value="">
-            <input type="hidden" name="genero" value="">
-            <input type="hidden" name="estudio" value="">
-            
-            <div class="relative">
+
+            <!-- Barra principal -->
+            <div class="relative mb-3">
                 <input type="text" name="q" value="{{ q }}" 
-                       placeholder="Buscar por título..." 
+                       placeholder="Buscar por título, sinopsis..." 
                        class="w-full px-4 py-3.5 rounded-xl bg-gray-800 border border-gray-700 text-sm focus:outline-none focus:border-blue-500 pl-12 pr-12"
                        autocomplete="off">
                 <span class="absolute left-4 top-3.5 text-gray-400 text-lg">🔍</span>
                 
-                {% if q %}
-                <a href="?category={{ category }}&sort={{ sort }}" 
+                {% if q or year or genero or estudio or category != 'all' %}
+                <a href="?sort={{ sort }}" 
                    class="absolute right-4 top-3.5 text-gray-400 hover:text-white text-lg leading-none"
-                   title="Limpiar búsqueda">✕</a>
+                   title="Limpiar todo">✕</a>
                 {% endif %}
             </div>
+
+            <!-- Botón para desplegar avanzada -->
+            <details class="bg-gray-800 rounded-xl overflow-hidden" {% if year or genero or estudio or category != 'all' %}open{% endif %}>
+                <summary class="cursor-pointer px-4 py-3 text-sm font-medium text-blue-400 hover:text-blue-300 flex items-center gap-2">
+                    <span>⚙️ Búsqueda avanzada</span>
+                    <span class="text-xs text-gray-500 font-normal">(tipo, año, género, estudio)</span>
+                </summary>
+
+                <div class="px-4 pb-4 pt-2 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 border-t border-gray-700">
+                    
+                    <!-- Tipo -->
+                    <div>
+                        <label class="block text-xs text-gray-400 mb-1">Tipo</label>
+                        <select name="category" class="w-full px-3 py-2 rounded-lg bg-gray-700 border border-gray-600 text-sm focus:outline-none focus:border-blue-500">
+                            <option value="all" {{ 'selected' if category == 'all' else '' }}>Todos</option>
+                            <option value="series" {{ 'selected' if category == 'series' else '' }}>Series</option>
+                            <option value="movies" {{ 'selected' if category == 'movies' else '' }}>Películas</option>
+                            <option value="music" {{ 'selected' if category == 'music' else '' }}>Música</option>
+                        </select>
+                    </div>
+
+                    <!-- Año -->
+                    <div>
+                        <label class="block text-xs text-gray-400 mb-1">Año</label>
+                        <select name="year" class="w-full px-3 py-2 rounded-lg bg-gray-700 border border-gray-600 text-sm focus:outline-none focus:border-blue-500">
+                            <option value="">Todos los años</option>
+                            {% for y in all_years %}
+                            <option value="{{ y }}" {{ 'selected' if year == y|string else '' }}>{{ y }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <!-- Género -->
+                    <div>
+                        <label class="block text-xs text-gray-400 mb-1">Género</label>
+                        <select name="genero" class="w-full px-3 py-2 rounded-lg bg-gray-700 border border-gray-600 text-sm focus:outline-none focus:border-blue-500">
+                            <option value="">Todos los géneros</option>
+                            {% for g in all_genres %}
+                            <option value="{{ g }}" {{ 'selected' if genero == g else '' }}>{{ g }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <!-- Estudio -->
+                    <div>
+                        <label class="block text-xs text-gray-400 mb-1">Estudio</label>
+                        <select name="estudio" class="w-full px-3 py-2 rounded-lg bg-gray-700 border border-gray-600 text-sm focus:outline-none focus:border-blue-500">
+                            <option value="">Todos los estudios</option>
+                            {% for s in all_studios %}
+                            <option value="{{ s }}" {{ 'selected' if estudio == s else '' }}>{{ s }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="sm:col-span-2 lg:col-span-4 flex gap-3 pt-1">
+                        <button type="submit" class="px-5 py-2 bg-blue-600 hover:bg-blue-500 rounded-lg text-sm font-medium">
+                            Aplicar filtros
+                        </button>
+                        <a href="?sort={{ sort }}" class="px-5 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm">
+                            Limpiar todo
+                        </a>
+                    </div>
+                </div>
+            </details>
         </form>
 
-        <!-- Categorías -->
+        <!-- Categorías rápidas (siguen siendo útiles) -->
         <div class="flex flex-wrap gap-2 mb-4">
-            <a href="/?category=all&sort={{ sort }}" class="px-4 py-2 rounded-full text-sm font-medium {{ 'bg-blue-600' if category=='all' else 'bg-gray-700 hover:bg-gray-600' }}">Todos</a>
-            <a href="/?category=movies&sort={{ sort }}" class="px-4 py-2 rounded-full text-sm font-medium {{ 'bg-blue-600' if category=='movies' else 'bg-gray-700 hover:bg-gray-600' }}">Películas ({{ counts.movies }})</a>
-            <a href="/?category=series&sort={{ sort }}" class="px-4 py-2 rounded-full text-sm font-medium {{ 'bg-blue-600' if category=='series' else 'bg-gray-700 hover:bg-gray-600' }}">Series ({{ counts.series }})</a>
-            <a href="/?category=music&sort={{ sort }}" class="px-4 py-2 rounded-full text-sm font-medium {{ 'bg-blue-600' if category=='music' else 'bg-gray-700 hover:bg-gray-600' }}">Música ({{ counts.music }})</a>
+            <a href="/?category=all&sort={{ sort }}&q={{ q }}" class="px-4 py-2 rounded-full text-sm font-medium {{ 'bg-blue-600' if category=='all' else 'bg-gray-700 hover:bg-gray-600' }}">Todos</a>
+            <a href="/?category=movies&sort={{ sort }}&q={{ q }}" class="px-4 py-2 rounded-full text-sm font-medium {{ 'bg-blue-600' if category=='movies' else 'bg-gray-700 hover:bg-gray-600' }}">Películas ({{ counts.movies }})</a>
+            <a href="/?category=series&sort={{ sort }}&q={{ q }}" class="px-4 py-2 rounded-full text-sm font-medium {{ 'bg-blue-600' if category=='series' else 'bg-gray-700 hover:bg-gray-600' }}">Series ({{ counts.series }})</a>
+            <a href="/?category=music&sort={{ sort }}&q={{ q }}" class="px-4 py-2 rounded-full text-sm font-medium {{ 'bg-blue-600' if category=='music' else 'bg-gray-700 hover:bg-gray-600' }}">Música ({{ counts.music }})</a>
         </div>
 
         <!-- Ordenar por -->
@@ -117,69 +177,12 @@
             </a>
         </div>
 
-        <!-- Búsqueda avanzada -->
-        <details class="mb-6 bg-gray-800 rounded-xl p-4">
-            <summary class="cursor-pointer text-sm font-medium text-blue-400 hover:text-blue-300">
-                🔍 Búsqueda avanzada
-            </summary>
-            
-            <form method="get" class="mt-4 grid grid-cols-1 md:grid-cols-4 gap-4">
-                <input type="hidden" name="category" value="{{ category }}">
-                <input type="hidden" name="sort" value="{{ sort }}">
-                
-                <div>
-                    <label class="block text-xs text-gray-400 mb-1">Buscar texto (título, sinopsis...)</label>
-                    <input type="text" name="q" value="{{ q }}" placeholder="Cualquier texto..."
-                           class="w-full px-3 py-2 rounded-lg bg-gray-700 border border-gray-600 text-sm focus:outline-none focus:border-blue-500">
-                </div>
-
-                <div>
-                    <label class="block text-xs text-gray-400 mb-1">Año</label>
-                    <select name="year" class="w-full px-3 py-2 rounded-lg bg-gray-700 border border-gray-600 text-sm focus:outline-none focus:border-blue-500">
-                        <option value="">Todos los años</option>
-                        {% for y in all_years %}
-                        <option value="{{ y }}" {{ 'selected' if year == y|string else '' }}>{{ y }}</option>
-                        {% endfor %}
-                    </select>
-                </div>
-
-                <div>
-                    <label class="block text-xs text-gray-400 mb-1">Género</label>
-                    <select name="genero" class="w-full px-3 py-2 rounded-lg bg-gray-700 border border-gray-600 text-sm focus:outline-none focus:border-blue-500">
-                        <option value="">Todos los géneros</option>
-                        {% for g in all_genres %}
-                        <option value="{{ g }}" {{ 'selected' if genero == g else '' }}>{{ g }}</option>
-                        {% endfor %}
-                    </select>
-                </div>
-
-                <div>
-                    <label class="block text-xs text-gray-400 mb-1">Estudio</label>
-                    <select name="estudio" class="w-full px-3 py-2 rounded-lg bg-gray-700 border border-gray-600 text-sm focus:outline-none focus:border-blue-500">
-                        <option value="">Todos los estudios</option>
-                        {% for s in all_studios %}
-                        <option value="{{ s }}" {{ 'selected' if estudio == s else '' }}>{{ s }}</option>
-                        {% endfor %}
-                    </select>
-                </div>
-
-                <div class="md:col-span-4 flex gap-3">
-                    <button type="submit" class="px-5 py-2 bg-blue-600 hover:bg-blue-500 rounded-lg text-sm font-medium">
-                        Aplicar filtros
-                    </button>
-                    <a href="/?category={{ category }}&sort={{ sort }}" class="px-5 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm">
-                        Limpiar filtros
-                    </a>
-                </div>
-            </form>
-        </details>
-
+        <!-- LISTADO -->
         <div class="space-y-6">
             {% for series in items %}
             <div class="bg-gray-800 rounded-2xl overflow-hidden shadow-lg">
                 <div class="flex flex-col md:flex-row">
                     
-                    <!-- IMAGEN CLICKEABLE -->
                     <div class="md:w-52 lg:w-60 flex-shrink-0 bg-gray-700 cursor-zoom-in no-zoom" 
                          {% if series.thumbnail %}
                          onclick="openLightbox(event, '{{ series.thumbnail }}')"

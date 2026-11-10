@@ -139,7 +139,6 @@ def extract_info(filename: str, caption: str = "") -> Dict[str, Any]:
         clean = re.sub(r"\[.*?\]", "", clean).strip()
 
         if is_music_file:
-            # Separar "Artista - Canción"
             if " - " in clean or " – " in clean:
                 parts = re.split(r"\s*[-–]\s*", clean, 1)
                 if len(parts) == 2:
@@ -350,6 +349,12 @@ async def process_message(msg):
         "original_category": tipo_detectado
     }
 
+    # Forzar fotos con metadata de música a la categoría music
+    if item["is_photo"] and (info.get("artista") or info.get("album") or info.get("sinopsis") or info.get("label")):
+        if any(x in (caption or "").lower() for x in ["artista", "album", "álbum", "label", "sello", "género", "genero", "fecha"]):
+            tipo_detectado = "music"
+            item["original_category"] = "music"
+
     catalog[tipo_detectado].append(item)
     return item
 
@@ -384,7 +389,6 @@ def build_groups(all_items: List[Dict]) -> Dict[str, Dict]:
     grouped = {}
 
     for item in all_items:
-        # Clave de agrupación inteligente
         if item.get("original_category") == "music":
             if item.get("album"):
                 key = normalize_title(item["album"])
@@ -472,7 +476,6 @@ def build_groups(all_items: List[Dict]) -> Dict[str, Dict]:
         else:
             g["final_category"] = "other"
 
-        # Orden
         if g.get("final_category") == "music":
             g["episodes"].sort(key=lambda x: x.get("id", 0))
         else:

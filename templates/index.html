@@ -7,12 +7,28 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         :root {
-            --accent: #8b5cf6;
-            --accent-hover: #7c3aed;
+            --accent: #a855f7;
+            --accent-hover: #9333ea;
+            --bg: #0c0a14;
+            --card: #16131f;
+            --border: #2e2a3d;
         }
         body.section-music {
             --accent: #1db954;
             --accent-hover: #1ed760;
+            --bg: #0a0a0a;
+            --card: #121212;
+            --border: #282828;
+        }
+
+        body {
+            background-color: var(--bg);
+            transition: background-color 0.3s ease;
+        }
+
+        .card {
+            background-color: var(--card);
+            border: 1px solid var(--border);
         }
 
         details > summary { list-style: none; }
@@ -22,7 +38,6 @@
             display: inline-block;
             transition: transform 0.15s ease;
             font-size: 0.65em;
-            width: 1em;
         }
         details[open] > summary .season-arrow {
             transform: rotate(90deg);
@@ -32,7 +47,7 @@
             display: none;
             position: fixed;
             inset: 0;
-            background: rgba(0, 0, 0, 0.92);
+            background: rgba(0,0,0,0.93);
             z-index: 9999;
             justify-content: center;
             align-items: center;
@@ -46,360 +61,353 @@
             border-radius: 8px;
         }
 
-        /* ===== REPRODUCTOR ===== */
+        /* Reproductor */
         #player-bar {
             position: fixed;
             bottom: 0;
             left: 0;
             right: 0;
-            background: #0f0f0f;
-            border-top: 1px solid #2a2a2a;
+            background: #000;
+            border-top: 1px solid #222;
             z-index: 1000;
-            transition: all 0.3s ease;
+            transition: height 0.25s ease;
         }
+        #player-bar.collapsed { height: 68px; }
+        #player-bar.expanded { height: 150px; }
 
-        #player-bar.collapsed {
-            height: 64px;
-        }
-        #player-bar.expanded {
-            height: 140px;
-        }
-
-        body.has-player {
-            padding-bottom: 80px;
-        }
-        body.has-player.expanded-player {
-            padding-bottom: 160px;
-        }
+        body.has-player { padding-bottom: 80px; }
+        body.has-player.expanded-player { padding-bottom: 170px; }
 
         .progress-bar {
             -webkit-appearance: none;
             appearance: none;
-            height: 4px;
+            height: 5px;
             background: #333;
-            border-radius: 2px;
+            border-radius: 3px;
             outline: none;
+            cursor: pointer;
         }
         .progress-bar::-webkit-slider-thumb {
             -webkit-appearance: none;
-            width: 12px;
-            height: 12px;
+            width: 14px;
+            height: 14px;
             background: var(--accent);
             border-radius: 50%;
             cursor: pointer;
         }
     </style>
 </head>
-<body class="bg-gray-950 text-white min-h-screen {{ 'section-music' if section == 'music' else '' }}">
+<body class="text-white min-h-screen {{ 'section-music' if section == 'music' else '' }}">
 
-    <div class="container mx-auto px-4 py-6 max-w-6xl">
+<div class="container mx-auto px-4 py-6 max-w-6xl">
 
-        <!-- ENCABEZADO + SELECTOR DE SECCIÓN -->
-        <div class="mb-8">
-            <h1 class="text-3xl md:text-4xl font-bold tracking-tight mb-4">Biblioteca de Prozac</h1>
+    <!-- Header + Secciones -->
+    <div class="mb-8">
+        <h1 class="text-3xl md:text-4xl font-bold mb-5">Biblioteca de Prozac</h1>
 
-            <!-- Botones de sección -->
-            <div class="flex gap-3 mb-6">
-                <a href="?section=cine&sort={{ sort }}" 
-                   class="px-6 py-2.5 rounded-full text-sm font-medium transition
-                          {{ 'bg-purple-600 text-white' if section != 'music' else 'bg-gray-800 text-gray-300 hover:bg-gray-700' }}">
-                    Cine & Series
-                </a>
-                <a href="?section=music&sort={{ sort }}" 
-                   class="px-6 py-2.5 rounded-full text-sm font-medium transition
-                          {{ 'bg-green-500 text-black' if section == 'music' else 'bg-gray-800 text-gray-300 hover:bg-gray-700' }}">
-                    Música
-                </a>
-            </div>
-
-            <p class="text-gray-400 text-sm">
-                Total archivos: <span class="text-white font-medium">{{ total }}</span> · 
-                Series: {{ counts.series }} · 
-                Películas: {{ counts.movies }} · 
-                Música: {{ counts.music }}
-            </p>
+        <div class="flex gap-3 mb-5">
+            <a href="?section=cine&sort={{ sort }}"
+               class="px-6 py-2.5 rounded-full text-sm font-semibold transition
+                      {{ 'bg-purple-600 text-white' if section != 'music' else 'bg-gray-800 text-gray-300 hover:bg-gray-700' }}">
+                Cine & Series
+            </a>
+            <a href="?section=music&sort={{ sort }}"
+               class="px-6 py-2.5 rounded-full text-sm font-semibold transition
+                      {{ 'bg-green-500 text-black' if section == 'music' else 'bg-gray-800 text-gray-300 hover:bg-gray-700' }}">
+                Música
+            </a>
         </div>
 
-        <!-- BÚSQUEDA -->
-        <form method="get" class="mb-6">
-            <input type="hidden" name="section" value="{{ section }}">
-            <input type="hidden" name="sort" value="{{ sort }}">
+        <p class="text-gray-400 text-sm">
+            Total: <span class="text-white">{{ total }}</span> · 
+            Series: {{ counts.series }} · 
+            Películas: {{ counts.movies }} · 
+            Música: {{ counts.music }}
+        </p>
+    </div>
 
-            <div class="relative mb-3">
-                <input type="text" name="q" value="{{ q }}" 
-                       placeholder="Buscar..." 
-                       class="w-full px-4 py-3.5 rounded-xl bg-gray-900 border border-gray-800 text-sm focus:outline-none focus:border-gray-600 pl-12">
-                <span class="absolute left-4 top-3.5 text-gray-500">🔍</span>
-            </div>
-        </form>
-
-        <!-- FILTROS RÁPIDOS (solo en cine) -->
-        {% if section != 'music' %}
-        <div class="flex flex-wrap gap-2 mb-4">
-            <a href="?section=cine&category=all&sort={{ sort }}" class="px-4 py-1.5 rounded-full text-sm {{ 'bg-purple-600' if category=='all' else 'bg-gray-800 hover:bg-gray-700' }}">Todos</a>
-            <a href="?section=cine&category=movies&sort={{ sort }}" class="px-4 py-1.5 rounded-full text-sm {{ 'bg-purple-600' if category=='movies' else 'bg-gray-800 hover:bg-gray-700' }}">Películas ({{ counts.movies }})</a>
-            <a href="?section=cine&category=series&sort={{ sort }}" class="px-4 py-1.5 rounded-full text-sm {{ 'bg-purple-600' if category=='series' else 'bg-gray-800 hover:bg-gray-700' }}">Series ({{ counts.series }})</a>
+    <!-- Búsqueda -->
+    <form method="get" class="mb-6">
+        <input type="hidden" name="section" value="{{ section }}">
+        <input type="hidden" name="sort" value="{{ sort }}">
+        <div class="relative">
+            <input type="text" name="q" value="{{ q }}" placeholder="Buscar..."
+                   class="w-full px-4 py-3.5 rounded-xl bg-black/40 border border-gray-700 text-sm focus:outline-none pl-12">
+            <span class="absolute left-4 top-3.5 text-gray-500">🔍</span>
         </div>
-        {% endif %}
+    </form>
 
-        <!-- LISTADO -->
-        <div class="space-y-6">
-            {% for series in items %}
-            <div class="bg-gray-900 rounded-2xl overflow-hidden border border-gray-800">
-                <div class="flex flex-col md:flex-row">
-                    
-                    <!-- Portada -->
-                    <div class="md:w-48 lg:w-56 flex-shrink-0 bg-gray-800 cursor-pointer"
-                         {% if series.thumbnail %}onclick="openLightbox(event, '{{ series.thumbnail }}')"{% endif %}>
-                        {% if series.thumbnail %}
-                        <img src="{{ series.thumbnail }}" class="w-full h-64 md:h-full object-cover" alt="">
-                        {% else %}
-                        <div class="w-full h-64 md:h-full flex items-center justify-center text-gray-600">Sin imagen</div>
-                        {% endif %}
+    <!-- Categorías rápidas (solo cine) -->
+    {% if section != 'music' %}
+    <div class="flex flex-wrap gap-2 mb-5">
+        <a href="?section=cine&category=all&sort={{ sort }}" class="px-4 py-1.5 rounded-full text-sm {{ 'bg-purple-600' if category=='all' else 'bg-gray-800 hover:bg-gray-700' }}">Todos</a>
+        <a href="?section=cine&category=movies&sort={{ sort }}" class="px-4 py-1.5 rounded-full text-sm {{ 'bg-purple-600' if category=='movies' else 'bg-gray-800 hover:bg-gray-700' }}">Películas ({{ counts.movies }})</a>
+        <a href="?section=cine&category=series&sort={{ sort }}" class="px-4 py-1.5 rounded-full text-sm {{ 'bg-purple-600' if category=='series' else 'bg-gray-800 hover:bg-gray-700' }}">Series ({{ counts.series }})</a>
+    </div>
+    {% endif %}
+
+    <!-- LISTADO -->
+    <div class="space-y-5">
+        {% for series in items %}
+        <div class="card rounded-2xl overflow-hidden">
+            <div class="flex flex-col md:flex-row">
+                <!-- Portada -->
+                <div class="md:w-48 lg:w-52 flex-shrink-0 bg-black cursor-pointer"
+                     {% if series.thumbnail %}onclick="openLightbox(event, '{{ series.thumbnail }}')"{% endif %}>
+                    {% if series.thumbnail %}
+                    <img src="{{ series.thumbnail }}" class="w-full h-64 md:h-full object-cover" alt="">
+                    {% else %}
+                    <div class="w-full h-64 md:h-full flex items-center justify-center text-gray-600">Sin imagen</div>
+                    {% endif %}
+                </div>
+
+                <div class="flex-1 p-5">
+                    <h2 class="text-xl font-bold mb-1">{{ series.title }}</h2>
+
+                    <div class="text-sm text-gray-400 mb-2 flex flex-wrap gap-x-3">
+                        {% if series.year %}<span>{{ series.year }}</span>{% endif %}
+                        {% if series.artista %}<span class="text-green-400">{{ series.artista }}</span>{% endif %}
+                        {% if series.label %}<span>{{ series.label }}</span>{% endif %}
+                        {% if series.estudio %}<span>{{ series.estudio }}</span>{% endif %}
                     </div>
 
-                    <div class="flex-1 p-5">
-                        <h2 class="text-xl font-bold mb-1">{{ series.title }}</h2>
+                    <!-- Géneros clickeables -->
+                    {% if series.genero %}
+                    <p class="text-sm mb-3">
+                        {% for g in series.genero.split(',') %}
+                        <a href="?section={{ section }}&q={{ g.strip()|urlencode }}&sort={{ sort }}"
+                           class="inline-block mr-2 mb-1 px-2.5 py-0.5 rounded-full text-xs
+                                  {{ 'bg-green-900/60 text-green-300 hover:bg-green-800' if section == 'music' else 'bg-purple-900/50 text-purple-300 hover:bg-purple-800' }}">
+                            {{ g.strip() }}
+                        </a>
+                        {% endfor %}
+                    </p>
+                    {% endif %}
 
-                        <div class="text-sm text-gray-400 mb-2 flex flex-wrap gap-x-3">
-                            {% if series.year %}<span>{{ series.year }}</span>{% endif %}
-                            {% if series.artista %}<span class="text-green-400">{{ series.artista }}</span>{% endif %}
-                            {% if series.label %}<span>{{ series.label }}</span>{% endif %}
-                            {% if series.estudio %}<span>{{ series.estudio }}</span>{% endif %}
-                        </div>
-
-                        {% if series.genero %}
-                        <p class="text-sm mb-3 text-purple-400">
-                            {% for g in series.genero.split(',') %}
-                                <span class="mr-2">{{ g.strip() }}</span>
-                            {% endfor %}
-                        </p>
-                        {% endif %}
-
-                        <!-- Ficha completa -->
-                        <details class="mb-4">
-                            <summary class="cursor-pointer text-sm text-gray-400 hover:text-white">▼ Ver ficha completa</summary>
-                            <div class="mt-3 text-sm text-gray-300 space-y-1 bg-black/40 p-4 rounded-xl">
-                                {% if series.artista %}<p><span class="text-gray-500">Artista:</span> {{ series.artista }}</p>{% endif %}
-                                {% if series.album %}<p><span class="text-gray-500">Álbum:</span> {{ series.album }}</p>{% endif %}
-                                {% if series.label %}<p><span class="text-gray-500">Sello:</span> {{ series.label }}</p>{% endif %}
-                                {% if series.productor %}<p><span class="text-gray-500">Productor:</span> {{ series.productor }}</p>{% endif %}
-                                {% if series.sinopsis %}
-                                <div class="mt-3 pt-3 border-t border-gray-700">
-                                    <p class="text-gray-500 mb-1">Descripción:</p>
-                                    <p>{{ series.sinopsis }}</p>
-                                </div>
-                                {% endif %}
+                    <details class="mb-4">
+                        <summary class="cursor-pointer text-sm text-gray-400 hover:text-white">▼ Ver ficha completa</summary>
+                        <div class="mt-3 text-sm text-gray-300 space-y-1 bg-black/30 p-4 rounded-xl">
+                            {% if series.artista %}<p><span class="text-gray-500">Artista:</span> {{ series.artista }}</p>{% endif %}
+                            {% if series.album %}<p><span class="text-gray-500">Álbum:</span> {{ series.album }}</p>{% endif %}
+                            {% if series.label %}<p><span class="text-gray-500">Sello:</span> {{ series.label }}</p>{% endif %}
+                            {% if series.productor %}<p><span class="text-gray-500">Productor:</span> {{ series.productor }}</p>{% endif %}
+                            {% if series.sinopsis %}
+                            <div class="mt-3 pt-3 border-t border-gray-700">
+                                <p class="text-gray-500 mb-1">Descripción:</p>
+                                <p>{{ series.sinopsis }}</p>
                             </div>
-                        </details>
-
-                        <!-- Contenido -->
-                        <div class="border-t border-gray-800 pt-4">
-                            {% if series.final_category == 'music' %}
-                                <h3 class="text-sm font-semibold text-gray-300 mb-3">
-                                    {% if series.episodes|length == 1 %}Single / EP{% else %}Pistas ({{ series.episodes|length }}){% endif %}
-                                </h3>
-                                <div class="space-y-2">
-                                    {% for ep in series.episodes %}
-                                    <div class="flex items-center gap-3 bg-gray-800/60 hover:bg-gray-800 rounded-xl px-3 py-2 transition">
-                                        {% if ep.thumbnail %}
-                                        <img src="{{ ep.thumbnail }}" class="w-11 h-11 rounded object-cover flex-shrink-0">
-                                        {% else %}
-                                        <div class="w-11 h-11 rounded bg-gray-700 flex items-center justify-center text-gray-500">♪</div>
-                                        {% endif %}
-
-                                        <button onclick="playTrack({{ ep.id }}, '{{ ep.title|e }}', '{{ series.artista or series.title|e }}', '{{ ep.thumbnail or series.thumbnail or '' }}', {{ loop.index0 }})"
-                                                class="w-9 h-9 rounded-full flex items-center justify-center text-black"
-                                                style="background: var(--accent)">
-                                            ▶
-                                        </button>
-
-                                        <div class="flex-1 min-w-0">
-                                            <p class="font-medium text-sm truncate">{{ ep.title }}</p>
-                                            <p class="text-xs text-gray-500">{{ ep.size_mb }} MB</p>
-                                        </div>
-
-                                        <a href="/stream/{{ ep.id }}" download class="text-xs px-3 py-1 bg-gray-700 hover:bg-gray-600 rounded-lg">Descargar</a>
-                                    </div>
-                                    {% endfor %}
-                                </div>
-                            {% else %}
-                                <!-- Series / Películas (igual que antes) -->
-                                <h3 class="text-sm font-semibold text-gray-300 mb-3">
-                                    {% if series.final_category == 'movies' %}Películas{% else %}Episodios{% endif %}
-                                    ({{ series.episodes|length }})
-                                </h3>
-                                <!-- Aquí puedes dejar la lógica de temporadas que ya tenías -->
-                                <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
-                                    {% for ep in series.episodes %}
-                                    <a href="{{ ep.link }}" target="_blank"
-                                       class="flex items-center justify-between px-3 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-sm">
-                                        <span>
-                                            {% if ep.episode %}Ep {{ ep.episode }}{% else %}Archivo{% endif %}
-                                        </span>
-                                        <span class="text-xs text-gray-500">{{ ep.size_mb }} MB</span>
-                                    </a>
-                                    {% endfor %}
-                                </div>
                             {% endif %}
                         </div>
+                    </details>
+
+                    <div class="border-t border-gray-800 pt-4">
+                        {% if series.final_category == 'music' %}
+                            <h3 class="text-sm font-semibold text-gray-300 mb-3">
+                                {% if series.episodes|length == 1 %}Single / EP{% else %}Pistas ({{ series.episodes|length }}){% endif %}
+                            </h3>
+                            <div class="space-y-2">
+                                {% for ep in series.episodes %}
+                                <div class="flex items-center gap-3 bg-black/30 hover:bg-black/50 rounded-xl px-3 py-2.5 transition">
+                                    {% if ep.thumbnail %}
+                                    <img src="{{ ep.thumbnail }}" class="w-11 h-11 rounded object-cover">
+                                    {% else %}
+                                    <div class="w-11 h-11 rounded bg-gray-800 flex items-center justify-center text-gray-500">♪</div>
+                                    {% endif %}
+
+                                    <button onclick="playTrack({{ ep.id }}, '{{ ep.title|e }}', '{{ series.artista or series.title|e }}', '{{ ep.thumbnail or series.thumbnail or '' }}')"
+                                            class="w-9 h-9 rounded-full flex items-center justify-center text-black font-bold"
+                                            style="background: var(--accent)">▶</button>
+
+                                    <div class="flex-1 min-w-0">
+                                        <p class="font-medium text-sm truncate">{{ ep.title }}</p>
+                                        <p class="text-xs text-gray-500">{{ ep.size_mb }} MB</p>
+                                    </div>
+
+                                    <a href="/stream/{{ ep.id }}" download class="text-xs px-3 py-1.5 bg-gray-800 hover:bg-gray-700 rounded-lg">Descargar</a>
+                                </div>
+                                {% endfor %}
+                            </div>
+                        {% else %}
+                            <h3 class="text-sm font-semibold text-gray-300 mb-3">
+                                {% if series.final_category == 'movies' %}Películas{% else %}Episodios{% endif %}
+                                ({{ series.episodes|length }})
+                            </h3>
+                            <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+                                {% for ep in series.episodes %}
+                                <a href="{{ ep.link }}" target="_blank"
+                                   class="flex items-center justify-between px-3 py-2 bg-black/30 hover:bg-black/50 rounded-lg text-sm">
+                                    <span>{% if ep.episode %}Ep {{ ep.episode }}{% else %}Archivo{% endif %}</span>
+                                    <span class="text-xs text-gray-500">{{ ep.size_mb }} MB</span>
+                                </a>
+                                {% endfor %}
+                            </div>
+                        {% endif %}
                     </div>
                 </div>
             </div>
-            {% else %}
-            <div class="text-center py-20 text-gray-500">No se encontraron resultados</div>
-            {% endfor %}
         </div>
+        {% else %}
+        <div class="text-center py-20 text-gray-500">No se encontraron resultados</div>
+        {% endfor %}
+    </div>
+</div>
+
+<!-- Lightbox -->
+<div id="lightbox" class="lightbox" onclick="closeLightbox()">
+    <img id="lightbox-img" src="" alt="">
+</div>
+
+<!-- ===== REPRODUCTOR ===== -->
+<div id="player-bar" class="collapsed hidden">
+    <!-- Versión contraída -->
+    <div id="player-collapsed" class="h-[68px] px-4 flex items-center gap-3 cursor-pointer" onclick="togglePlayerSize()">
+        <img id="cover-mini" class="w-11 h-11 rounded object-cover bg-gray-800">
+        <div class="flex-1 min-w-0">
+            <p id="title-mini" class="text-sm font-medium truncate">—</p>
+            <div class="w-full bg-gray-800 h-1 rounded mt-1.5">
+                <div id="progress-mini" class="h-1 rounded" style="background: var(--accent); width: 0%"></div>
+            </div>
+        </div>
+        <button onclick="event.stopPropagation(); togglePlay()" id="btn-play-mini"
+                class="w-9 h-9 rounded-full flex items-center justify-center text-black" style="background: var(--accent)">▶</button>
     </div>
 
-    <!-- LIGHTBOX -->
-    <div id="lightbox" class="lightbox" onclick="closeLightbox()">
-        <img id="lightbox-img" src="" alt="">
-    </div>
-
-    <!-- ===== REPRODUCTOR ===== -->
-    <div id="player-bar" class="collapsed">
-        <!-- Versión contraída -->
-        <div id="player-collapsed" class="h-16 px-4 flex items-center gap-3 cursor-pointer" onclick="togglePlayer()">
-            <img id="player-cover-mini" class="w-10 h-10 rounded object-cover bg-gray-800">
+    <!-- Versión expandida -->
+    <div id="player-expanded" class="hidden px-4 py-3">
+        <div class="flex items-center gap-4 mb-3">
+            <img id="cover-full" class="w-14 h-14 rounded-lg object-cover bg-gray-800">
             <div class="flex-1 min-w-0">
-                <p id="player-title-mini" class="text-sm font-medium truncate">Selecciona una pista</p>
-                <div class="w-full bg-gray-800 h-1 rounded mt-1">
-                    <div id="progress-mini" class="h-1 rounded" style="background: var(--accent); width: 0%"></div>
-                </div>
+                <p id="title-full" class="font-medium truncate">—</p>
+                <p id="artist-full" class="text-xs text-gray-400 truncate"></p>
             </div>
-            <button onclick="event.stopPropagation(); togglePlay()" id="btn-play-mini" class="w-8 h-8 rounded-full flex items-center justify-center text-black text-sm" style="background: var(--accent)">▶</button>
+            <button onclick="togglePlayerSize()" class="text-gray-400 hover:text-white text-lg">✕</button>
         </div>
 
-        <!-- Versión expandida -->
-        <div id="player-expanded" class="hidden px-4 py-3">
-            <div class="flex items-center gap-4 mb-2">
-                <img id="player-cover" class="w-14 h-14 rounded-lg object-cover bg-gray-800">
-                <div class="flex-1 min-w-0">
-                    <p id="player-title" class="font-medium truncate">Selecciona una pista</p>
-                    <p id="player-artist" class="text-xs text-gray-400 truncate"></p>
-                </div>
-                <button onclick="togglePlayer()" class="text-gray-400 hover:text-white text-sm">✕</button>
-            </div>
+        <div class="flex items-center gap-3 mb-2">
+            <span id="current-time" class="text-xs text-gray-400 w-10">0:00</span>
+            <input type="range" id="progress" class="progress-bar flex-1" value="0" min="0" max="1000">
+            <span id="total-time" class="text-xs text-gray-400 w-10 text-right">0:00</span>
+        </div>
 
-            <div class="flex items-center gap-3 mb-1">
-                <span id="current-time" class="text-xs text-gray-400 w-10">0:00</span>
-                <input type="range" id="progress" class="progress-bar flex-1" value="0" min="0" max="100" oninput="seek(this.value)">
-                <span id="total-time" class="text-xs text-gray-400 w-10 text-right">0:00</span>
-            </div>
-
-            <div class="flex items-center justify-center gap-6 mt-2">
-                <button onclick="prevTrack()" class="text-gray-400 hover:text-white text-xl">⏮</button>
-                <button id="btn-play" onclick="togglePlay()" class="w-12 h-12 rounded-full flex items-center justify-center text-black text-xl" style="background: var(--accent)">▶</button>
-                <button onclick="nextTrack()" class="text-gray-400 hover:text-white text-xl">⏭</button>
-                <input type="range" id="volume" min="0" max="1" step="0.05" value="0.8" class="w-20 progress-bar" oninput="setVolume(this.value)">
-            </div>
+        <div class="flex items-center justify-center gap-6">
+            <button onclick="seekRelative(-10)" class="text-gray-400 hover:text-white text-xl">⏪</button>
+            <button id="btn-play" onclick="togglePlay()" class="w-12 h-12 rounded-full flex items-center justify-center text-black text-xl" style="background: var(--accent)">▶</button>
+            <button onclick="seekRelative(10)" class="text-gray-400 hover:text-white text-xl">⏩</button>
+            <input type="range" id="volume" min="0" max="1" step="0.05" value="0.85" class="w-24 progress-bar" oninput="audio.volume = this.value">
         </div>
     </div>
+</div>
 
-    <audio id="audio" preload="metadata"></audio>
+<audio id="audio" preload="metadata"></audio>
 
-    <script>
-        const audio = document.getElementById('audio');
-        const playerBar = document.getElementById('player-bar');
-        let playlist = [];
-        let currentIndex = -1;
-        let isExpanded = false;
+<script>
+    const audio = document.getElementById('audio');
+    const playerBar = document.getElementById('player-bar');
+    const progress = document.getElementById('progress');
+    let isSeeking = false;
+    let isExpanded = false;
 
-        function playTrack(id, title, artist, cover, index) {
-            currentIndex = index;
-            audio.src = `/stream/${id}`;
-            document.getElementById('player-title').textContent = title;
-            document.getElementById('player-title-mini').textContent = title;
-            document.getElementById('player-artist').textContent = artist || '';
-            document.getElementById('player-cover').src = cover || '';
-            document.getElementById('player-cover-mini').src = cover || '';
+    function playTrack(id, title, artist, cover) {
+        audio.src = `/stream/${id}`;
+        document.getElementById('title-full').textContent = title;
+        document.getElementById('title-mini').textContent = title;
+        document.getElementById('artist-full').textContent = artist || '';
+        document.getElementById('cover-full').src = cover || '';
+        document.getElementById('cover-mini').src = cover || '';
 
-            playerBar.classList.remove('hidden');
-            document.body.classList.add('has-player');
+        playerBar.classList.remove('hidden');
+        document.body.classList.add('has-player');
+        audio.play();
+        updateButtons(true);
+    }
+
+    function togglePlay() {
+        if (audio.paused) {
             audio.play();
-            updatePlayButtons(true);
+            updateButtons(true);
+        } else {
+            audio.pause();
+            updateButtons(false);
         }
+    }
 
-        function togglePlay() {
-            if (audio.paused) {
-                audio.play();
-                updatePlayButtons(true);
-            } else {
-                audio.pause();
-                updatePlayButtons(false);
-            }
+    function updateButtons(playing) {
+        const icon = playing ? '⏸' : '▶';
+        document.getElementById('btn-play').textContent = icon;
+        document.getElementById('btn-play-mini').textContent = icon;
+    }
+
+    function togglePlayerSize() {
+        isExpanded = !isExpanded;
+        const collapsed = document.getElementById('player-collapsed');
+        const expanded = document.getElementById('player-expanded');
+
+        if (isExpanded) {
+            playerBar.classList.remove('collapsed');
+            playerBar.classList.add('expanded');
+            collapsed.classList.add('hidden');
+            expanded.classList.remove('hidden');
+            document.body.classList.add('expanded-player');
+        } else {
+            playerBar.classList.add('collapsed');
+            playerBar.classList.remove('expanded');
+            collapsed.classList.remove('hidden');
+            expanded.classList.add('hidden');
+            document.body.classList.remove('expanded-player');
         }
+    }
 
-        function updatePlayButtons(playing) {
-            const icon = playing ? '⏸' : '▶';
-            document.getElementById('btn-play').textContent = icon;
-            document.getElementById('btn-play-mini').textContent = icon;
-        }
+    // ===== SEEK QUE SÍ FUNCIONA =====
+    progress.addEventListener('mousedown', () => isSeeking = true);
+    progress.addEventListener('touchstart', () => isSeeking = true);
 
-        function togglePlayer() {
-            isExpanded = !isExpanded;
-            const collapsed = document.getElementById('player-collapsed');
-            const expanded = document.getElementById('player-expanded');
-            
-            if (isExpanded) {
-                playerBar.classList.remove('collapsed');
-                playerBar.classList.add('expanded');
-                collapsed.classList.add('hidden');
-                expanded.classList.remove('hidden');
-                document.body.classList.add('expanded-player');
-            } else {
-                playerBar.classList.add('collapsed');
-                playerBar.classList.remove('expanded');
-                collapsed.classList.remove('hidden');
-                expanded.classList.add('hidden');
-                document.body.classList.remove('expanded-player');
-            }
-        }
+    progress.addEventListener('mouseup', finishSeek);
+    progress.addEventListener('touchend', finishSeek);
 
-        function seek(value) {
-            if (audio.duration) {
-                audio.currentTime = (value / 100) * audio.duration;
-            }
-        }
+    function finishSeek() {
+        if (!audio.duration) return;
+        const value = progress.value;
+        audio.currentTime = (value / 1000) * audio.duration;
+        isSeeking = false;
+    }
 
-        function setVolume(value) {
-            audio.volume = value;
-        }
+    progress.addEventListener('input', () => {
+        if (!audio.duration) return;
+        const percent = progress.value / 10;
+        document.getElementById('progress-mini').style.width = percent + '%';
+        document.getElementById('current-time').textContent = formatTime((progress.value / 1000) * audio.duration);
+    });
 
-        function formatTime(seconds) {
-            if (!seconds || isNaN(seconds)) return "0:00";
-            const m = Math.floor(seconds / 60);
-            const s = Math.floor(seconds % 60);
-            return `${m}:${s.toString().padStart(2, '0')}`;
-        }
+    function seekRelative(seconds) {
+        audio.currentTime = Math.max(0, Math.min(audio.duration || 0, audio.currentTime + seconds));
+    }
 
-        audio.addEventListener('timeupdate', () => {
-            if (audio.duration) {
-                const percent = (audio.currentTime / audio.duration) * 100;
-                document.getElementById('progress').value = percent;
-                document.getElementById('progress-mini').style.width = percent + '%';
-                document.getElementById('current-time').textContent = formatTime(audio.currentTime);
-                document.getElementById('total-time').textContent = formatTime(audio.duration);
-            }
-        });
+    function formatTime(s) {
+        if (!s || isNaN(s)) return "0:00";
+        const m = Math.floor(s / 60);
+        const sec = Math.floor(s % 60);
+        return `${m}:${sec.toString().padStart(2,'0')}`;
+    }
 
-        audio.addEventListener('ended', () => {
-            updatePlayButtons(false);
-        });
+    audio.addEventListener('timeupdate', () => {
+        if (isSeeking || !audio.duration) return;
+        const percent = (audio.currentTime / audio.duration) * 100;
+        progress.value = percent * 10;
+        document.getElementById('progress-mini').style.width = percent + '%';
+        document.getElementById('current-time').textContent = formatTime(audio.currentTime);
+        document.getElementById('total-time').textContent = formatTime(audio.duration);
+    });
 
-        function openLightbox(event, src) {
-            event.preventDefault();
-            document.getElementById('lightbox-img').src = src;
-            document.getElementById('lightbox').classList.add('active');
-        }
-        function closeLightbox() {
-            document.getElementById('lightbox').classList.remove('active');
-        }
+    audio.addEventListener('ended', () => updateButtons(false));
 
-        // Placeholder para next/prev (puedes mejorarlo después)
-        function nextTrack() {}
-        function prevTrack() {}
-    </script>
+    function openLightbox(e, src) {
+        e.preventDefault();
+        document.getElementById('lightbox-img').src = src;
+        document.getElementById('lightbox').classList.add('active');
+    }
+    function closeLightbox() {
+        document.getElementById('lightbox').classList.remove('active');
+    }
+</script>
 </body>
 </html>

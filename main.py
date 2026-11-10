@@ -413,15 +413,18 @@ def build_groups(all_items: List[Dict]) -> Dict[str, Dict]:
 
         g = grouped[key]
 
+        # Mejor título
         if item.get("title") and len(item["title"]) > len(g["title"] or ""):
             g["title"] = item["title"]
 
+        # Mejor thumbnail
         if item.get("thumbnail"):
             g["thumbnail"] = item["thumbnail"]
 
         if item.get("date") and item["date"] > (g.get("latest_date") or ""):
             g["latest_date"] = item["date"]
 
+        # Mejor metadata
         for field in ["year", "genero", "sinopsis", "quality", "estudio", "episodios",
                       "secuela", "precuela", "resolucion", "duracion", "audios",
                       "subtitulos", "fansub", "formato", "peso", "artista", "album", "label", "productor"]:
@@ -429,12 +432,16 @@ def build_groups(all_items: List[Dict]) -> Dict[str, Dict]:
                 if not g.get(field) or len(str(item[field])) > len(str(g.get(field) or "")):
                     g[field] = item[field]
 
+        # Guardamos la categoría original
         g["categories"].append(item.get("original_category", "other"))
 
+        # Solo archivos reales
         if not item.get("is_photo") and item.get("size_mb", 0) > 0:
             g["episodes"].append(item)
 
+    # Decidir categoría final + títulos bonitos + agrupar por temporada
     for key, g in grouped.items():
+        # Título bonito Sora
         if "forte" in key:
             g["title"] = "Sora no Otoshimono Forte, Heaven’s Lost Property 2"
         elif "tokeijikake" in key:
@@ -442,28 +449,42 @@ def build_groups(all_items: List[Dict]) -> Dict[str, Dict]:
         elif "final eternal" in key or "my master" in key:
             g["title"] = "Sora no Otoshimono Final: Eternal My Master, Heaven’s Lost Property: My Eternal Master"
 
+        # ========== DECISIÓN INTELIGENTE DE CATEGORÍA ==========
         num_episodes = len(g["episodes"])
 
-        if "tokeijikake" in key or "final eternal" in key or "my master" in key:
+        # 1. Si tiene archivos de música → prioridad máxima a "music"
+        if "music" in g["categories"]:
+            g["final_category"] = "music"
+
+        # 2. Reglas especiales Sora
+        elif "tokeijikake" in key or "final eternal" in key or "my master" in key:
             g["final_category"] = "movies"
         elif "forte" in key:
             g["final_category"] = "series"
+
+        # 3. Si tiene muchos episodios → serie
         elif num_episodes >= 4:
             g["final_category"] = "series"
+
+        # 4. Si tiene 1-2 archivos y son partes → película
         elif num_episodes <= 2 and any(ep.get("is_part") for ep in g["episodes"]):
             g["final_category"] = "movies"
+
+        # 5. Por mayoría
         elif g["categories"]:
             most_common = Counter(g["categories"]).most_common(1)[0][0]
             g["final_category"] = most_common
         else:
             g["final_category"] = "other"
 
+        # Ordenar episodios
         g["episodes"].sort(key=lambda x: (
             0 if x.get("is_ova") or x.get("is_part") else 1,
             x.get("season") or 0,
             x.get("episode") or 999
         ))
 
+        # Agrupar para la vista
         seasons = defaultdict(list)
         ovas = []
         parts = []

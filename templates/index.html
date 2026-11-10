@@ -52,6 +52,26 @@
         .no-zoom {
             touch-action: manipulation;
         }
+
+        /* Reproductor fijo inferior */
+        #player-bar {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: #111827;
+            border-top: 1px solid #374151;
+            z-index: 1000;
+            transform: translateY(100%);
+            transition: transform 0.3s ease;
+        }
+        #player-bar.active {
+            transform: translateY(0);
+        }
+
+        body.has-player {
+            padding-bottom: 90px;
+        }
     </style>
 </head>
 <body class="bg-gray-900 text-white min-h-screen">
@@ -72,10 +92,9 @@
         <form method="get" class="mb-6">
             <input type="hidden" name="sort" value="{{ sort }}">
 
-            <!-- Barra principal -->
             <div class="relative mb-3">
                 <input type="text" name="q" value="{{ q }}" 
-                       placeholder="Buscar por título, sinopsis..." 
+                       placeholder="Buscar por título, sinopsis, artista..." 
                        class="w-full px-4 py-3.5 rounded-xl bg-gray-800 border border-gray-700 text-sm focus:outline-none focus:border-blue-500 pl-12 pr-12"
                        autocomplete="off">
                 <span class="absolute left-4 top-3.5 text-gray-400 text-lg">🔍</span>
@@ -87,7 +106,6 @@
                 {% endif %}
             </div>
 
-            <!-- Botón para desplegar avanzada -->
             <details class="bg-gray-800 rounded-xl overflow-hidden" {% if year or genero or estudio or category != 'all' %}open{% endif %}>
                 <summary class="cursor-pointer px-4 py-3 text-sm font-medium text-blue-400 hover:text-blue-300 flex items-center gap-2">
                     <span>⚙️ Búsqueda avanzada</span>
@@ -95,8 +113,6 @@
                 </summary>
 
                 <div class="px-4 pb-4 pt-2 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 border-t border-gray-700">
-                    
-                    <!-- Tipo -->
                     <div>
                         <label class="block text-xs text-gray-400 mb-1">Tipo</label>
                         <select name="category" class="w-full px-3 py-2 rounded-lg bg-gray-700 border border-gray-600 text-sm focus:outline-none focus:border-blue-500">
@@ -107,7 +123,6 @@
                         </select>
                     </div>
 
-                    <!-- Año -->
                     <div>
                         <label class="block text-xs text-gray-400 mb-1">Año</label>
                         <select name="year" class="w-full px-3 py-2 rounded-lg bg-gray-700 border border-gray-600 text-sm focus:outline-none focus:border-blue-500">
@@ -118,7 +133,6 @@
                         </select>
                     </div>
 
-                    <!-- Género -->
                     <div>
                         <label class="block text-xs text-gray-400 mb-1">Género</label>
                         <select name="genero" class="w-full px-3 py-2 rounded-lg bg-gray-700 border border-gray-600 text-sm focus:outline-none focus:border-blue-500">
@@ -129,7 +143,6 @@
                         </select>
                     </div>
 
-                    <!-- Estudio -->
                     <div>
                         <label class="block text-xs text-gray-400 mb-1">Estudio</label>
                         <select name="estudio" class="w-full px-3 py-2 rounded-lg bg-gray-700 border border-gray-600 text-sm focus:outline-none focus:border-blue-500">
@@ -152,7 +165,7 @@
             </details>
         </form>
 
-        <!-- Categorías rápidas (siguen siendo útiles) -->
+        <!-- Categorías rápidas -->
         <div class="flex flex-wrap gap-2 mb-4">
             <a href="/?category=all&sort={{ sort }}&q={{ q }}" class="px-4 py-2 rounded-full text-sm font-medium {{ 'bg-blue-600' if category=='all' else 'bg-gray-700 hover:bg-gray-600' }}">Todos</a>
             <a href="/?category=movies&sort={{ sort }}&q={{ q }}" class="px-4 py-2 rounded-full text-sm font-medium {{ 'bg-blue-600' if category=='movies' else 'bg-gray-700 hover:bg-gray-600' }}">Películas ({{ counts.movies }})</a>
@@ -183,6 +196,7 @@
             <div class="bg-gray-800 rounded-2xl overflow-hidden shadow-lg">
                 <div class="flex flex-col md:flex-row">
                     
+                    <!-- IMAGEN -->
                     <div class="md:w-52 lg:w-60 flex-shrink-0 bg-gray-700 cursor-zoom-in no-zoom" 
                          {% if series.thumbnail %}
                          onclick="openLightbox(event, '{{ series.thumbnail }}')"
@@ -207,7 +221,9 @@
                         <div class="text-sm text-gray-400 mb-2 flex flex-wrap gap-x-3 gap-y-1">
                             {% if series.year %}<span>{{ series.year }}</span>{% endif %}
                             {% if series.quality %}<span class="text-blue-400">{{ series.quality }}</span>{% endif %}
+                            {% if series.artista %}<span class="text-green-400">{{ series.artista }}</span>{% endif %}
                             {% if series.estudio %}<span>{{ series.estudio }}</span>{% endif %}
+                            {% if series.label %}<span>{{ series.label }}</span>{% endif %}
                             {% if series.episodios %}<span>{{ series.episodios }}</span>{% endif %}
                         </div>
 
@@ -227,6 +243,10 @@
                                 ▼ Ver ficha completa
                             </summary>
                             <div class="mt-3 text-sm text-gray-300 space-y-1.5 bg-gray-900/60 p-4 rounded-xl">
+                                {% if series.artista %}<p><span class="text-gray-400">Artista:</span> {{ series.artista }}</p>{% endif %}
+                                {% if series.album %}<p><span class="text-gray-400">Álbum:</span> {{ series.album }}</p>{% endif %}
+                                {% if series.label %}<p><span class="text-gray-400">Sello:</span> {{ series.label }}</p>{% endif %}
+                                {% if series.productor %}<p><span class="text-gray-400">Productor:</span> {{ series.productor }}</p>{% endif %}
                                 {% if series.precuela %}
                                 <p>
                                     <span class="text-gray-400">Precuela:</span> 
@@ -260,7 +280,33 @@
                         </details>
 
                         <div class="border-t border-gray-700 pt-4">
-                            {% if series.parts %}
+                            {% if series.final_category == 'music' %}
+                                <!-- ========== VISTA MÚSICA ========== -->
+                                <h3 class="text-sm font-semibold text-gray-300 mb-3">
+                                    Pistas ({{ series.episodes|length }})
+                                </h3>
+                                <div class="space-y-2">
+                                    {% for ep in series.episodes %}
+                                    <div class="flex items-center gap-3 bg-gray-700/60 hover:bg-gray-700 rounded-xl px-4 py-3 transition">
+                                        <button onclick="playTrack('{{ ep.id }}', '{{ ep.title|e }}', '{{ series.artista or series.title|e }}', '{{ series.thumbnail or '' }}')"
+                                                class="flex-shrink-0 w-10 h-10 rounded-full bg-blue-600 hover:bg-blue-500 flex items-center justify-center text-white">
+                                            ▶
+                                        </button>
+                                        <div class="flex-1 min-w-0">
+                                            <p class="font-medium truncate">{{ ep.title }}</p>
+                                            <p class="text-xs text-gray-400">{{ ep.size_mb }} MB</p>
+                                        </div>
+                                        <a href="/stream/{{ ep.id }}" download
+                                           class="text-xs px-3 py-1.5 bg-gray-600 hover:bg-gray-500 rounded-lg transition">
+                                            Descargar
+                                        </a>
+                                    </div>
+                                    {% else %}
+                                    <p class="text-gray-500 text-sm">No hay pistas disponibles</p>
+                                    {% endfor %}
+                                </div>
+
+                            {% elif series.parts %}
                                 <h3 class="text-sm font-semibold text-gray-300 mb-2">
                                     Partes ({{ series.parts|length }})
                                 </h3>
@@ -369,7 +415,7 @@
 
         <!-- PAGINACIÓN -->
         {% if total_pages > 1 %}
-        <div class="flex flex-col items-center gap-4 mt-12">
+        <div class="flex flex-col items-center gap-4 mt-12 mb-8">
             <p class="text-sm text-gray-400">
                 Página {{ page }} de {{ total_pages }}
             </p>
@@ -426,13 +472,43 @@
         <img id="lightbox-img" src="" alt="Imagen completa">
     </div>
 
+    <!-- ========== REPRODUCTOR FIJO ========== -->
+    <div id="player-bar" class="px-4 py-3">
+        <div class="max-w-6xl mx-auto flex items-center gap-4">
+            <img id="player-cover" src="" class="w-14 h-14 rounded-lg object-cover bg-gray-700 flex-shrink-0" alt="">
+            
+            <div class="flex-1 min-w-0">
+                <p id="player-title" class="font-medium truncate text-sm">Selecciona una pista</p>
+                <p id="player-artist" class="text-xs text-gray-400 truncate"></p>
+            </div>
+
+            <div class="flex items-center gap-3">
+                <button id="btn-play" onclick="togglePlay()" class="w-10 h-10 rounded-full bg-blue-600 hover:bg-blue-500 flex items-center justify-center text-white text-lg">
+                    ▶
+                </button>
+                <a id="btn-download" href="#" download class="text-xs px-3 py-1.5 bg-gray-700 hover:bg-gray-600 rounded-lg hidden">
+                    Descargar
+                </a>
+            </div>
+        </div>
+        
+        <!-- Barra de progreso simple -->
+        <div class="max-w-6xl mx-auto mt-2">
+            <input type="range" id="progress" value="0" min="0" max="100" 
+                   class="w-full h-1 bg-gray-700 rounded-lg appearance-none cursor-pointer"
+                   onchange="seek(this.value)">
+        </div>
+    </div>
+
+    <audio id="audio" preload="none"></audio>
+
     <script>
+        // Lightbox
         function openLightbox(event, src) {
             if (event) {
                 event.preventDefault();
                 event.stopPropagation();
             }
-
             const lightbox = document.getElementById('lightbox');
             const img = document.getElementById('lightbox-img');
             img.src = src;
@@ -449,9 +525,55 @@
             if (e.key === 'Escape') closeLightbox();
         });
 
-        window.addEventListener('popstate', function() {
-            closeLightbox();
+        // ========== REPRODUCTOR ==========
+        const audio = document.getElementById('audio');
+        const playerBar = document.getElementById('player-bar');
+        const btnPlay = document.getElementById('btn-play');
+        const progress = document.getElementById('progress');
+        let currentId = null;
+
+        function playTrack(id, title, artist, cover) {
+            currentId = id;
+            audio.src = `/stream/${id}`;
+            document.getElementById('player-title').textContent = title;
+            document.getElementById('player-artist').textContent = artist || '';
+            document.getElementById('player-cover').src = cover || '';
+            document.getElementById('btn-download').href = `/stream/${id}`;
+            document.getElementById('btn-download').classList.remove('hidden');
+            
+            playerBar.classList.add('active');
+            document.body.classList.add('has-player');
+            
+            audio.play();
+            btnPlay.textContent = '⏸';
+        }
+
+        function togglePlay() {
+            if (audio.paused) {
+                audio.play();
+                btnPlay.textContent = '⏸';
+            } else {
+                audio.pause();
+                btnPlay.textContent = '▶';
+            }
+        }
+
+        audio.addEventListener('timeupdate', () => {
+            if (audio.duration) {
+                progress.value = (audio.currentTime / audio.duration) * 100;
+            }
         });
+
+        audio.addEventListener('ended', () => {
+            btnPlay.textContent = '▶';
+            progress.value = 0;
+        });
+
+        function seek(value) {
+            if (audio.duration) {
+                audio.currentTime = (value / 100) * audio.duration;
+            }
+        }
     </script>
 </body>
 </html>

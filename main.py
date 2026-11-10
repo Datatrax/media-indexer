@@ -51,17 +51,13 @@ def verify_credentials(credentials: HTTPBasicCredentials = Depends(security)):
 def normalize_title(title: str) -> str:
     if not title:
         return "sin título"
-
     t = title.lower().strip()
-
-    # Casos especiales Sora no Otoshimono
     if "tokeijikake" in t or "angeloid of clockwork" in t:
         return "sora no otoshimono tokeijikake movie"
     if "final" in t and ("eternal" in t or "my master" in t):
         return "sora no otoshimono final eternal my master"
     if "forte" in t:
         return "sora no otoshimono forte"
-
     t = re.sub(r"[\(\[\{].*?[\)\]\}]", "", t)
     if "," in t:
         t = t.split(",")[0]
@@ -69,12 +65,10 @@ def normalize_title(title: str) -> str:
         parts = t.split(":", 1)
         if len(parts[1].strip()) > 10:
             t = parts[0]
-
     t = re.sub(r"[^\w\s]", " ", t)
     t = re.sub(r"\s+", " ", t).strip()
     t = re.sub(r"\s+(part|parte|cd|disc|pt|ova|special|sp|especial)\s*\d*.*$", "", t)
     t = re.sub(r"\s+(the movie|movie|edit|final|complete|uncensored|bluray|bd).*$", "", t)
-
     return t.strip()
 
 
@@ -84,7 +78,6 @@ def parse_caption(caption: str) -> Dict[str, Any]:
         "estudio": None, "año": None, "genero": None, "resolucion": None,
         "calidad": None, "duracion": None, "audios": None, "subtitulos": None,
         "fansub": None, "formato": None, "peso": None, "sinopsis": None,
-        # Nuevos campos para música
         "artista": None, "album": None, "label": None, "sello": None, "productor": None
     }
     if not caption:
@@ -92,9 +85,14 @@ def parse_caption(caption: str) -> Dict[str, Any]:
 
     clean_caption = re.sub(r"[*_`~]", "", caption)
 
-    sinopsis_match = re.search(r"Sinopsis:\s*(.+)", clean_caption, re.IGNORECASE | re.DOTALL)
+    sinopsis_match = re.search(r"(?:Sinopsis|Descripción|Description):\s*(.+)", clean_caption, re.IGNORECASE | re.DOTALL)
     if sinopsis_match:
         data["sinopsis"] = sinopsis_match.group(1).strip()
+    else:
+        lines = [l.strip() for l in clean_caption.split("\n") if l.strip()]
+        long_text = " ".join([l for l in lines if len(l) > 60])
+        if long_text:
+            data["sinopsis"] = long_text
 
     for line in clean_caption.split("\n"):
         line = line.strip()
@@ -102,7 +100,6 @@ def parse_caption(caption: str) -> Dict[str, Any]:
             key, value = line.split(":", 1)
             key = key.strip().lower()
             value = value.strip()
-
             mapping = {
                 "nombre": "nombre", "title": "nombre", "pista": "nombre", "track": "nombre", "canción": "nombre", "cancion": "nombre",
                 "secuela": "secuela", "sequel": "secuela",
@@ -120,7 +117,6 @@ def parse_caption(caption: str) -> Dict[str, Any]:
                 "fansub": "fansub", "sub": "fansub",
                 "formato": "formato", "format": "formato",
                 "peso": "peso", "size": "peso",
-                # Música
                 "artista": "artista", "artist": "artista", "intérprete": "artista", "interprete": "artista",
                 "álbum": "album", "album": "album",
                 "label": "label", "sello": "sello", "sello discográfico": "sello", "sello discografico": "sello",
@@ -139,17 +135,17 @@ def extract_info(filename: str, caption: str = "") -> Dict[str, Any]:
         clean = re.sub(r"[\._]", " ", clean)
         clean = re.sub(r"\[.*?\]", "", clean)
 
-        # Eliminar patrones de temporada/episodio
-        clean = re.sub(r"(?i)\s*[-–.]?\s*s\d{1,2}e\d{1,3}.*$", "", clean)
-        clean = re.sub(r"(?i)\s*[-–.]?\s*\d{1,2}x\d{1,3}.*$", "", clean)
-
-        # Eliminar partes, OVAs, etc.
-        clean = re.sub(r"\s*[-–]\s*(ova|special|sp|especial|part|parte|cd|disc)?\s*\d{0,3}.*$", "", clean, flags=re.I)
-        parsed["nombre"] = re.sub(r"\s+", " ", clean).strip()
+        if any(ext in filename.lower() for ext in [".mp3", ".flac", ".m4a", ".wav", ".aac", ".ogg"]):
+            clean = re.sub(r"^.*?\s*[-–]\s*", "", clean).strip()
+            clean = re.sub(r"[\(\)]", "", clean).strip()
+            parsed["nombre"] = clean if clean else filename
+        else:
+            clean = re.sub(r"(?i)\s*[-–.]?\s*s\d{1,2}e\d{1,3}.*$", "", clean)
+            clean = re.sub(r"(?i)\s*[-–.]?\s*\d{1,2}x\d{1,3}.*$", "", clean)
+            clean = re.sub(r"\s*[-–]\s*(ova|special|sp|especial|part|parte|cd|disc)?\s*\d{0,3}.*$", "", clean, flags=re.I)
+            parsed["nombre"] = re.sub(r"\s+", " ", clean).strip()
 
     fname_lower = filename.lower()
-
-    # Títulos forzados Sora
     if "forte" in fname_lower:
         parsed["nombre"] = "Sora no Otoshimono Forte, Heaven’s Lost Property 2"
     elif "tokeijikake" in fname_lower or "angeloid of clockwork" in fname_lower:
@@ -164,7 +160,6 @@ def extract_info(filename: str, caption: str = "") -> Dict[str, Any]:
     special_type = None
     fname = filename.lower()
 
-    # 1. Partes
     part_match = re.search(r"(?:part|parte|cd|disc|pt)\s*[-–.]?\s*(\d{1,2})", fname)
     if part_match:
         is_part = True
@@ -176,20 +171,14 @@ def extract_info(filename: str, caption: str = "") -> Dict[str, Any]:
         num = re.search(r"(?:part|r)(\d+)", fname)
         if num:
             episode = int(num.group(1))
-
-    # 2. Patrones de temporada + episodio
     elif season_ep_match := re.search(r"[sS](\d{1,2})[eE](\d{1,3})", fname):
         season = int(season_ep_match.group(1))
         episode = int(season_ep_match.group(2))
     elif x_match := re.search(r"(\d{1,2})[xX](\d{1,3})", fname):
         season = int(x_match.group(1))
         episode = int(x_match.group(2))
-
-    # 3. Películas conocidas
     elif any(x in fname for x in ["tokeijikake", "angeloid of clockwork", "final eternal", "eternal my master"]):
         pass
-
-    # 4. OVAs / Specials / episodio simple
     else:
         if "ova" in fname:
             is_ova = True
@@ -240,13 +229,10 @@ def extract_info(filename: str, caption: str = "") -> Dict[str, Any]:
 
 def classify(filename: str, mime: str = "", caption: str = "", tipo: str = None) -> str:
     text = (filename + " " + (caption or "")).lower()
-
     if "forte" in text and ("sora" in text or "otoshimono" in text):
         return "series"
-
     if any(x in text for x in ["tokeijikake", "angeloid of clockwork", "final eternal", "eternal my master", "my master"]):
         return "movies"
-
     if tipo:
         t = tipo.lower()
         if any(x in t for x in ["serie", "ova", "anime"]):
@@ -255,28 +241,22 @@ def classify(filename: str, mime: str = "", caption: str = "", tipo: str = None)
             return "movies"
         if any(x in t for x in ["música", "musica", "music"]):
             return "music"
-
     if any(x in text for x in [".mp3", ".flac", ".m4a", ".wav", ".aac", ".ogg", "music", "ost"]) or "audio/" in mime:
         return "music"
-
     if re.search(r"(s\d{1,2}e\d{1,2}|season|temporada|[-–]\s*\d{1,3})", text) and "part" not in text:
         return "series"
-
     if any(x in text for x in [".mkv", ".mp4", "1080p", "720p", "bluray", "bd", "movie", "pelicula"]):
         return "movies"
-
     return "other"
 
 
 async def process_message(msg):
     if not msg.media:
         return None
-
     filename = "Sin nombre"
     mime = ""
     size = 0
     caption = msg.message or ""
-
     if isinstance(msg.media, MessageMediaDocument):
         doc = msg.media.document
         for attr in doc.attributes:
@@ -288,10 +268,8 @@ async def process_message(msg):
     elif isinstance(msg.media, MessageMediaPhoto):
         filename = f"photo_{msg.id}.jpg"
         mime = "image/jpeg"
-
     info = extract_info(filename, caption)
     tipo_detectado = classify(filename, mime, caption, info.get("tipo"))
-
     thumbnail_b64 = None
     try:
         if msg.photo:
@@ -302,7 +280,6 @@ async def process_message(msg):
             thumbnail_b64 = base64.b64encode(thumb_bytes.getvalue()).decode()
     except Exception:
         pass
-
     item = {
         "id": msg.id,
         "filename": filename,
@@ -341,7 +318,6 @@ async def process_message(msg):
         "is_photo": isinstance(msg.media, MessageMediaPhoto),
         "original_category": tipo_detectado
     }
-
     catalog[tipo_detectado].append(item)
     return item
 
@@ -350,21 +326,16 @@ async def reindex():
     global catalog
     catalog = {"movies": [], "series": [], "music": [], "other": []}
     print("Iniciando re-indexación completa...")
-
     try:
         entity = await client.get_entity(CHANNEL_ID)
         print(f"Canal encontrado: {entity.title}")
-
         count = 0
         async for msg in client.iter_messages(entity, limit=None):
             await process_message(msg)
             count += 1
-
         for key in catalog:
             catalog[key].sort(key=lambda x: x["date"], reverse=True)
-
         print(f"✅ Re-indexación completa: {count} archivos")
-
     except Exception as e:
         print(f"❌ Error: {e}")
         raise
@@ -379,10 +350,8 @@ def get_all_items() -> List[Dict]:
 
 def build_groups(all_items: List[Dict]) -> Dict[str, Dict]:
     grouped = {}
-
     for item in all_items:
         key = normalize_title(item["title"])
-
         if key not in grouped:
             grouped[key] = {
                 "title": item["title"],
@@ -410,38 +379,24 @@ def build_groups(all_items: List[Dict]) -> Dict[str, Dict]:
                 "latest_date": item.get("date", ""),
                 "categories": []
             }
-
         g = grouped[key]
-
-        # Mejor título
         if item.get("title") and len(item["title"]) > len(g["title"] or ""):
             g["title"] = item["title"]
-
-        # Mejor thumbnail
         if item.get("thumbnail"):
             g["thumbnail"] = item["thumbnail"]
-
         if item.get("date") and item["date"] > (g.get("latest_date") or ""):
             g["latest_date"] = item["date"]
-
-        # Mejor metadata
         for field in ["year", "genero", "sinopsis", "quality", "estudio", "episodios",
                       "secuela", "precuela", "resolucion", "duracion", "audios",
                       "subtitulos", "fansub", "formato", "peso", "artista", "album", "label", "productor"]:
             if item.get(field):
                 if not g.get(field) or len(str(item[field])) > len(str(g.get(field) or "")):
                     g[field] = item[field]
-
-        # Guardamos la categoría original
         g["categories"].append(item.get("original_category", "other"))
-
-        # Solo archivos reales
         if not item.get("is_photo") and item.get("size_mb", 0) > 0:
             g["episodes"].append(item)
 
-    # Decidir categoría final + títulos bonitos + agrupar por temporada
     for key, g in grouped.items():
-        # Título bonito Sora
         if "forte" in key:
             g["title"] = "Sora no Otoshimono Forte, Heaven’s Lost Property 2"
         elif "tokeijikake" in key:
@@ -449,46 +404,35 @@ def build_groups(all_items: List[Dict]) -> Dict[str, Dict]:
         elif "final eternal" in key or "my master" in key:
             g["title"] = "Sora no Otoshimono Final: Eternal My Master, Heaven’s Lost Property: My Eternal Master"
 
-        # ========== DECISIÓN INTELIGENTE DE CATEGORÍA ==========
         num_episodes = len(g["episodes"])
-
-        # 1. Si tiene archivos de música → prioridad máxima a "music"
         if "music" in g["categories"]:
             g["final_category"] = "music"
-
-        # 2. Reglas especiales Sora
         elif "tokeijikake" in key or "final eternal" in key or "my master" in key:
             g["final_category"] = "movies"
         elif "forte" in key:
             g["final_category"] = "series"
-
-        # 3. Si tiene muchos episodios → serie
         elif num_episodes >= 4:
             g["final_category"] = "series"
-
-        # 4. Si tiene 1-2 archivos y son partes → película
         elif num_episodes <= 2 and any(ep.get("is_part") for ep in g["episodes"]):
             g["final_category"] = "movies"
-
-        # 5. Por mayoría
         elif g["categories"]:
             most_common = Counter(g["categories"]).most_common(1)[0][0]
             g["final_category"] = most_common
         else:
             g["final_category"] = "other"
 
-        # Ordenar episodios
-        g["episodes"].sort(key=lambda x: (
-            0 if x.get("is_ova") or x.get("is_part") else 1,
-            x.get("season") or 0,
-            x.get("episode") or 999
-        ))
+        if g.get("final_category") == "music":
+            g["episodes"].sort(key=lambda x: x.get("id", 0))
+        else:
+            g["episodes"].sort(key=lambda x: (
+                0 if x.get("is_ova") or x.get("is_part") else 1,
+                x.get("season") or 0,
+                x.get("episode") or 999
+            ))
 
-        # Agrupar para la vista
         seasons = defaultdict(list)
         ovas = []
         parts = []
-
         for ep in g["episodes"]:
             if ep.get("is_part"):
                 parts.append(ep)
@@ -496,18 +440,15 @@ def build_groups(all_items: List[Dict]) -> Dict[str, Dict]:
                 ovas.append(ep)
             else:
                 seasons[ep.get("season") or 1].append(ep)
-
         g["seasons"] = dict(sorted(seasons.items()))
         g["ovas"] = ovas
         g["parts"] = parts
-
     return grouped
 
 
 def get_grouped_counts():
     all_items = get_all_items()
     groups = build_groups(all_items)
-
     counts = {"movies": 0, "series": 0, "music": 0, "other": 0}
     for g in groups.values():
         cat = g.get("final_category", "other")
@@ -556,7 +497,6 @@ def get_all_studios() -> list:
 async def startup_event():
     await client.start()
     await reindex()
-
     @client.on(events.NewMessage(chats=CHANNEL_ID))
     async def handler(event):
         await process_message(event.message)
@@ -568,25 +508,19 @@ async def stream_audio(msg_id: int, username: str = Depends(verify_credentials))
         msg = await client.get_messages(CHANNEL_ID, ids=int(msg_id))
         if not msg or not msg.document:
             raise HTTPException(status_code=404, detail="Archivo no encontrado")
-
         mime = msg.document.mime_type or "audio/mpeg"
         filename = "track.mp3"
         for attr in msg.document.attributes:
             if hasattr(attr, "file_name") and attr.file_name:
                 filename = attr.file_name
                 break
-
         async def file_iterator():
             async for chunk in client.iter_download(msg.media):
                 yield chunk
-
         return StreamingResponse(
             file_iterator(),
             media_type=mime,
-            headers={
-                "Accept-Ranges": "bytes",
-                "Content-Disposition": f'inline; filename="{filename}"'
-            }
+            headers={"Accept-Ranges": "bytes", "Content-Disposition": f'inline; filename="{filename}"'}
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -597,33 +531,33 @@ async def home(
     request: Request,
     category: str = "all",
     q: str = "",
-    exact: str = "",
     page: int = 1,
     sort: str = "title",
     year: str = "",
     genero: str = "",
     estudio: str = "",
+    section: str = "cine",
     username: str = Depends(verify_credentials)
 ):
     all_items = get_all_items()
     groups = build_groups(all_items)
 
-    if category != "all":
-        all_series = [g for g in groups.values() if g.get("final_category") == category]
+    if section == "music":
+        all_series = [g for g in groups.values() if g.get("final_category") == "music"]
     else:
-        all_series = list(groups.values())
+        all_series = [g for g in groups.values() if g.get("final_category") in ("series", "movies")]
+
+    if category != "all" and section != "music":
+        all_series = [g for g in all_series if g.get("final_category") == category]
 
     if year:
         all_series = [s for s in all_series if s.get("year") and str(s["year"]) == str(year)]
-
     if genero:
         genero_lower = genero.lower().strip()
         all_series = [s for s in all_series if s.get("genero") and genero_lower in s["genero"].lower()]
-
     if estudio:
         estudio_lower = estudio.lower().strip()
         all_series = [s for s in all_series if s.get("estudio") and estudio_lower in s["estudio"].lower()]
-
     if q:
         q_lower = q.lower().strip()
         filtered = []
@@ -646,20 +580,17 @@ async def home(
 
     total_series = len(all_series)
     counts = get_grouped_counts()
-
     start = (page - 1) * ITEMS_PER_PAGE
     end = start + ITEMS_PER_PAGE
     items = all_series[start:end]
     total_pages = max(1, (total_series + ITEMS_PER_PAGE - 1) // ITEMS_PER_PAGE)
 
     return templates.TemplateResponse(
-        request,
         "index.html",
         {
             "request": request,
             "items": items,
             "total": sum(len(v) for v in catalog.values()),
-            "total_series": total_series,
             "counts": counts,
             "category": category,
             "q": q,
@@ -672,6 +603,7 @@ async def home(
             "year": year,
             "genero": genero,
             "estudio": estudio,
+            "section": section,
         }
     )
 

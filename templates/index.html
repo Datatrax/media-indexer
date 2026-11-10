@@ -70,7 +70,7 @@
         }
 
         body.has-player {
-            padding-bottom: 90px;
+            padding-bottom: 100px;
         }
     </style>
 </head>
@@ -196,7 +196,7 @@
             <div class="bg-gray-800 rounded-2xl overflow-hidden shadow-lg">
                 <div class="flex flex-col md:flex-row">
                     
-                    <!-- IMAGEN -->
+                    <!-- IMAGEN PRINCIPAL -->
                     <div class="md:w-52 lg:w-60 flex-shrink-0 bg-gray-700 cursor-zoom-in no-zoom" 
                          {% if series.thumbnail %}
                          onclick="openLightbox(event, '{{ series.thumbnail }}')"
@@ -280,24 +280,48 @@
                         </details>
 
                         <div class="border-t border-gray-700 pt-4">
+
                             {% if series.final_category == 'music' %}
-                                <!-- ========== VISTA MÚSICA ========== -->
+                                <!-- ========== VISTA MÚSICA (con imagen por pista) ========== -->
                                 <h3 class="text-sm font-semibold text-gray-300 mb-3">
-                                    Pistas ({{ series.episodes|length }})
+                                    {% if series.episodes|length == 1 %}
+                                        Single / EP
+                                    {% else %}
+                                        Pistas ({{ series.episodes|length }})
+                                    {% endif %}
                                 </h3>
+
                                 <div class="space-y-2">
                                     {% for ep in series.episodes %}
-                                    <div class="flex items-center gap-3 bg-gray-700/60 hover:bg-gray-700 rounded-xl px-4 py-3 transition">
-                                        <button onclick="playTrack('{{ ep.id }}', '{{ ep.title|e }}', '{{ series.artista or series.title|e }}', '{{ series.thumbnail or '' }}')"
-                                                class="flex-shrink-0 w-10 h-10 rounded-full bg-blue-600 hover:bg-blue-500 flex items-center justify-center text-white">
+                                    <div class="flex items-center gap-3 bg-gray-700/50 hover:bg-gray-700 rounded-xl px-3 py-2.5 transition">
+                                        
+                                        <!-- Miniatura de la pista -->
+                                        {% if ep.thumbnail %}
+                                        <img src="{{ ep.thumbnail }}" 
+                                             class="w-12 h-12 rounded-lg object-cover flex-shrink-0 cursor-pointer"
+                                             onclick="openLightbox(event, '{{ ep.thumbnail }}')"
+                                             alt="">
+                                        {% else %}
+                                        <div class="w-12 h-12 rounded-lg bg-gray-600 flex-shrink-0 flex items-center justify-center text-gray-400 text-xs">
+                                            ♪
+                                        </div>
+                                        {% endif %}
+
+                                        <!-- Botón Play -->
+                                        <button onclick="playTrack('{{ ep.id }}', '{{ ep.title|e }}', '{{ series.artista or series.title|e }}', '{{ ep.thumbnail or series.thumbnail or '' }}')"
+                                                class="flex-shrink-0 w-10 h-10 rounded-full bg-blue-600 hover:bg-blue-500 flex items-center justify-center text-white text-sm">
                                             ▶
                                         </button>
+
+                                        <!-- Info de la pista -->
                                         <div class="flex-1 min-w-0">
-                                            <p class="font-medium truncate">{{ ep.title }}</p>
+                                            <p class="font-medium truncate text-sm">{{ ep.title }}</p>
                                             <p class="text-xs text-gray-400">{{ ep.size_mb }} MB</p>
                                         </div>
+
+                                        <!-- Descargar -->
                                         <a href="/stream/{{ ep.id }}" download
-                                           class="text-xs px-3 py-1.5 bg-gray-600 hover:bg-gray-500 rounded-lg transition">
+                                           class="text-xs px-3 py-1.5 bg-gray-600 hover:bg-gray-500 rounded-lg transition flex-shrink-0">
                                             Descargar
                                         </a>
                                     </div>
@@ -492,7 +516,6 @@
             </div>
         </div>
         
-        <!-- Barra de progreso simple -->
         <div class="max-w-6xl mx-auto mt-2">
             <input type="range" id="progress" value="0" min="0" max="100" 
                    class="w-full h-1 bg-gray-700 rounded-lg appearance-none cursor-pointer"
@@ -503,7 +526,6 @@
     <audio id="audio" preload="none"></audio>
 
     <script>
-        // Lightbox
         function openLightbox(event, src) {
             if (event) {
                 event.preventDefault();
@@ -525,15 +547,13 @@
             if (e.key === 'Escape') closeLightbox();
         });
 
-        // ========== REPRODUCTOR ==========
+        // Reproductor
         const audio = document.getElementById('audio');
         const playerBar = document.getElementById('player-bar');
         const btnPlay = document.getElementById('btn-play');
         const progress = document.getElementById('progress');
-        let currentId = null;
 
         function playTrack(id, title, artist, cover) {
-            currentId = id;
             audio.src = `/stream/${id}`;
             document.getElementById('player-title').textContent = title;
             document.getElementById('player-artist').textContent = artist || '';

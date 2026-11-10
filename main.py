@@ -531,7 +531,9 @@ def get_all_studios() -> list:
 
 @app.on_event("startup")
 async def startup_event():
-    await client.start(bot_token=BOT_TOKEN)
+    # ← AQUÍ ESTÁ EL CAMBIO IMPORTANTE
+    await client.start()          # Iniciamos como USUARIO (no como bot)
+    
     await reindex()
 
     @client.on(events.NewMessage(chats=CHANNEL_ID))

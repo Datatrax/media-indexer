@@ -6,145 +6,176 @@
     <title>Biblioteca de Prozac</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
+        /* ===== TEMA CINE: violeta / magenta profundo ===== */
         :root {
-            --accent: #a855f7;
-            --accent-hover: #9333ea;
-            --bg: #0c0a14;
-            --card: #16131f;
-            --border: #2e2a3d;
+            --accent: #c084fc;
+            --accent-hover: #d8b4fe;
+            --on-accent: #1a0933;
+            --bg: #0b0414;
+            --card: rgba(35, 17, 62, 0.72);
+            --border: rgba(168, 85, 247, 0.28);
+            --pill: rgba(168, 85, 247, 0.14);
+            --pill-hover: rgba(168, 85, 247, 0.30);
+            --inner: rgba(10, 3, 22, 0.55);
+            --glow-a: rgba(168, 85, 247, 0.38);
+            --glow-b: rgba(236, 72, 153, 0.24);
         }
+        /* ===== TEMA MÚSICA: verde bosque ===== */
         body.section-music {
-            --accent: #1db954;
-            --accent-hover: #1ed760;
-            --bg: #0a0a0a;
-            --card: #121212;
-            --border: #282828;
+            --accent: #22e06b;
+            --accent-hover: #4ff08a;
+            --on-accent: #04200f;
+            --bg: #040d08;
+            --card: rgba(12, 38, 24, 0.72);
+            --border: rgba(34, 224, 107, 0.25);
+            --pill: rgba(34, 224, 107, 0.12);
+            --pill-hover: rgba(34, 224, 107, 0.28);
+            --inner: rgba(2, 12, 6, 0.6);
+            --glow-a: rgba(34, 224, 107, 0.28);
+            --glow-b: rgba(6, 182, 212, 0.18);
         }
 
         body {
             background-color: var(--bg);
-            transition: background-color 0.3s ease;
+            background-image:
+                radial-gradient(1100px 600px at 8% -8%, var(--glow-a), transparent 65%),
+                radial-gradient(900px 520px at 100% 0%, var(--glow-b), transparent 65%);
+            background-attachment: fixed;
+            background-repeat: no-repeat;
+            min-height: 100vh;
         }
 
         .card {
             background-color: var(--card);
             border: 1px solid var(--border);
+            backdrop-filter: blur(6px);
         }
+        .inner { background: var(--inner); }
+
+        .pill {
+            background: var(--pill);
+            color: var(--accent-hover);
+            border: 1px solid transparent;
+            transition: background .15s ease;
+        }
+        .pill:hover { background: var(--pill-hover); }
+        .pill-active {
+            background: var(--accent);
+            color: var(--on-accent);
+            font-weight: 600;
+        }
+        .pill-active:hover { background: var(--accent-hover); }
+
+        .genre-bar { scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
 
         details > summary { list-style: none; }
         details > summary::-webkit-details-marker { display: none; }
 
-        .season-arrow {
-            display: inline-block;
-            transition: transform 0.15s ease;
-            font-size: 0.65em;
-        }
-        details[open] > summary .season-arrow {
-            transform: rotate(90deg);
-        }
-
         .lightbox {
-            display: none;
-            position: fixed;
-            inset: 0;
-            background: rgba(0,0,0,0.93);
-            z-index: 9999;
-            justify-content: center;
-            align-items: center;
-            cursor: zoom-out;
+            display: none; position: fixed; inset: 0;
+            background: rgba(0,0,0,0.93); z-index: 9999;
+            justify-content: center; align-items: center; cursor: zoom-out;
         }
         .lightbox.active { display: flex; }
-        .lightbox img {
-            max-width: 92vw;
-            max-height: 85vh;
-            object-fit: contain;
-            border-radius: 8px;
-        }
+        .lightbox img { max-width: 92vw; max-height: 85vh; object-fit: contain; border-radius: 8px; }
 
         /* Reproductor */
         #player-bar {
-            position: fixed;
-            bottom: 0;
-            left: 0;
-            right: 0;
-            background: #000;
-            border-top: 1px solid #222;
-            z-index: 1000;
-            transition: height 0.25s ease;
+            position: fixed; bottom: 0; left: 0; right: 0;
+            background: rgba(0,0,0,.94);
+            border-top: 1px solid var(--border);
+            z-index: 1000; transition: height 0.25s ease;
         }
         #player-bar.collapsed { height: 68px; }
         #player-bar.expanded { height: 150px; }
-
         body.has-player { padding-bottom: 80px; }
         body.has-player.expanded-player { padding-bottom: 170px; }
 
         .progress-bar {
-            -webkit-appearance: none;
-            appearance: none;
-            height: 5px;
-            background: #333;
-            border-radius: 3px;
-            outline: none;
-            cursor: pointer;
+            -webkit-appearance: none; appearance: none;
+            height: 5px; background: #333; border-radius: 3px; outline: none; cursor: pointer;
         }
         .progress-bar::-webkit-slider-thumb {
-            -webkit-appearance: none;
-            width: 14px;
-            height: 14px;
-            background: var(--accent);
-            border-radius: 50%;
-            cursor: pointer;
+            -webkit-appearance: none; width: 14px; height: 14px;
+            background: var(--accent); border-radius: 50%; cursor: pointer;
+        }
+        .progress-bar::-moz-range-thumb {
+            width: 14px; height: 14px; background: var(--accent); border: 0; border-radius: 50%; cursor: pointer;
         }
     </style>
 </head>
-<body class="text-white min-h-screen {{ 'section-music' if section == 'music' else '' }}">
+<body class="text-white {{ 'section-music' if section == 'music' else '' }}">
 
 <div class="container mx-auto px-4 py-6 max-w-6xl">
 
-    <!-- Header + Secciones -->
-    <div class="mb-8">
+    <!-- Header + secciones -->
+    <div class="mb-6">
         <h1 class="text-3xl md:text-4xl font-bold mb-5">Biblioteca de Prozac</h1>
 
-        <div class="flex gap-3 mb-5">
+        <div class="flex gap-3 mb-4">
             <a href="?section=cine&sort={{ sort }}"
-               class="px-6 py-2.5 rounded-full text-sm font-semibold transition
-                      {{ 'bg-purple-600 text-white' if section != 'music' else 'bg-gray-800 text-gray-300 hover:bg-gray-700' }}">
-                Cine & Series
+               class="px-6 py-2.5 rounded-full text-sm font-semibold transition {{ 'pill-active' if section != 'music' else 'pill' }}">
+                Cine y series
             </a>
             <a href="?section=music&sort={{ sort }}"
-               class="px-6 py-2.5 rounded-full text-sm font-semibold transition
-                      {{ 'bg-green-500 text-black' if section == 'music' else 'bg-gray-800 text-gray-300 hover:bg-gray-700' }}">
+               class="px-6 py-2.5 rounded-full text-sm font-semibold transition {{ 'pill-active' if section == 'music' else 'pill' }}">
                 Música
             </a>
         </div>
 
         <p class="text-gray-400 text-sm">
-            Total: <span class="text-white">{{ total }}</span> · 
-            Series: {{ counts.series }} · 
-            Películas: {{ counts.movies }} · 
-            Música: {{ counts.music }}
+            Total: <span class="text-white">{{ total }}</span> archivos ·
+            Series: {{ counts.series }} ·
+            Películas: {{ counts.movies }} ·
+            Álbumes: {{ counts.music }}
         </p>
     </div>
 
     <!-- Búsqueda -->
-    <form method="get" class="mb-6">
+    <form method="get" class="mb-5">
         <input type="hidden" name="section" value="{{ section }}">
         <input type="hidden" name="sort" value="{{ sort }}">
+        <input type="hidden" name="category" value="{{ category }}">
+        {% if genero %}<input type="hidden" name="genero" value="{{ genero }}">{% endif %}
         <div class="relative">
             <input type="text" name="q" value="{{ q }}" placeholder="Buscar..."
-                   class="w-full px-4 py-3.5 rounded-xl bg-black/40 border border-gray-700 text-sm focus:outline-none pl-12">
+                   class="w-full px-4 py-3.5 rounded-xl text-sm focus:outline-none pl-12 border"
+                   style="background: var(--inner); border-color: var(--border);">
             <span class="absolute left-4 top-3.5 text-gray-500">🔍</span>
         </div>
     </form>
 
-    <!-- Categorías rápidas (solo cine) -->
+    <!-- Categorías (solo cine) -->
     {% if section != 'music' %}
-    <div class="flex flex-wrap gap-2 mb-5">
-        <a href="?section=cine&category=all&sort={{ sort }}" class="px-4 py-1.5 rounded-full text-sm {{ 'bg-purple-600' if category=='all' else 'bg-gray-800 hover:bg-gray-700' }}">Todos</a>
-        <a href="?section=cine&category=movies&sort={{ sort }}" class="px-4 py-1.5 rounded-full text-sm {{ 'bg-purple-600' if category=='movies' else 'bg-gray-800 hover:bg-gray-700' }}">Películas ({{ counts.movies }})</a>
-        <a href="?section=cine&category=series&sort={{ sort }}" class="px-4 py-1.5 rounded-full text-sm {{ 'bg-purple-600' if category=='series' else 'bg-gray-800 hover:bg-gray-700' }}">Series ({{ counts.series }})</a>
+    <div class="flex flex-wrap gap-2 mb-4">
+        <a href="?section=cine&category=all&sort={{ sort }}" class="px-4 py-1.5 rounded-full text-sm {{ 'pill-active' if category=='all' else 'pill' }}">Todos</a>
+        <a href="?section=cine&category=movies&sort={{ sort }}" class="px-4 py-1.5 rounded-full text-sm {{ 'pill-active' if category=='movies' else 'pill' }}">Películas ({{ counts.movies }})</a>
+        <a href="?section=cine&category=series&sort={{ sort }}" class="px-4 py-1.5 rounded-full text-sm {{ 'pill-active' if category=='series' else 'pill' }}">Series ({{ counts.series }})</a>
     </div>
     {% endif %}
+
+    <!-- Géneros (cine y música) -->
+    {% if genres %}
+    <div class="genre-bar flex gap-2 overflow-x-auto pb-2 mb-4">
+        <a href="?section={{ section }}&category={{ category }}&sort={{ sort }}"
+           class="whitespace-nowrap px-3.5 py-1 rounded-full text-xs {{ 'pill-active' if not genero else 'pill' }}">Todos los géneros</a>
+        {% for g, n in genres %}
+        <a href="?section={{ section }}&category={{ category }}&genero={{ g|urlencode }}&sort={{ sort }}"
+           class="whitespace-nowrap px-3.5 py-1 rounded-full text-xs {{ 'pill-active' if genero and genero|lower == g|lower else 'pill' }}">
+            {{ g }} <span class="opacity-60">{{ n }}</span>
+        </a>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    <!-- Orden -->
+    <div class="flex items-center gap-2 mb-5 text-xs text-gray-400">
+        <span>{{ found }} resultados · ordenar por</span>
+        {% for key, label in [('title','Título'),('year','Año'),('date','Más reciente')] %}
+        <a href="?{{ qs|replace('sort=' ~ sort, 'sort=' ~ key) if 'sort=' in qs else qs ~ '&sort=' ~ key }}"
+           class="px-3 py-1 rounded-full {{ 'pill-active' if sort == key else 'pill' }}">{{ label }}</a>
+        {% endfor %}
+    </div>
 
     <!-- LISTADO -->
     <div class="space-y-5">
@@ -152,21 +183,21 @@
         <div class="card rounded-2xl overflow-hidden">
             <div class="flex flex-col md:flex-row">
                 <!-- Portada -->
-                <div class="md:w-48 lg:w-52 flex-shrink-0 bg-black cursor-pointer"
-                     {% if series.thumbnail %}onclick="openLightbox(event, '{{ series.thumbnail }}')"{% endif %}>
+                <div class="md:w-48 lg:w-52 flex-shrink-0 bg-black {{ 'cursor-zoom-in' if series.thumbnail else '' }}"
+                     {% if series.thumbnail %}onclick="openLightbox(event, this.querySelector('img').src)"{% endif %}>
                     {% if series.thumbnail %}
-                    <img src="{{ series.thumbnail }}" class="w-full h-64 md:h-full object-cover" alt="">
+                    <img src="{{ series.thumbnail }}" class="cover-img w-full h-64 md:h-full object-cover" alt="">
                     {% else %}
                     <div class="w-full h-64 md:h-full flex items-center justify-center text-gray-600">Sin imagen</div>
                     {% endif %}
                 </div>
 
-                <div class="flex-1 p-5">
+                <div class="flex-1 p-5 min-w-0">
                     <h2 class="text-xl font-bold mb-1">{{ series.title }}</h2>
 
                     <div class="text-sm text-gray-400 mb-2 flex flex-wrap gap-x-3">
                         {% if series.year %}<span>{{ series.year }}</span>{% endif %}
-                        {% if series.artista %}<span class="text-green-400">{{ series.artista }}</span>{% endif %}
+                        {% if series.artista %}<span style="color: var(--accent)">{{ series.artista }}</span>{% endif %}
                         {% if series.label %}<span>{{ series.label }}</span>{% endif %}
                         {% if series.estudio %}<span>{{ series.estudio }}</span>{% endif %}
                     </div>
@@ -174,23 +205,27 @@
                     <!-- Géneros clickeables -->
                     {% if series.genero %}
                     <p class="text-sm mb-3">
-                        {% for g in series.genero.split(',') %}
-                        <a href="?section={{ section }}&q={{ g.strip()|urlencode }}&sort={{ sort }}"
-                           class="inline-block mr-2 mb-1 px-2.5 py-0.5 rounded-full text-xs
-                                  {{ 'bg-green-900/60 text-green-300 hover:bg-green-800' if section == 'music' else 'bg-purple-900/50 text-purple-300 hover:bg-purple-800' }}">
-                            {{ g.strip() }}
-                        </a>
+                        {% for g in series.genero.replace(';', ',').split(',') %}
+                        {% if g.strip() %}
+                        <a href="?section={{ section }}&genero={{ g.strip()|urlencode }}&sort={{ sort }}"
+                           class="pill inline-block mr-2 mb-1 px-2.5 py-0.5 rounded-full text-xs">{{ g.strip() }}</a>
+                        {% endif %}
                         {% endfor %}
                     </p>
                     {% endif %}
 
                     <details class="mb-4">
                         <summary class="cursor-pointer text-sm text-gray-400 hover:text-white">▼ Ver ficha completa</summary>
-                        <div class="mt-3 text-sm text-gray-300 space-y-1 bg-black/30 p-4 rounded-xl">
+                        <div class="inner mt-3 text-sm text-gray-300 space-y-1 p-4 rounded-xl">
+                            {% if series.final_category == 'music' %}
+                                {% if series.album or series.title %}<p><span class="text-gray-500">Álbum:</span> {{ series.album or series.title }}</p>{% endif %}
+                            {% endif %}
                             {% if series.artista %}<p><span class="text-gray-500">Artista:</span> {{ series.artista }}</p>{% endif %}
-                            {% if series.album %}<p><span class="text-gray-500">Álbum:</span> {{ series.album }}</p>{% endif %}
+                            {% if series.year %}<p><span class="text-gray-500">Año:</span> {{ series.year }}</p>{% endif %}
+                            {% if series.genero %}<p><span class="text-gray-500">Género:</span> {{ series.genero }}</p>{% endif %}
                             {% if series.label %}<p><span class="text-gray-500">Sello:</span> {{ series.label }}</p>{% endif %}
                             {% if series.productor %}<p><span class="text-gray-500">Productor:</span> {{ series.productor }}</p>{% endif %}
+                            {% if series.estudio %}<p><span class="text-gray-500">Estudio:</span> {{ series.estudio }}</p>{% endif %}
                             {% if series.sinopsis %}
                             <div class="mt-3 pt-3 border-t border-gray-700">
                                 <p class="text-gray-500 mb-1">Descripción:</p>
@@ -207,16 +242,14 @@
                             </h3>
                             <div class="space-y-2">
                                 {% for ep in series.episodes %}
-                                <div class="flex items-center gap-3 bg-black/30 hover:bg-black/50 rounded-xl px-3 py-2.5 transition">
-                                    {% if ep.thumbnail %}
-                                    <img src="{{ ep.thumbnail }}" class="w-11 h-11 rounded object-cover">
-                                    {% else %}
-                                    <div class="w-11 h-11 rounded bg-gray-800 flex items-center justify-center text-gray-500">♪</div>
-                                    {% endif %}
+                                <div class="inner flex items-center gap-3 hover:bg-black/50 rounded-xl px-3 py-2.5 transition">
+                                    <span class="w-6 text-center text-xs text-gray-500">{{ loop.index }}</span>
 
-                                    <button onclick="playTrack({{ ep.id }}, '{{ ep.title|e }}', '{{ series.artista or series.title|e }}', '{{ ep.thumbnail or series.thumbnail or '' }}')"
-                                            class="w-9 h-9 rounded-full flex items-center justify-center text-black font-bold"
-                                            style="background: var(--accent)">▶</button>
+                                    <button class="play-btn w-9 h-9 flex-shrink-0 rounded-full flex items-center justify-center font-bold"
+                                            style="background: var(--accent); color: var(--on-accent)"
+                                            data-id="{{ ep.id }}"
+                                            data-title="{{ ep.title }}"
+                                            data-artist="{{ ep.artista or series.artista or series.title }}">▶</button>
 
                                     <div class="flex-1 min-w-0">
                                         <p class="font-medium text-sm truncate">{{ ep.title }}</p>
@@ -225,6 +258,8 @@
 
                                     <a href="/stream/{{ ep.id }}" download class="text-xs px-3 py-1.5 bg-gray-800 hover:bg-gray-700 rounded-lg">Descargar</a>
                                 </div>
+                                {% else %}
+                                <p class="text-sm text-gray-500">Este álbum todavía no tiene pistas enlazadas.</p>
                                 {% endfor %}
                             </div>
                         {% else %}
@@ -235,7 +270,7 @@
                             <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
                                 {% for ep in series.episodes %}
                                 <a href="{{ ep.link }}" target="_blank"
-                                   class="flex items-center justify-between px-3 py-2 bg-black/30 hover:bg-black/50 rounded-lg text-sm">
+                                   class="inner flex items-center justify-between px-3 py-2 hover:bg-black/50 rounded-lg text-sm">
                                     <span>{% if ep.episode %}Ep {{ ep.episode }}{% else %}Archivo{% endif %}</span>
                                     <span class="text-xs text-gray-500">{{ ep.size_mb }} MB</span>
                                 </a>
@@ -250,6 +285,19 @@
         <div class="text-center py-20 text-gray-500">No se encontraron resultados</div>
         {% endfor %}
     </div>
+
+    <!-- Paginación -->
+    {% if total_pages > 1 %}
+    <div class="flex items-center justify-center gap-3 mt-8 text-sm">
+        {% if page > 1 %}
+        <a href="?{{ qs }}&page={{ page - 1 }}" class="pill px-4 py-2 rounded-full">← Anterior</a>
+        {% endif %}
+        <span class="text-gray-400">Página {{ page }} de {{ total_pages }}</span>
+        {% if page < total_pages %}
+        <a href="?{{ qs }}&page={{ page + 1 }}" class="pill px-4 py-2 rounded-full">Siguiente →</a>
+        {% endif %}
+    </div>
+    {% endif %}
 </div>
 
 <!-- Lightbox -->
@@ -259,7 +307,6 @@
 
 <!-- ===== REPRODUCTOR ===== -->
 <div id="player-bar" class="collapsed hidden">
-    <!-- Versión contraída -->
     <div id="player-collapsed" class="h-[68px] px-4 flex items-center gap-3 cursor-pointer" onclick="togglePlayerSize()">
         <img id="cover-mini" class="w-11 h-11 rounded object-cover bg-gray-800">
         <div class="flex-1 min-w-0">
@@ -269,10 +316,9 @@
             </div>
         </div>
         <button onclick="event.stopPropagation(); togglePlay()" id="btn-play-mini"
-                class="w-9 h-9 rounded-full flex items-center justify-center text-black" style="background: var(--accent)">▶</button>
+                class="w-9 h-9 rounded-full flex items-center justify-center" style="background: var(--accent); color: var(--on-accent)">▶</button>
     </div>
 
-    <!-- Versión expandida -->
     <div id="player-expanded" class="hidden px-4 py-3">
         <div class="flex items-center gap-4 mb-3">
             <img id="cover-full" class="w-14 h-14 rounded-lg object-cover bg-gray-800">
@@ -285,13 +331,13 @@
 
         <div class="flex items-center gap-3 mb-2">
             <span id="current-time" class="text-xs text-gray-400 w-10">0:00</span>
-            <input type="range" id="progress" class="progress-bar flex-1" value="0" min="0" max="1000">
+            <input type="range" id="progress" class="progress-bar flex-1" value="0" min="0" max="1000" step="1">
             <span id="total-time" class="text-xs text-gray-400 w-10 text-right">0:00</span>
         </div>
 
         <div class="flex items-center justify-center gap-6">
             <button onclick="seekRelative(-10)" class="text-gray-400 hover:text-white text-xl">⏪</button>
-            <button id="btn-play" onclick="togglePlay()" class="w-12 h-12 rounded-full flex items-center justify-center text-black text-xl" style="background: var(--accent)">▶</button>
+            <button id="btn-play" onclick="togglePlay()" class="w-12 h-12 rounded-full flex items-center justify-center text-xl" style="background: var(--accent); color: var(--on-accent)">▶</button>
             <button onclick="seekRelative(10)" class="text-gray-400 hover:text-white text-xl">⏩</button>
             <input type="range" id="volume" min="0" max="1" step="0.05" value="0.85" class="w-24 progress-bar" oninput="audio.volume = this.value">
         </div>
@@ -306,6 +352,15 @@
     const progress = document.getElementById('progress');
     let isSeeking = false;
     let isExpanded = false;
+    audio.volume = 0.85;
+
+    // Botones ▶ de cada pista (datos en data-*, sin problemas con comillas)
+    document.addEventListener('click', (e) => {
+        const btn = e.target.closest('.play-btn');
+        if (!btn) return;
+        const cover = btn.closest('.card').querySelector('.cover-img');
+        playTrack(btn.dataset.id, btn.dataset.title, btn.dataset.artist, cover ? cover.src : '');
+    });
 
     function playTrack(id, title, artist, cover) {
         audio.src = `/stream/${id}`;
@@ -314,21 +369,13 @@
         document.getElementById('artist-full').textContent = artist || '';
         document.getElementById('cover-full').src = cover || '';
         document.getElementById('cover-mini').src = cover || '';
-
         playerBar.classList.remove('hidden');
         document.body.classList.add('has-player');
-        audio.play();
-        updateButtons(true);
+        audio.play().catch(() => {});
     }
 
     function togglePlay() {
-        if (audio.paused) {
-            audio.play();
-            updateButtons(true);
-        } else {
-            audio.pause();
-            updateButtons(false);
-        }
+        if (audio.paused) audio.play().catch(() => {}); else audio.pause();
     }
 
     function updateButtons(playing) {
@@ -336,58 +383,50 @@
         document.getElementById('btn-play').textContent = icon;
         document.getElementById('btn-play-mini').textContent = icon;
     }
+    audio.addEventListener('play', () => updateButtons(true));
+    audio.addEventListener('pause', () => updateButtons(false));
+    audio.addEventListener('ended', () => updateButtons(false));
 
     function togglePlayerSize() {
         isExpanded = !isExpanded;
-        const collapsed = document.getElementById('player-collapsed');
-        const expanded = document.getElementById('player-expanded');
-
-        if (isExpanded) {
-            playerBar.classList.remove('collapsed');
-            playerBar.classList.add('expanded');
-            collapsed.classList.add('hidden');
-            expanded.classList.remove('hidden');
-            document.body.classList.add('expanded-player');
-        } else {
-            playerBar.classList.add('collapsed');
-            playerBar.classList.remove('expanded');
-            collapsed.classList.remove('hidden');
-            expanded.classList.add('hidden');
-            document.body.classList.remove('expanded-player');
-        }
+        document.getElementById('player-collapsed').classList.toggle('hidden', isExpanded);
+        document.getElementById('player-expanded').classList.toggle('hidden', !isExpanded);
+        playerBar.classList.toggle('collapsed', !isExpanded);
+        playerBar.classList.toggle('expanded', isExpanded);
+        document.body.classList.toggle('expanded-player', isExpanded);
     }
 
-    // ===== SEEK QUE SÍ FUNCIONA =====
-    progress.addEventListener('mousedown', () => isSeeking = true);
-    progress.addEventListener('touchstart', () => isSeeking = true);
-
-    progress.addEventListener('mouseup', finishSeek);
-    progress.addEventListener('touchend', finishSeek);
-
-    function finishSeek() {
-        if (!audio.duration) return;
-        const value = progress.value;
-        audio.currentTime = (value / 1000) * audio.duration;
-        isSeeking = false;
-    }
-
+    // ===== SEEK =====
+    // 'input' mientras arrastras (solo vista previa); 'change' al soltar/hacer clic (salta de verdad)
     progress.addEventListener('input', () => {
+        isSeeking = true;
         if (!audio.duration) return;
-        const percent = progress.value / 10;
-        document.getElementById('progress-mini').style.width = percent + '%';
+        document.getElementById('progress-mini').style.width = (progress.value / 10) + '%';
         document.getElementById('current-time').textContent = formatTime((progress.value / 1000) * audio.duration);
     });
 
+    progress.addEventListener('change', () => {
+        if (audio.duration) {
+            audio.currentTime = (progress.value / 1000) * audio.duration;
+        }
+        isSeeking = false;
+    });
+
     function seekRelative(seconds) {
-        audio.currentTime = Math.max(0, Math.min(audio.duration || 0, audio.currentTime + seconds));
+        if (!audio.duration) return;
+        audio.currentTime = Math.max(0, Math.min(audio.duration, audio.currentTime + seconds));
     }
 
     function formatTime(s) {
         if (!s || isNaN(s)) return "0:00";
         const m = Math.floor(s / 60);
         const sec = Math.floor(s % 60);
-        return `${m}:${sec.toString().padStart(2,'0')}`;
+        return `${m}:${sec.toString().padStart(2, '0')}`;
     }
+
+    audio.addEventListener('loadedmetadata', () => {
+        document.getElementById('total-time').textContent = formatTime(audio.duration);
+    });
 
     audio.addEventListener('timeupdate', () => {
         if (isSeeking || !audio.duration) return;
@@ -397,8 +436,6 @@
         document.getElementById('current-time').textContent = formatTime(audio.currentTime);
         document.getElementById('total-time').textContent = formatTime(audio.duration);
     });
-
-    audio.addEventListener('ended', () => updateButtons(false));
 
     function openLightbox(e, src) {
         e.preventDefault();

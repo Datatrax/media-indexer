@@ -239,18 +239,21 @@ def extract_info(filename: str, caption: str = "") -> Dict[str, Any]:
 
 def classify(filename: str, mime: str = "", caption: str = "", tipo: str = None) -> str:
     text = (filename + " " + (caption or "")).lower()
+    mime = (mime or "").lower()
 
-    video_extensions = [".mkv", ".mp4", ".avi", ".mov", ".wmv", ".m4v"]
-    audio_extensions = [".mp3", ".flac", ".m4a", ".wav", ".aac", ".ogg"]
+    video_extensions = [".mkv", ".mp4", ".avi", ".mov", ".wmv", ".m4v", ".webm"]
+    audio_extensions = [".mp3", ".flac", ".m4a", ".wav", ".aac", ".ogg", ".opus"]
 
-    is_video = any(ext in text for ext in video_extensions) or "video/" in mime
-    is_audio = any(ext in text for ext in audio_extensions) or "audio/" in mime
+    is_video = any(ext in text for ext in video_extensions) or mime.startswith("video/")
+    is_audio = any(ext in text for ext in audio_extensions) or mime.startswith("audio/")
 
+    # Si es claramente video → nunca música
     if is_video and not is_audio:
         if any(x in text for x in ["movie", "pelicula", "película", "film"]):
             return "movies"
         return "series"
 
+    # Casos especiales Sora
     if "forte" in text and ("sora" in text or "otoshimono" in text):
         return "series"
     if any(x in text for x in ["tokeijikake", "angeloid of clockwork", "final eternal", "eternal my master", "my master"]):
@@ -265,6 +268,7 @@ def classify(filename: str, mime: str = "", caption: str = "", tipo: str = None)
         if any(x in t for x in ["música", "musica", "music"]):
             return "music"
 
+    # Solo audio puro se considera música
     if is_audio:
         return "music"
 
@@ -472,7 +476,7 @@ def build_groups(all_items: List[Dict]) -> Dict[str, Dict]:
         elif "final eternal" in key or "my master" in key:
             g["title"] = "Sora no Otoshimono Final: Eternal My Master, Heaven’s Lost Property: My Eternal Master"
 
-        # ========== DECISIÓN DE CATEGORÍA CORREGIDA ==========
+        # Decisión de categoría
         num_episodes = len(g["episodes"])
         cats = g["categories"]
 

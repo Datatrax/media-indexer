@@ -61,10 +61,10 @@
             z-index: 1000;
             transition: height 0.25s ease;
         }
-        #player-bar.collapsed { height: 68px; }
-        #player-bar.expanded { height: 152px; }
-        body.has-player { padding-bottom: 80px; }
-        body.has-player.expanded-player { padding-bottom: 170px; }
+        #player-bar.collapsed { height: 72px; }
+        #player-bar.expanded { height: 160px; }
+        body.has-player { padding-bottom: 90px; }
+        body.has-player.expanded-player { padding-bottom: 180px; }
 
         .progress-bar {
             -webkit-appearance: none;
@@ -83,11 +83,16 @@
             border-radius: 50%;
             cursor: pointer;
         }
+
+        .track-playing {
+            background-color: rgba(29, 185, 84, 0.15) !important;
+            border: 1px solid rgba(29, 185, 84, 0.4);
+        }
     </style>
 </head>
 <body class="text-white min-h-screen {{ 'section-music' if section == 'music' else '' }}">
 
-<div class="container mx-auto px-4 py-6 max-w-6xl">
+<div class="container mx-auto px-4 py-6 max-w-6xl" id="main-content">
 
     <!-- Header -->
     <div class="mb-8">
@@ -132,7 +137,6 @@
             <div class="px-4 pb-4 pt-2 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 border-t border-gray-800">
 
                 {% if section == 'music' %}
-                    <!-- Filtros de MÚSICA -->
                     <div>
                         <label class="block text-xs text-gray-400 mb-1">Artista</label>
                         <select name="artista" class="w-full px-3 py-2 rounded-lg bg-gray-900 border border-gray-700 text-sm">
@@ -170,7 +174,6 @@
                         </select>
                     </div>
                 {% else %}
-                    <!-- Filtros de Cine & Series -->
                     <div>
                         <label class="block text-xs text-gray-400 mb-1">Tipo</label>
                         <select name="category" class="w-full px-3 py-2 rounded-lg bg-gray-900 border border-gray-700 text-sm">
@@ -288,15 +291,19 @@
                                 {% endif %}
                             </div>
 
-                            <div class="space-y-2">
+                            <div class="space-y-2" id="album-{{ loop.index }}">
                                 {% for ep in series.episodes %}
-                                <div class="flex items-center gap-3 bg-black/30 hover:bg-black/50 rounded-xl px-3 py-2.5 transition">
+                                <div class="track-row flex items-center gap-3 bg-black/30 hover:bg-black/50 rounded-xl px-3 py-2.5 transition"
+                                     data-id="{{ ep.id }}"
+                                     data-title="{{ ep.title|e }}"
+                                     data-artist="{{ series.artista or series.title|e }}"
+                                     data-cover="{{ ep.thumbnail or series.thumbnail or '' }}">
                                     {% if ep.thumbnail %}
                                     <img src="{{ ep.thumbnail }}" class="w-11 h-11 rounded object-cover flex-shrink-0">
                                     {% else %}
                                     <div class="w-11 h-11 rounded bg-gray-800 flex items-center justify-center text-gray-500 flex-shrink-0">♪</div>
                                     {% endif %}
-                                    <button onclick="playTrack({{ ep.id }}, '{{ ep.title|e }}', '{{ series.artista or series.title|e }}', '{{ ep.thumbnail or series.thumbnail or '' }}')"
+                                    <button onclick="playTrackFromElement(this.closest('.track-row'))"
                                             class="w-9 h-9 rounded-full flex items-center justify-center text-black font-bold flex-shrink-0"
                                             style="background: var(--accent)">▶</button>
                                     <div class="flex-1 min-w-0">
@@ -313,7 +320,6 @@
                             </div>
 
                         {% else %}
-                            <!-- SERIES / PELÍCULAS -->
                             <h3 class="text-sm font-semibold text-gray-300 mb-3">
                                 {% if series.final_category == 'movies' %}Películas{% else %}Contenido{% endif %}
                                 ({{ series.episodes|length }})
@@ -397,18 +403,25 @@
 
 <!-- REPRODUCTOR -->
 <div id="player-bar" class="collapsed hidden">
-    <div id="player-collapsed" class="h-[68px] px-4 flex items-center gap-3 cursor-pointer" onclick="togglePlayerSize()">
-        <img id="cover-mini" class="w-11 h-11 rounded object-cover bg-gray-800">
+    <!-- Versión minimizada -->
+    <div id="player-collapsed" class="h-[72px] px-4 flex items-center gap-3">
+        <img id="cover-mini" class="w-12 h-12 rounded object-cover bg-gray-800 flex-shrink-0">
         <div class="flex-1 min-w-0">
             <p id="title-mini" class="text-sm font-medium truncate">—</p>
-            <div class="w-full bg-gray-800 h-1 rounded mt-1.5">
-                <div id="progress-mini" class="h-1 rounded" style="background: var(--accent); width: 0%"></div>
+            <div class="mt-1.5">
+                <input type="range" id="progress-mini" class="progress-bar w-full" value="0" min="0" max="1000">
             </div>
         </div>
-        <button onclick="event.stopPropagation(); togglePlay()" id="btn-play-mini"
-                class="w-9 h-9 rounded-full flex items-center justify-center text-black" style="background: var(--accent)">▶</button>
+        <div class="flex items-center gap-2">
+            <button onclick="prevTrack()" class="text-gray-400 hover:text-white text-lg">⏮</button>
+            <button onclick="togglePlay()" id="btn-play-mini"
+                    class="w-10 h-10 rounded-full flex items-center justify-center text-black" style="background: var(--accent)">▶</button>
+            <button onclick="nextTrack()" class="text-gray-400 hover:text-white text-lg">⏭</button>
+        </div>
+        <button onclick="togglePlayerSize()" class="text-gray-400 hover:text-white ml-2">▲</button>
     </div>
 
+    <!-- Versión expandida -->
     <div id="player-expanded" class="hidden px-4 py-3">
         <div class="flex items-center gap-4 mb-3">
             <img id="cover-full" class="w-14 h-14 rounded-lg object-cover bg-gray-800">
@@ -426,9 +439,11 @@
         </div>
 
         <div class="flex items-center justify-center gap-6">
+            <button onclick="prevTrack()" class="text-gray-400 hover:text-white text-xl">⏮</button>
             <button onclick="seekRelative(-10)" class="text-gray-400 hover:text-white text-xl">⏪</button>
             <button id="btn-play" onclick="togglePlay()" class="w-12 h-12 rounded-full flex items-center justify-center text-black text-xl" style="background: var(--accent)">▶</button>
             <button onclick="seekRelative(10)" class="text-gray-400 hover:text-white text-xl">⏩</button>
+            <button onclick="nextTrack()" class="text-gray-400 hover:text-white text-xl">⏭</button>
             <input type="range" id="volume" min="0" max="1" step="0.05" value="0.85" class="w-24 progress-bar" oninput="audio.volume = this.value">
         </div>
     </div>
@@ -440,8 +455,37 @@
     const audio = document.getElementById('audio');
     const playerBar = document.getElementById('player-bar');
     const progress = document.getElementById('progress');
+    const progressMini = document.getElementById('progress-mini');
     let isSeeking = false;
     let isExpanded = false;
+    let currentPlaylist = [];
+    let currentIndex = -1;
+
+    function playTrackFromElement(el) {
+        const id = el.dataset.id;
+        const title = el.dataset.title;
+        const artist = el.dataset.artist;
+        const cover = el.dataset.cover;
+
+        // Construir playlist del mismo álbum
+        const album = el.closest('[id^="album-"]');
+        if (album) {
+            currentPlaylist = Array.from(album.querySelectorAll('.track-row')).map(row => ({
+                id: row.dataset.id,
+                title: row.dataset.title,
+                artist: row.dataset.artist,
+                cover: row.dataset.cover,
+                element: row
+            }));
+            currentIndex = currentPlaylist.findIndex(t => t.id === id);
+        } else {
+            currentPlaylist = [{ id, title, artist, cover, element: el }];
+            currentIndex = 0;
+        }
+
+        playTrack(id, title, artist, cover);
+        highlightCurrent();
+    }
 
     function playTrack(id, title, artist, cover) {
         audio.src = `/stream/${id}`;
@@ -450,10 +494,33 @@
         document.getElementById('artist-full').textContent = artist || '';
         document.getElementById('cover-full').src = cover || '';
         document.getElementById('cover-mini').src = cover || '';
+
         playerBar.classList.remove('hidden');
         document.body.classList.add('has-player');
         audio.play();
         updateButtons(true);
+        highlightCurrent();
+    }
+
+    function highlightCurrent() {
+        document.querySelectorAll('.track-row').forEach(row => row.classList.remove('track-playing'));
+        if (currentIndex >= 0 && currentPlaylist[currentIndex]) {
+            currentPlaylist[currentIndex].element.classList.add('track-playing');
+        }
+    }
+
+    function nextTrack() {
+        if (currentPlaylist.length === 0) return;
+        currentIndex = (currentIndex + 1) % currentPlaylist.length;
+        const t = currentPlaylist[currentIndex];
+        playTrack(t.id, t.title, t.artist, t.cover);
+    }
+
+    function prevTrack() {
+        if (currentPlaylist.length === 0) return;
+        currentIndex = (currentIndex - 1 + currentPlaylist.length) % currentPlaylist.length;
+        const t = currentPlaylist[currentIndex];
+        playTrack(t.id, t.title, t.artist, t.cover);
     }
 
     function togglePlay() {
@@ -491,19 +558,32 @@
         }
     }
 
-    progress.addEventListener('pointerdown', () => { isSeeking = true; });
-    progress.addEventListener('pointerup', () => {
-        if (audio.duration) {
-            audio.currentTime = (progress.value / 1000) * audio.duration;
+    // Click fuera para contraer
+    document.getElementById('main-content').addEventListener('click', function(e) {
+        if (isExpanded && !e.target.closest('#player-bar')) {
+            togglePlayerSize();
         }
-        isSeeking = false;
     });
-    progress.addEventListener('input', () => {
-        if (!audio.duration) return;
-        const pct = progress.value / 10;
-        document.getElementById('progress-mini').style.width = pct + '%';
-        document.getElementById('current-time').textContent = formatTime((progress.value / 1000) * audio.duration);
-    });
+
+    // Seek (ambos sliders)
+    function setupSeek(slider) {
+        slider.addEventListener('pointerdown', () => isSeeking = true);
+        slider.addEventListener('pointerup', () => {
+            if (audio.duration) {
+                audio.currentTime = (slider.value / 1000) * audio.duration;
+            }
+            isSeeking = false;
+        });
+        slider.addEventListener('input', () => {
+            if (!audio.duration) return;
+            const pct = slider.value / 10;
+            progress.value = slider.value;
+            progressMini.value = slider.value;
+            document.getElementById('current-time').textContent = formatTime((slider.value / 1000) * audio.duration);
+        });
+    }
+    setupSeek(progress);
+    setupSeek(progressMini);
 
     function seekRelative(seconds) {
         if (!audio.duration) return;
@@ -521,12 +601,14 @@
         if (isSeeking || !audio.duration) return;
         const pct = (audio.currentTime / audio.duration) * 100;
         progress.value = pct * 10;
-        document.getElementById('progress-mini').style.width = pct + '%';
+        progressMini.value = pct * 10;
         document.getElementById('current-time').textContent = formatTime(audio.currentTime);
         document.getElementById('total-time').textContent = formatTime(audio.duration);
     });
 
-    audio.addEventListener('ended', () => updateButtons(false));
+    audio.addEventListener('ended', () => {
+        nextTrack();
+    });
 
     function openLightbox(e, src) {
         e.preventDefault();

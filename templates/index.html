@@ -18,6 +18,9 @@
             --card: #121212;
             --border: #282828;
         }
+        body.section-movies {
+            --accent: #f59e0b;
+        }
         body { background-color: var(--bg); }
         .card { background-color: var(--card); border: 1px solid var(--border); }
 
@@ -56,56 +59,61 @@
             bottom: 0;
             left: 0;
             right: 0;
+            height: 70px;
             background: #000;
             border-top: 1px solid #222;
             z-index: 1000;
-            transition: height 0.25s ease;
+            display: none;
         }
-        #player-bar.collapsed { height: 72px; }
-        #player-bar.expanded { height: 160px; }
-        body.has-player { padding-bottom: 90px; }
-        body.has-player.expanded-player { padding-bottom: 180px; }
+        body.has-player { padding-bottom: 80px; }
 
         .progress-bar {
             -webkit-appearance: none;
             appearance: none;
-            height: 5px;
+            height: 4px;
             background: #333;
-            border-radius: 3px;
+            border-radius: 2px;
             outline: none;
             cursor: pointer;
         }
         .progress-bar::-webkit-slider-thumb {
             -webkit-appearance: none;
-            width: 14px;
-            height: 14px;
+            width: 12px;
+            height: 12px;
             background: var(--accent);
             border-radius: 50%;
             cursor: pointer;
         }
 
         .track-playing {
-            background-color: rgba(29, 185, 84, 0.15) !important;
-            border: 1px solid rgba(29, 185, 84, 0.4);
+            background-color: rgba(29, 185, 84, 0.18) !important;
+            border: 1px solid rgba(29, 185, 84, 0.45);
         }
     </style>
 </head>
-<body class="text-white min-h-screen {{ 'section-music' if section == 'music' else '' }}">
+<body class="text-white min-h-screen 
+    {{ 'section-music' if section == 'music' else '' }}
+    {{ 'section-movies' if section == 'movies' else '' }}">
 
-<div class="container mx-auto px-4 py-6 max-w-6xl" id="main-content">
+<div class="container mx-auto px-4 py-6 max-w-6xl">
 
     <!-- Header -->
     <div class="mb-8">
         <h1 class="text-3xl md:text-4xl font-bold mb-5">Biblioteca de Prozac</h1>
 
-        <div class="flex gap-3 mb-5">
-            <a href="?section=cine&sort={{ sort }}"
-               class="px-6 py-2.5 rounded-full text-sm font-semibold transition
-               {{ 'bg-purple-600 text-white' if section != 'music' else 'bg-gray-800 text-gray-300 hover:bg-gray-700' }}">
-                Cine & Series
+        <div class="flex flex-wrap gap-3 mb-5">
+            <a href="?section=series&sort={{ sort }}"
+               class="px-5 py-2.5 rounded-full text-sm font-semibold transition
+               {{ 'bg-purple-600 text-white' if section == 'series' else 'bg-gray-800 text-gray-300 hover:bg-gray-700' }}">
+                Series
+            </a>
+            <a href="?section=movies&sort={{ sort }}"
+               class="px-5 py-2.5 rounded-full text-sm font-semibold transition
+               {{ 'bg-amber-500 text-black' if section == 'movies' else 'bg-gray-800 text-gray-300 hover:bg-gray-700' }}">
+                Películas
             </a>
             <a href="?section=music&sort={{ sort }}"
-               class="px-6 py-2.5 rounded-full text-sm font-semibold transition
+               class="px-5 py-2.5 rounded-full text-sm font-semibold transition
                {{ 'bg-green-500 text-black' if section == 'music' else 'bg-gray-800 text-gray-300 hover:bg-gray-700' }}">
                 Música
             </a>
@@ -130,7 +138,7 @@
             <span class="absolute left-4 top-3.5 text-gray-500">🔍</span>
         </div>
 
-        <details class="bg-black/30 rounded-xl overflow-hidden" {% if year or genero or estudio or artista or category != 'all' %}open{% endif %}>
+        <details class="bg-black/30 rounded-xl overflow-hidden" {% if year or genero or estudio or artista %}open{% endif %}>
             <summary class="cursor-pointer px-4 py-3 text-sm font-medium" style="color: var(--accent)">
                 ⚙️ Búsqueda avanzada
             </summary>
@@ -174,14 +182,6 @@
                         </select>
                     </div>
                 {% else %}
-                    <div>
-                        <label class="block text-xs text-gray-400 mb-1">Tipo</label>
-                        <select name="category" class="w-full px-3 py-2 rounded-lg bg-gray-900 border border-gray-700 text-sm">
-                            <option value="all" {{ 'selected' if category == 'all' else '' }}>Todos</option>
-                            <option value="series" {{ 'selected' if category == 'series' else '' }}>Series</option>
-                            <option value="movies" {{ 'selected' if category == 'movies' else '' }}>Películas</option>
-                        </select>
-                    </div>
                     <div>
                         <label class="block text-xs text-gray-400 mb-1">Año</label>
                         <select name="year" class="w-full px-3 py-2 rounded-lg bg-gray-900 border border-gray-700 text-sm">
@@ -401,50 +401,25 @@
     <img id="lightbox-img" src="" alt="">
 </div>
 
-<!-- REPRODUCTOR -->
-<div id="player-bar" class="collapsed hidden">
-    <!-- Versión minimizada -->
-    <div id="player-collapsed" class="h-[72px] px-4 flex items-center gap-3">
+<!-- REPRODUCTOR SOLO MINI -->
+<div id="player-bar">
+    <div class="h-full px-4 flex items-center gap-3">
         <img id="cover-mini" class="w-12 h-12 rounded object-cover bg-gray-800 flex-shrink-0">
+        
         <div class="flex-1 min-w-0">
             <p id="title-mini" class="text-sm font-medium truncate">—</p>
-            <div class="mt-1.5">
-                <input type="range" id="progress-mini" class="progress-bar w-full" value="0" min="0" max="1000">
+            <div class="flex items-center gap-2 mt-1">
+                <span id="current-time" class="text-xs text-gray-400 w-9">0:00</span>
+                <input type="range" id="progress" class="progress-bar flex-1" value="0" min="0" max="1000">
+                <span id="total-time" class="text-xs text-gray-400 w-9 text-right">0:00</span>
             </div>
         </div>
-        <div class="flex items-center gap-2">
-            <button onclick="prevTrack()" class="text-gray-400 hover:text-white text-lg">⏮</button>
-            <button onclick="togglePlay()" id="btn-play-mini"
-                    class="w-10 h-10 rounded-full flex items-center justify-center text-black" style="background: var(--accent)">▶</button>
-            <button onclick="nextTrack()" class="text-gray-400 hover:text-white text-lg">⏭</button>
-        </div>
-        <button onclick="togglePlayerSize()" class="text-gray-400 hover:text-white ml-2">▲</button>
-    </div>
 
-    <!-- Versión expandida -->
-    <div id="player-expanded" class="hidden px-4 py-3">
-        <div class="flex items-center gap-4 mb-3">
-            <img id="cover-full" class="w-14 h-14 rounded-lg object-cover bg-gray-800">
-            <div class="flex-1 min-w-0">
-                <p id="title-full" class="font-medium truncate">—</p>
-                <p id="artist-full" class="text-xs text-gray-400 truncate"></p>
-            </div>
-            <button onclick="togglePlayerSize()" class="text-gray-400 hover:text-white text-lg">✕</button>
-        </div>
-
-        <div class="flex items-center gap-3 mb-2">
-            <span id="current-time" class="text-xs text-gray-400 w-10">0:00</span>
-            <input type="range" id="progress" class="progress-bar flex-1" value="0" min="0" max="1000">
-            <span id="total-time" class="text-xs text-gray-400 w-10 text-right">0:00</span>
-        </div>
-
-        <div class="flex items-center justify-center gap-6">
+        <div class="flex items-center gap-3">
             <button onclick="prevTrack()" class="text-gray-400 hover:text-white text-xl">⏮</button>
-            <button onclick="seekRelative(-10)" class="text-gray-400 hover:text-white text-xl">⏪</button>
-            <button id="btn-play" onclick="togglePlay()" class="w-12 h-12 rounded-full flex items-center justify-center text-black text-xl" style="background: var(--accent)">▶</button>
-            <button onclick="seekRelative(10)" class="text-gray-400 hover:text-white text-xl">⏩</button>
+            <button onclick="togglePlay()" id="btn-play"
+                    class="w-10 h-10 rounded-full flex items-center justify-center text-black text-lg" style="background: var(--accent)">▶</button>
             <button onclick="nextTrack()" class="text-gray-400 hover:text-white text-xl">⏭</button>
-            <input type="range" id="volume" min="0" max="1" step="0.05" value="0.85" class="w-24 progress-bar" oninput="audio.volume = this.value">
         </div>
     </div>
 </div>
@@ -455,9 +430,7 @@
     const audio = document.getElementById('audio');
     const playerBar = document.getElementById('player-bar');
     const progress = document.getElementById('progress');
-    const progressMini = document.getElementById('progress-mini');
     let isSeeking = false;
-    let isExpanded = false;
     let currentPlaylist = [];
     let currentIndex = -1;
 
@@ -467,7 +440,6 @@
         const artist = el.dataset.artist;
         const cover = el.dataset.cover;
 
-        // Construir playlist del mismo álbum
         const album = el.closest('[id^="album-"]');
         if (album) {
             currentPlaylist = Array.from(album.querySelectorAll('.track-row')).map(row => ({
@@ -484,18 +456,14 @@
         }
 
         playTrack(id, title, artist, cover);
-        highlightCurrent();
     }
 
     function playTrack(id, title, artist, cover) {
         audio.src = `/stream/${id}`;
-        document.getElementById('title-full').textContent = title;
         document.getElementById('title-mini').textContent = title;
-        document.getElementById('artist-full').textContent = artist || '';
-        document.getElementById('cover-full').src = cover || '';
         document.getElementById('cover-mini').src = cover || '';
-
-        playerBar.classList.remove('hidden');
+        
+        playerBar.style.display = 'block';
         document.body.classList.add('has-player');
         audio.play();
         updateButtons(true);
@@ -534,61 +502,21 @@
     }
 
     function updateButtons(playing) {
-        const icon = playing ? '⏸' : '▶';
-        document.getElementById('btn-play').textContent = icon;
-        document.getElementById('btn-play-mini').textContent = icon;
+        document.getElementById('btn-play').textContent = playing ? '⏸' : '▶';
     }
 
-    function togglePlayerSize() {
-        isExpanded = !isExpanded;
-        const collapsed = document.getElementById('player-collapsed');
-        const expanded = document.getElementById('player-expanded');
-        if (isExpanded) {
-            playerBar.classList.remove('collapsed');
-            playerBar.classList.add('expanded');
-            collapsed.classList.add('hidden');
-            expanded.classList.remove('hidden');
-            document.body.classList.add('expanded-player');
-        } else {
-            playerBar.classList.add('collapsed');
-            playerBar.classList.remove('expanded');
-            collapsed.classList.remove('hidden');
-            expanded.classList.add('hidden');
-            document.body.classList.remove('expanded-player');
+    // Seek
+    progress.addEventListener('pointerdown', () => isSeeking = true);
+    progress.addEventListener('pointerup', () => {
+        if (audio.duration) {
+            audio.currentTime = (progress.value / 1000) * audio.duration;
         }
-    }
-
-    // Click fuera para contraer
-    document.getElementById('main-content').addEventListener('click', function(e) {
-        if (isExpanded && !e.target.closest('#player-bar')) {
-            togglePlayerSize();
-        }
+        isSeeking = false;
     });
-
-    // Seek (ambos sliders)
-    function setupSeek(slider) {
-        slider.addEventListener('pointerdown', () => isSeeking = true);
-        slider.addEventListener('pointerup', () => {
-            if (audio.duration) {
-                audio.currentTime = (slider.value / 1000) * audio.duration;
-            }
-            isSeeking = false;
-        });
-        slider.addEventListener('input', () => {
-            if (!audio.duration) return;
-            const pct = slider.value / 10;
-            progress.value = slider.value;
-            progressMini.value = slider.value;
-            document.getElementById('current-time').textContent = formatTime((slider.value / 1000) * audio.duration);
-        });
-    }
-    setupSeek(progress);
-    setupSeek(progressMini);
-
-    function seekRelative(seconds) {
+    progress.addEventListener('input', () => {
         if (!audio.duration) return;
-        audio.currentTime = Math.max(0, Math.min(audio.duration, audio.currentTime + seconds));
-    }
+        document.getElementById('current-time').textContent = formatTime((progress.value / 1000) * audio.duration);
+    });
 
     function formatTime(s) {
         if (!s || isNaN(s)) return "0:00";
@@ -601,14 +529,11 @@
         if (isSeeking || !audio.duration) return;
         const pct = (audio.currentTime / audio.duration) * 100;
         progress.value = pct * 10;
-        progressMini.value = pct * 10;
         document.getElementById('current-time').textContent = formatTime(audio.currentTime);
         document.getElementById('total-time').textContent = formatTime(audio.duration);
     });
 
-    audio.addEventListener('ended', () => {
-        nextTrack();
-    });
+    audio.addEventListener('ended', () => nextTrack());
 
     function openLightbox(e, src) {
         e.preventDefault();

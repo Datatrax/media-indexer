@@ -8,29 +8,30 @@
     <style>
         :root {
             --accent: #a855f7;
-            --accent-hover: #9333ea;
             --bg: #0c0a14;
             --card: #16131f;
             --border: #2e2a3d;
         }
         body.section-music {
             --accent: #1db954;
-            --accent-hover: #1ed760;
             --bg: #0a0a0a;
             --card: #121212;
             --border: #282828;
         }
-        body {
-            background-color: var(--bg);
-            transition: background-color 0.3s ease;
-        }
-        .card {
-            background-color: var(--card);
-            border: 1px solid var(--border);
-        }
+        body { background-color: var(--bg); }
+        .card { background-color: var(--card); border: 1px solid var(--border); }
 
         details > summary { list-style: none; }
         details > summary::-webkit-details-marker { display: none; }
+
+        .season-arrow {
+            display: inline-block;
+            transition: transform 0.15s ease;
+            font-size: 0.7em;
+        }
+        details[open] > summary .season-arrow {
+            transform: rotate(90deg);
+        }
 
         .lightbox {
             display: none;
@@ -62,7 +63,6 @@
         }
         #player-bar.collapsed { height: 68px; }
         #player-bar.expanded { height: 152px; }
-
         body.has-player { padding-bottom: 80px; }
         body.has-player.expanded-player { padding-bottom: 170px; }
 
@@ -89,7 +89,7 @@
 
 <div class="container mx-auto px-4 py-6 max-w-6xl">
 
-    <!-- Header + Secciones -->
+    <!-- Header -->
     <div class="mb-8">
         <h1 class="text-3xl md:text-4xl font-bold mb-5">Biblioteca de Prozac</h1>
 
@@ -114,13 +114,13 @@
         </p>
     </div>
 
-    <!-- Búsqueda + Avanzada -->
+    <!-- Búsqueda -->
     <form method="get" class="mb-6">
         <input type="hidden" name="section" value="{{ section }}">
         <input type="hidden" name="sort" value="{{ sort }}">
 
         <div class="relative mb-3">
-            <input type="text" name="q" value="{{ q }}" placeholder="Buscar por título, artista, sinopsis..."
+            <input type="text" name="q" value="{{ q }}" placeholder="Buscar..."
                    class="w-full px-4 py-3.5 rounded-xl bg-black/40 border border-gray-700 text-sm focus:outline-none pl-12">
             <span class="absolute left-4 top-3.5 text-gray-500">🔍</span>
         </div>
@@ -132,7 +132,6 @@
             <div class="px-4 pb-4 pt-2 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 border-t border-gray-800">
 
                 {% if section == 'music' %}
-                    <!-- Filtros solo para MÚSICA -->
                     <div>
                         <label class="block text-xs text-gray-400 mb-1">Año</label>
                         <select name="year" class="w-full px-3 py-2 rounded-lg bg-gray-900 border border-gray-700 text-sm">
@@ -143,7 +142,7 @@
                         </select>
                     </div>
                     <div>
-                        <label class="block text-xs text-gray-400 mb-1">Género</label>
+                        <label class="block text-xs text-gray-400 mb-1">Género musical</label>
                         <select name="genero" class="w-full px-3 py-2 rounded-lg bg-gray-900 border border-gray-700 text-sm">
                             <option value="">Todos los géneros</option>
                             {% for g in all_genres %}
@@ -161,7 +160,6 @@
                         </select>
                     </div>
                 {% else %}
-                    <!-- Filtros para Cine & Series -->
                     <div>
                         <label class="block text-xs text-gray-400 mb-1">Tipo</label>
                         <select name="category" class="w-full px-3 py-2 rounded-lg bg-gray-900 border border-gray-700 text-sm">
@@ -216,8 +214,6 @@
         {% for series in items %}
         <div class="card rounded-2xl overflow-hidden">
             <div class="flex flex-col md:flex-row">
-                
-                <!-- Portada -->
                 <div class="md:w-48 lg:w-52 flex-shrink-0 bg-black cursor-pointer"
                      {% if series.thumbnail %}onclick="openLightbox(event, '{{ series.thumbnail }}')"{% endif %}>
                     {% if series.thumbnail %}
@@ -237,20 +233,18 @@
                         {% if series.estudio %}<span>{{ series.estudio }}</span>{% endif %}
                     </div>
 
-                    <!-- Géneros clickeables -->
                     {% if series.genero %}
                     <p class="text-sm mb-3">
                         {% for g in series.genero.split(',') %}
                         <a href="?section={{ section }}&q={{ g.strip()|urlencode }}&sort={{ sort }}"
                            class="inline-block mr-2 mb-1 px-2.5 py-0.5 rounded-full text-xs
-                           {{ 'bg-green-900/50 text-green-300 hover:bg-green-800' if section == 'music' else 'bg-purple-900/40 text-purple-300 hover:bg-purple-800' }}">
+                           {{ 'bg-green-900/50 text-green-300' if section == 'music' else 'bg-purple-900/40 text-purple-300' }}">
                             {{ g.strip() }}
                         </a>
                         {% endfor %}
                     </p>
                     {% endif %}
 
-                    <!-- Ficha completa -->
                     <details class="mb-4">
                         <summary class="cursor-pointer text-sm text-gray-400 hover:text-white">▼ Ver ficha completa</summary>
                         <div class="mt-3 text-sm text-gray-300 space-y-1.5 bg-black/30 p-4 rounded-xl">
@@ -271,20 +265,14 @@
 
                     <div class="border-t border-gray-800 pt-4">
                         {% if series.final_category == 'music' %}
-                            <!-- ========== MÚSICA ========== -->
+                            <!-- MÚSICA -->
                             <div class="flex items-center justify-between mb-3">
                                 <h3 class="text-sm font-semibold text-gray-300">
-                                    {% if series.episodes|length == 1 %}
-                                        Single / EP
-                                    {% else %}
-                                        Pistas ({{ series.episodes|length }})
-                                    {% endif %}
+                                    {% if series.episodes|length == 1 %}Single / EP{% else %}Pistas ({{ series.episodes|length }}){% endif %}
                                 </h3>
-
                                 {% if series.episodes|length > 1 %}
                                 <a href="/download-album?ids={% for ep in series.episodes %}{{ ep.id }}{% if not loop.last %},{% endif %}{% endfor %}"
-                                   class="text-xs px-3 py-1.5 rounded-lg font-medium transition text-black"
-                                   style="background: var(--accent)">
+                                   class="text-xs px-3 py-1.5 rounded-lg font-medium text-black" style="background: var(--accent)">
                                     Descargar álbum (.zip)
                                 </a>
                                 {% endif %}
@@ -298,22 +286,16 @@
                                     {% else %}
                                     <div class="w-11 h-11 rounded bg-gray-800 flex items-center justify-center text-gray-500 flex-shrink-0">♪</div>
                                     {% endif %}
-
                                     <button onclick="playTrack({{ ep.id }}, '{{ ep.title|e }}', '{{ series.artista or series.title|e }}', '{{ ep.thumbnail or series.thumbnail or '' }}')"
                                             class="w-9 h-9 rounded-full flex items-center justify-center text-black font-bold flex-shrink-0"
-                                            style="background: var(--accent)">
-                                        ▶
-                                    </button>
-
+                                            style="background: var(--accent)">▶</button>
                                     <div class="flex-1 min-w-0">
                                         <p class="font-medium text-sm truncate">{{ ep.title }}</p>
                                         <p class="text-xs text-gray-500">
                                             {% if ep.duration_str %}{{ ep.duration_str }} · {% endif %}{{ ep.size_mb }} MB
                                         </p>
                                     </div>
-
-                                    <a href="/stream/{{ ep.id }}" download
-                                       class="text-xs px-3 py-1.5 bg-gray-800 hover:bg-gray-700 rounded-lg flex-shrink-0">
+                                    <a href="/stream/{{ ep.id }}" download class="text-xs px-3 py-1.5 bg-gray-800 hover:bg-gray-700 rounded-lg flex-shrink-0">
                                         Descargar
                                     </a>
                                 </div>
@@ -321,11 +303,62 @@
                             </div>
 
                         {% else %}
-                            <!-- ========== SERIES / PELÍCULAS ========== -->
+                            <!-- SERIES / PELÍCULAS con temporadas -->
                             <h3 class="text-sm font-semibold text-gray-300 mb-3">
-                                {% if series.final_category == 'movies' %}Películas{% else %}Episodios{% endif %}
+                                {% if series.final_category == 'movies' %}Películas{% else %}Contenido{% endif %}
                                 ({{ series.episodes|length }})
                             </h3>
+
+                            {% if series.seasons %}
+                                {% for season_num, eps in series.seasons.items() %}
+                                <details class="mb-3" {% if loop.first %}open{% endif %}>
+                                    <summary class="cursor-pointer text-sm font-medium text-gray-300 hover:text-white mb-2">
+                                        <span class="season-arrow">▶</span>
+                                        Temporada {{ season_num }} ({{ eps|length }} episodios)
+                                    </summary>
+                                    <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 ml-4">
+                                        {% for ep in eps %}
+                                        <a href="{{ ep.link }}" target="_blank"
+                                           class="flex items-center justify-between px-3 py-2 bg-black/30 hover:bg-black/50 rounded-lg text-sm">
+                                            <span>Ep {{ ep.episode or '?' }}</span>
+                                            <span class="text-xs text-gray-500">{{ ep.size_mb }} MB</span>
+                                        </a>
+                                        {% endfor %}
+                                    </div>
+                                </details>
+                                {% endfor %}
+                            {% endif %}
+
+                            {% if series.ovas %}
+                            <details class="mb-3">
+                                <summary class="cursor-pointer text-sm font-medium text-gray-300 hover:text-white mb-2">
+                                    <span class="season-arrow">▶</span> OVAs / Specials ({{ series.ovas|length }})
+                                </summary>
+                                <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 ml-4">
+                                    {% for ep in series.ovas %}
+                                    <a href="{{ ep.link }}" target="_blank"
+                                       class="flex items-center justify-between px-3 py-2 bg-black/30 hover:bg-black/50 rounded-lg text-sm">
+                                        <span>{{ ep.special_type or 'OVA' }} {{ ep.episode or '' }}</span>
+                                        <span class="text-xs text-gray-500">{{ ep.size_mb }} MB</span>
+                                    </a>
+                                    {% endfor %}
+                                </div>
+                            </details>
+                            {% endif %}
+
+                            {% if series.parts %}
+                            <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+                                {% for ep in series.parts %}
+                                <a href="{{ ep.link }}" target="_blank"
+                                   class="flex items-center justify-between px-3 py-2 bg-black/30 hover:bg-black/50 rounded-lg text-sm">
+                                    <span>Parte {{ ep.episode or '' }}</span>
+                                    <span class="text-xs text-gray-500">{{ ep.size_mb }} MB</span>
+                                </a>
+                                {% endfor %}
+                            </div>
+                            {% endif %}
+
+                            {% if not series.seasons and not series.ovas and not series.parts %}
                             <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
                                 {% for ep in series.episodes %}
                                 <a href="{{ ep.link }}" target="_blank"
@@ -335,6 +368,7 @@
                                 </a>
                                 {% endfor %}
                             </div>
+                            {% endif %}
                         {% endif %}
                     </div>
                 </div>
@@ -351,9 +385,8 @@
     <img id="lightbox-img" src="" alt="">
 </div>
 
-<!-- ===== REPRODUCTOR ===== -->
+<!-- REPRODUCTOR -->
 <div id="player-bar" class="collapsed hidden">
-    <!-- Versión contraída -->
     <div id="player-collapsed" class="h-[68px] px-4 flex items-center gap-3 cursor-pointer" onclick="togglePlayerSize()">
         <img id="cover-mini" class="w-11 h-11 rounded object-cover bg-gray-800">
         <div class="flex-1 min-w-0">
@@ -366,7 +399,6 @@
                 class="w-9 h-9 rounded-full flex items-center justify-center text-black" style="background: var(--accent)">▶</button>
     </div>
 
-    <!-- Versión expandida -->
     <div id="player-expanded" class="hidden px-4 py-3">
         <div class="flex items-center gap-4 mb-3">
             <img id="cover-full" class="w-14 h-14 rounded-lg object-cover bg-gray-800">
@@ -408,7 +440,6 @@
         document.getElementById('artist-full').textContent = artist || '';
         document.getElementById('cover-full').src = cover || '';
         document.getElementById('cover-mini').src = cover || '';
-
         playerBar.classList.remove('hidden');
         document.body.classList.add('has-player');
         audio.play();
@@ -435,7 +466,6 @@
         isExpanded = !isExpanded;
         const collapsed = document.getElementById('player-collapsed');
         const expanded = document.getElementById('player-expanded');
-
         if (isExpanded) {
             playerBar.classList.remove('collapsed');
             playerBar.classList.add('expanded');
@@ -451,32 +481,18 @@
         }
     }
 
-    // ===== SEEK QUE SÍ FUNCIONA =====
-    progress.addEventListener('pointerdown', () => {
-        isSeeking = true;
-    });
-
+    progress.addEventListener('pointerdown', () => isSeeking = true);
     progress.addEventListener('pointerup', () => {
         if (audio.duration) {
             audio.currentTime = (progress.value / 1000) * audio.duration;
         }
         isSeeking = false;
     });
-
     progress.addEventListener('input', () => {
         if (!audio.duration) return;
         const pct = progress.value / 10;
         document.getElementById('progress-mini').style.width = pct + '%';
         document.getElementById('current-time').textContent = formatTime((progress.value / 1000) * audio.duration);
-    });
-
-    // Click directo en la barra
-    progress.addEventListener('click', (e) => {
-        if (!audio.duration) return;
-        const rect = progress.getBoundingClientRect();
-        const percent = (e.clientX - rect.left) / rect.width;
-        audio.currentTime = percent * audio.duration;
-        progress.value = percent * 1000;
     });
 
     function seekRelative(seconds) {
@@ -488,7 +504,7 @@
         if (!s || isNaN(s)) return "0:00";
         const m = Math.floor(s / 60);
         const sec = Math.floor(s % 60);
-        return `${m}:${sec.toString().padStart(2, '0')}`;
+        return `${m}:${sec.toString().padStart(2,'0')}`;
     }
 
     audio.addEventListener('timeupdate', () => {

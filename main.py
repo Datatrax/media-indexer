@@ -6,7 +6,7 @@ import zipfile
 import io
 from io import BytesIO
 from typing import Dict, Any, Set, List
-from collections import Counter, defaultdict
+from collections import defaultdict
 
 from telethon import TelegramClient, events
 from telethon.sessions import StringSession
@@ -23,7 +23,6 @@ load_dotenv()
 
 API_ID = int(os.getenv("API_ID"))
 API_HASH = os.getenv("API_HASH")
-BOT_TOKEN = os.getenv("BOT_TOKEN")
 CHANNEL_ID = int(os.getenv("CHANNEL_ID"))
 SESSION_STRING = os.getenv("SESSION_STRING")
 ADMIN_USER = os.getenv("ADMIN_USER", "admin")
@@ -247,11 +246,9 @@ def classify(filename: str, mime: str = "", caption: str = "", tipo: str = None)
     is_video = any(ext in text for ext in video_extensions) or mime.startswith("video/")
     is_audio = any(ext in text for ext in audio_extensions) or mime.startswith("audio/")
 
-    # === Prioridad alta para películas ===
     if is_video:
         if any(x in text for x in ["movie", "pelicula", "película", "film", "the movie"]):
             return "movies"
-        # Si tiene "part" / "parte" y NO tiene patrón de episodio de serie → película
         if ("part" in text or "parte" in text) and not re.search(r"s\d{1,2}e\d{1,2}", text):
             return "movies"
         return "series"
@@ -735,7 +732,7 @@ async def home(
     genero: str = "",
     estudio: str = "",
     artista: str = "",
-    section: str = "cine",
+    section: str = "series",          # ahora por defecto "series"
     username: str = Depends(verify_credentials)
 ):
     all_items = get_all_items()
@@ -748,11 +745,10 @@ async def home(
                 big_files = [ep for ep in g["episodes"] if ep.get("size_mb", 0) > 80]
                 if len(big_files) == 0:
                     all_series.append(g)
-    else:
-        all_series = [g for g in groups.values() if g.get("final_category") in ("series", "movies")]
-
-    if category != "all" and section != "music":
-        all_series = [g for g in all_series if g.get("final_category") == category]
+    elif section == "movies":
+        all_series = [g for g in groups.values() if g.get("final_category") == "movies"]
+    else:  # series
+        all_series = [g for g in groups.values() if g.get("final_category") == "series"]
 
     if year:
         all_series = [s for s in all_series if s.get("year") and str(s["year"])[:4] == str(year)]

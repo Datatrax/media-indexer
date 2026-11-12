@@ -247,13 +247,12 @@ def classify(filename: str, mime: str = "", caption: str = "", tipo: str = None)
     is_video = any(ext in text for ext in video_extensions) or mime.startswith("video/")
     is_audio = any(ext in text for ext in audio_extensions) or mime.startswith("audio/")
 
-    # Si es claramente video → nunca música
-    if is_video and not is_audio:
+    # Si tiene extensión de video → NUNCA música
+    if is_video:
         if any(x in text for x in ["movie", "pelicula", "película", "film"]):
             return "movies"
         return "series"
 
-    # Casos especiales Sora
     if "forte" in text and ("sora" in text or "otoshimono" in text):
         return "series"
     if any(x in text for x in ["tokeijikake", "angeloid of clockwork", "final eternal", "eternal my master", "my master"]):
@@ -268,7 +267,6 @@ def classify(filename: str, mime: str = "", caption: str = "", tipo: str = None)
         if any(x in t for x in ["música", "musica", "music"]):
             return "music"
 
-    # Solo audio puro se considera música
     if is_audio:
         return "music"
 
@@ -367,7 +365,6 @@ async def process_message(msg):
         "original_category": tipo_detectado
     }
 
-    # Forzar fotos con metadata de música a la categoría music
     if item["is_photo"] and (info.get("artista") or info.get("album") or info.get("sinopsis") or info.get("label")):
         if any(x in (caption or "").lower() for x in ["artista", "album", "álbum", "label", "sello", "género", "genero", "fecha"]):
             tipo_detectado = "music"
@@ -476,7 +473,6 @@ def build_groups(all_items: List[Dict]) -> Dict[str, Dict]:
         elif "final eternal" in key or "my master" in key:
             g["title"] = "Sora no Otoshimono Final: Eternal My Master, Heaven’s Lost Property: My Eternal Master"
 
-        # Decisión de categoría
         num_episodes = len(g["episodes"])
         cats = g["categories"]
 
@@ -503,7 +499,6 @@ def build_groups(all_items: List[Dict]) -> Dict[str, Dict]:
         else:
             g["final_category"] = "other"
 
-        # Orden
         if g.get("final_category") == "music":
             g["episodes"].sort(key=lambda x: x.get("id", 0))
         else:
@@ -542,10 +537,26 @@ def get_grouped_counts():
     return counts
 
 
-def get_all_genres() -> list:
+def get_music_genres() -> list:
     genres: Set[str] = set()
-    for items in catalog.values():
-        for item in items:
+    for item in catalog.get("music", []):
+        if item.get("genero"):
+            for g in item["genero"].split(","):
+                g = g.strip()
+                if g and g.lower() not in [
+                    "acción", "accion", "aventura", "aventuras", "comedia", "drama",
+                    "ecchi", "fantasía", "fantasia", "fantástico", "fantastico",
+                    "harem", "intriga", "romance", "sobrenatural", "ciencia ficción",
+                    "ciencia ficcion", "acción", "shonen", "seinen", "shojo"
+                ]:
+                    genres.add(g)
+    return sorted(list(genres))
+
+
+def get_cine_genres() -> list:
+    genres: Set[str] = set()
+    for cat in ["series", "movies"]:
+        for item in catalog.get(cat, []):
             if item.get("genero"):
                 for g in item["genero"].split(","):
                     g = g.strip()
@@ -575,6 +586,8 @@ def get_all_studios() -> list:
                     s = s.strip()
                     if s:
                         studios.add(s)
+            if item.get("label"):
+                studios.add(item["label"])
     return sorted(list(studios))
 
 
@@ -672,7 +685,13 @@ async def home(
     groups = build_groups(all_items)
 
     if section == "music":
-        all_series = [g for g in groups.values() if g.get("final_category") == "music"]
+        all_series = []
+        for g in groups.values():
+            if g.get("final_category") == "music":
+                # Filtro fuerte: si tiene archivos > 80 MB, no es música
+                big_files = [ep for ep in g["episodes"] if ep.get("size_mb", 0) > 80]
+                if len(big_files) == 0:
+                    all_series.append(g)
     else:
         all_series = [g for g in groups.values() if g.get("final_category") in ("series", "movies")]
 
@@ -686,7 +705,9 @@ async def home(
         all_series = [s for s in all_series if s.get("genero") and genero_lower in s["genero"].lower()]
     if estudio:
         estudio_lower = estudio.lower().strip()
-        all_series = [s for s in all_series if s.get("estudio") and estudio_lower in s["estudio"].lower()]
+        all_series = [s for s in all_series if 
+                      (s.get("estudio") and estudio_lower in s["estudio"].lower()) or
+                      (s.get("label") and estudio_lower in s["label"].lower())]
 
     if q:
         q_lower = q.lower().strip()
@@ -697,7 +718,8 @@ async def home(
                 q_lower in (series.get("sinopsis") or "").lower() or
                 q_lower in (series.get("estudio") or "").lower() or
                 q_lower in (series.get("artista") or "").lower() or
-                q_lower in (series.get("album") or "").lower()):
+                q_lower in (series.get("album") or "").lower() or
+                q_lower in (series.get("label") or "").lower()):
                 filtered.append(series)
         all_series = filtered
 
@@ -726,7 +748,7 @@ async def home(
             "q": q,
             "page": page,
             "total_pages": total_pages,
-            "all_genres": get_all_genres(),
+            "all_genres": get_music_genres() if section == "music" else get_cine_genres(),
             "all_years": get_all_years(),
             "all_studios": get_all_studios(),
             "sort": sort,

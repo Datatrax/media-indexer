@@ -20,12 +20,10 @@
             --card: #121212;
             --border: #282828;
         }
-
         body {
             background-color: var(--bg);
             transition: background-color 0.3s ease;
         }
-
         .card {
             background-color: var(--card);
             border: 1px solid var(--border);
@@ -33,15 +31,6 @@
 
         details > summary { list-style: none; }
         details > summary::-webkit-details-marker { display: none; }
-
-        .season-arrow {
-            display: inline-block;
-            transition: transform 0.15s ease;
-            font-size: 0.65em;
-        }
-        details[open] > summary .season-arrow {
-            transform: rotate(90deg);
-        }
 
         .lightbox {
             display: none;
@@ -61,7 +50,6 @@
             border-radius: 8px;
         }
 
-        /* Reproductor */
         #player-bar {
             position: fixed;
             bottom: 0;
@@ -73,7 +61,7 @@
             transition: height 0.25s ease;
         }
         #player-bar.collapsed { height: 68px; }
-        #player-bar.expanded { height: 150px; }
+        #player-bar.expanded { height: 152px; }
 
         body.has-player { padding-bottom: 80px; }
         body.has-player.expanded-player { padding-bottom: 170px; }
@@ -108,12 +96,12 @@
         <div class="flex gap-3 mb-5">
             <a href="?section=cine&sort={{ sort }}"
                class="px-6 py-2.5 rounded-full text-sm font-semibold transition
-                      {{ 'bg-purple-600 text-white' if section != 'music' else 'bg-gray-800 text-gray-300 hover:bg-gray-700' }}">
+               {{ 'bg-purple-600 text-white' if section != 'music' else 'bg-gray-800 text-gray-300 hover:bg-gray-700' }}">
                 Cine & Series
             </a>
             <a href="?section=music&sort={{ sort }}"
                class="px-6 py-2.5 rounded-full text-sm font-semibold transition
-                      {{ 'bg-green-500 text-black' if section == 'music' else 'bg-gray-800 text-gray-300 hover:bg-gray-700' }}">
+               {{ 'bg-green-500 text-black' if section == 'music' else 'bg-gray-800 text-gray-300 hover:bg-gray-700' }}">
                 Música
             </a>
         </div>
@@ -126,31 +114,77 @@
         </p>
     </div>
 
-    <!-- Búsqueda -->
+    <!-- Búsqueda + Avanzada -->
     <form method="get" class="mb-6">
         <input type="hidden" name="section" value="{{ section }}">
         <input type="hidden" name="sort" value="{{ sort }}">
-        <div class="relative">
-            <input type="text" name="q" value="{{ q }}" placeholder="Buscar..."
+
+        <div class="relative mb-3">
+            <input type="text" name="q" value="{{ q }}" placeholder="Buscar por título, artista, sinopsis..."
                    class="w-full px-4 py-3.5 rounded-xl bg-black/40 border border-gray-700 text-sm focus:outline-none pl-12">
             <span class="absolute left-4 top-3.5 text-gray-500">🔍</span>
         </div>
-    </form>
 
-    <!-- Categorías rápidas (solo cine) -->
-    {% if section != 'music' %}
-    <div class="flex flex-wrap gap-2 mb-5">
-        <a href="?section=cine&category=all&sort={{ sort }}" class="px-4 py-1.5 rounded-full text-sm {{ 'bg-purple-600' if category=='all' else 'bg-gray-800 hover:bg-gray-700' }}">Todos</a>
-        <a href="?section=cine&category=movies&sort={{ sort }}" class="px-4 py-1.5 rounded-full text-sm {{ 'bg-purple-600' if category=='movies' else 'bg-gray-800 hover:bg-gray-700' }}">Películas ({{ counts.movies }})</a>
-        <a href="?section=cine&category=series&sort={{ sort }}" class="px-4 py-1.5 rounded-full text-sm {{ 'bg-purple-600' if category=='series' else 'bg-gray-800 hover:bg-gray-700' }}">Series ({{ counts.series }})</a>
-    </div>
-    {% endif %}
+        <details class="bg-black/30 rounded-xl overflow-hidden" {% if year or genero or estudio or category != 'all' %}open{% endif %}>
+            <summary class="cursor-pointer px-4 py-3 text-sm font-medium" style="color: var(--accent)">
+                ⚙️ Búsqueda avanzada
+            </summary>
+            <div class="px-4 pb-4 pt-2 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 border-t border-gray-800">
+                {% if section != 'music' %}
+                <div>
+                    <label class="block text-xs text-gray-400 mb-1">Tipo</label>
+                    <select name="category" class="w-full px-3 py-2 rounded-lg bg-gray-900 border border-gray-700 text-sm">
+                        <option value="all" {{ 'selected' if category == 'all' else '' }}>Todos</option>
+                        <option value="series" {{ 'selected' if category == 'series' else '' }}>Series</option>
+                        <option value="movies" {{ 'selected' if category == 'movies' else '' }}>Películas</option>
+                    </select>
+                </div>
+                {% endif %}
+                <div>
+                    <label class="block text-xs text-gray-400 mb-1">Año</label>
+                    <select name="year" class="w-full px-3 py-2 rounded-lg bg-gray-900 border border-gray-700 text-sm">
+                        <option value="">Todos los años</option>
+                        {% for y in all_years %}
+                        <option value="{{ y }}" {{ 'selected' if year == y|string else '' }}>{{ y }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-400 mb-1">Género</label>
+                    <select name="genero" class="w-full px-3 py-2 rounded-lg bg-gray-900 border border-gray-700 text-sm">
+                        <option value="">Todos los géneros</option>
+                        {% for g in all_genres %}
+                        <option value="{{ g }}" {{ 'selected' if genero == g else '' }}>{{ g }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-400 mb-1">Estudio / Sello</label>
+                    <select name="estudio" class="w-full px-3 py-2 rounded-lg bg-gray-900 border border-gray-700 text-sm">
+                        <option value="">Todos</option>
+                        {% for s in all_studios %}
+                        <option value="{{ s }}" {{ 'selected' if estudio == s else '' }}>{{ s }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="sm:col-span-2 lg:col-span-4 flex gap-3">
+                    <button type="submit" class="px-5 py-2 rounded-lg text-sm font-medium text-black" style="background: var(--accent)">
+                        Aplicar filtros
+                    </button>
+                    <a href="?section={{ section }}&sort={{ sort }}" class="px-5 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-sm">
+                        Limpiar
+                    </a>
+                </div>
+            </div>
+        </details>
+    </form>
 
     <!-- LISTADO -->
     <div class="space-y-5">
         {% for series in items %}
         <div class="card rounded-2xl overflow-hidden">
             <div class="flex flex-col md:flex-row">
+                
                 <!-- Portada -->
                 <div class="md:w-48 lg:w-52 flex-shrink-0 bg-black cursor-pointer"
                      {% if series.thumbnail %}onclick="openLightbox(event, '{{ series.thumbnail }}')"{% endif %}>
@@ -177,20 +211,23 @@
                         {% for g in series.genero.split(',') %}
                         <a href="?section={{ section }}&q={{ g.strip()|urlencode }}&sort={{ sort }}"
                            class="inline-block mr-2 mb-1 px-2.5 py-0.5 rounded-full text-xs
-                                  {{ 'bg-green-900/60 text-green-300 hover:bg-green-800' if section == 'music' else 'bg-purple-900/50 text-purple-300 hover:bg-purple-800' }}">
+                           {{ 'bg-green-900/50 text-green-300 hover:bg-green-800' if section == 'music' else 'bg-purple-900/40 text-purple-300 hover:bg-purple-800' }}">
                             {{ g.strip() }}
                         </a>
                         {% endfor %}
                     </p>
                     {% endif %}
 
+                    <!-- Ficha completa -->
                     <details class="mb-4">
                         <summary class="cursor-pointer text-sm text-gray-400 hover:text-white">▼ Ver ficha completa</summary>
-                        <div class="mt-3 text-sm text-gray-300 space-y-1 bg-black/30 p-4 rounded-xl">
+                        <div class="mt-3 text-sm text-gray-300 space-y-1.5 bg-black/30 p-4 rounded-xl">
                             {% if series.artista %}<p><span class="text-gray-500">Artista:</span> {{ series.artista }}</p>{% endif %}
                             {% if series.album %}<p><span class="text-gray-500">Álbum:</span> {{ series.album }}</p>{% endif %}
+                            {% if series.year %}<p><span class="text-gray-500">Año:</span> {{ series.year }}</p>{% endif %}
                             {% if series.label %}<p><span class="text-gray-500">Sello:</span> {{ series.label }}</p>{% endif %}
                             {% if series.productor %}<p><span class="text-gray-500">Productor:</span> {{ series.productor }}</p>{% endif %}
+                            {% if series.estudio %}<p><span class="text-gray-500">Estudio:</span> {{ series.estudio }}</p>{% endif %}
                             {% if series.sinopsis %}
                             <div class="mt-3 pt-3 border-t border-gray-700">
                                 <p class="text-gray-500 mb-1">Descripción:</p>
@@ -202,32 +239,57 @@
 
                     <div class="border-t border-gray-800 pt-4">
                         {% if series.final_category == 'music' %}
-                            <h3 class="text-sm font-semibold text-gray-300 mb-3">
-                                {% if series.episodes|length == 1 %}Single / EP{% else %}Pistas ({{ series.episodes|length }}){% endif %}
-                            </h3>
+                            <!-- ========== MÚSICA ========== -->
+                            <div class="flex items-center justify-between mb-3">
+                                <h3 class="text-sm font-semibold text-gray-300">
+                                    {% if series.episodes|length == 1 %}
+                                        Single / EP
+                                    {% else %}
+                                        Pistas ({{ series.episodes|length }})
+                                    {% endif %}
+                                </h3>
+
+                                {% if series.episodes|length > 1 %}
+                                <a href="/download-album?ids={% for ep in series.episodes %}{{ ep.id }}{% if not loop.last %},{% endif %}{% endfor %}"
+                                   class="text-xs px-3 py-1.5 rounded-lg font-medium transition text-black"
+                                   style="background: var(--accent)">
+                                    Descargar álbum (.zip)
+                                </a>
+                                {% endif %}
+                            </div>
+
                             <div class="space-y-2">
                                 {% for ep in series.episodes %}
                                 <div class="flex items-center gap-3 bg-black/30 hover:bg-black/50 rounded-xl px-3 py-2.5 transition">
                                     {% if ep.thumbnail %}
-                                    <img src="{{ ep.thumbnail }}" class="w-11 h-11 rounded object-cover">
+                                    <img src="{{ ep.thumbnail }}" class="w-11 h-11 rounded object-cover flex-shrink-0">
                                     {% else %}
-                                    <div class="w-11 h-11 rounded bg-gray-800 flex items-center justify-center text-gray-500">♪</div>
+                                    <div class="w-11 h-11 rounded bg-gray-800 flex items-center justify-center text-gray-500 flex-shrink-0">♪</div>
                                     {% endif %}
 
                                     <button onclick="playTrack({{ ep.id }}, '{{ ep.title|e }}', '{{ series.artista or series.title|e }}', '{{ ep.thumbnail or series.thumbnail or '' }}')"
-                                            class="w-9 h-9 rounded-full flex items-center justify-center text-black font-bold"
-                                            style="background: var(--accent)">▶</button>
+                                            class="w-9 h-9 rounded-full flex items-center justify-center text-black font-bold flex-shrink-0"
+                                            style="background: var(--accent)">
+                                        ▶
+                                    </button>
 
                                     <div class="flex-1 min-w-0">
                                         <p class="font-medium text-sm truncate">{{ ep.title }}</p>
-                                        <p class="text-xs text-gray-500">{{ ep.size_mb }} MB</p>
+                                        <p class="text-xs text-gray-500">
+                                            {% if ep.duration_str %}{{ ep.duration_str }} · {% endif %}{{ ep.size_mb }} MB
+                                        </p>
                                     </div>
 
-                                    <a href="/stream/{{ ep.id }}" download class="text-xs px-3 py-1.5 bg-gray-800 hover:bg-gray-700 rounded-lg">Descargar</a>
+                                    <a href="/stream/{{ ep.id }}" download
+                                       class="text-xs px-3 py-1.5 bg-gray-800 hover:bg-gray-700 rounded-lg flex-shrink-0">
+                                        Descargar
+                                    </a>
                                 </div>
                                 {% endfor %}
                             </div>
+
                         {% else %}
+                            <!-- ========== SERIES / PELÍCULAS ========== -->
                             <h3 class="text-sm font-semibold text-gray-300 mb-3">
                                 {% if series.final_category == 'movies' %}Películas{% else %}Episodios{% endif %}
                                 ({{ series.episodes|length }})
@@ -358,42 +420,40 @@
     }
 
     // ===== SEEK QUE SÍ FUNCIONA =====
-    progress.addEventListener('mousedown', () => isSeeking = true);
-    progress.addEventListener('touchstart', () => isSeeking = true);
+    progress.addEventListener('pointerdown', () => { isSeeking = true; });
+    progress.addEventListener('pointerup', doSeek);
+    progress.addEventListener('change', doSeek);
 
-    progress.addEventListener('mouseup', finishSeek);
-    progress.addEventListener('touchend', finishSeek);
-
-    function finishSeek() {
+    function doSeek() {
         if (!audio.duration) return;
-        const value = progress.value;
-        audio.currentTime = (value / 1000) * audio.duration;
+        audio.currentTime = (progress.value / 1000) * audio.duration;
         isSeeking = false;
     }
 
     progress.addEventListener('input', () => {
         if (!audio.duration) return;
-        const percent = progress.value / 10;
-        document.getElementById('progress-mini').style.width = percent + '%';
+        const pct = progress.value / 10;
+        document.getElementById('progress-mini').style.width = pct + '%';
         document.getElementById('current-time').textContent = formatTime((progress.value / 1000) * audio.duration);
     });
 
     function seekRelative(seconds) {
-        audio.currentTime = Math.max(0, Math.min(audio.duration || 0, audio.currentTime + seconds));
+        if (!audio.duration) return;
+        audio.currentTime = Math.max(0, Math.min(audio.duration, audio.currentTime + seconds));
     }
 
     function formatTime(s) {
         if (!s || isNaN(s)) return "0:00";
         const m = Math.floor(s / 60);
         const sec = Math.floor(s % 60);
-        return `${m}:${sec.toString().padStart(2,'0')}`;
+        return `${m}:${sec.toString().padStart(2, '0')}`;
     }
 
     audio.addEventListener('timeupdate', () => {
         if (isSeeking || !audio.duration) return;
-        const percent = (audio.currentTime / audio.duration) * 100;
-        progress.value = percent * 10;
-        document.getElementById('progress-mini').style.width = percent + '%';
+        const pct = (audio.currentTime / audio.duration) * 100;
+        progress.value = pct * 10;
+        document.getElementById('progress-mini').style.width = pct + '%';
         document.getElementById('current-time').textContent = formatTime(audio.currentTime);
         document.getElementById('total-time').textContent = formatTime(audio.duration);
     });

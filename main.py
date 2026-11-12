@@ -13,7 +13,7 @@ from telethon.sessions import StringSession
 from telethon.tl.types import MessageMediaDocument, MessageMediaPhoto, DocumentAttributeAudio
 
 from fastapi import FastAPI, Request, Depends, HTTPException, status
-from fastapi.responses import HTMLResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, StreamingResponse, Response
 from fastapi.templating import Jinja2Templates
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 import uvicorn
@@ -247,7 +247,6 @@ def classify(filename: str, mime: str = "", caption: str = "", tipo: str = None)
     is_video = any(ext in text for ext in video_extensions) or mime.startswith("video/")
     is_audio = any(ext in text for ext in audio_extensions) or mime.startswith("audio/")
 
-    # Si tiene extensión de video → NUNCA música
     if is_video:
         if any(x in text for x in ["movie", "pelicula", "película", "film"]):
             return "movies"
@@ -547,7 +546,7 @@ def get_music_genres() -> list:
                     "acción", "accion", "aventura", "aventuras", "comedia", "drama",
                     "ecchi", "fantasía", "fantasia", "fantástico", "fantastico",
                     "harem", "intriga", "romance", "sobrenatural", "ciencia ficción",
-                    "ciencia ficcion", "acción", "shonen", "seinen", "shojo"
+                    "ciencia ficcion", "shonen", "seinen", "shojo"
                 ]:
                     genres.add(g)
     return sorted(list(genres))
@@ -563,6 +562,14 @@ def get_cine_genres() -> list:
                     if g:
                         genres.add(g)
     return sorted(list(genres))
+
+
+def get_all_artists() -> list:
+    artists: Set[str] = set()
+    for item in catalog.get("music", []):
+        if item.get("artista"):
+            artists.add(item["artista"].strip())
+    return sorted(list(artists))
 
 
 def get_all_years() -> list:
@@ -602,12 +609,13 @@ async def startup_event():
 
 
 @app.get("/stream/{msg_id}")
-async def stream_audio(msg_id: int, username: str = Depends(verify_credentials)):
+async def stream_audio(msg_id: int, request: Request, username: str = Depends(verify_credentials)):
     try:
         msg = await client.get_messages(CHANNEL_ID, ids=int(msg_id))
         if not msg or not msg.document:
             raise HTTPException(status_code=404, detail="Archivo no encontrado")
 
+        file_size = msg.document.size
         mime = msg.document.mime_type or "audio/mpeg"
         filename = "track.mp3"
         for attr in msg.document.attributes:
@@ -615,18 +623,44 @@ async def stream_audio(msg_id: int, username: str = Depends(verify_credentials))
                 filename = attr.file_name
                 break
 
-        async def file_iterator():
+        range_header = request.headers.get("range")
+
+        if range_header:
+            # Soporte real de Range para seeking
+            range_match = re.match(r"bytes=(\d+)-(\d*)", range_header)
+            if range_match:
+                start = int(range_match.group(1))
+                end = int(range_match.group(2)) if range_match.group(2) else file_size - 1
+                end = min(end, file_size - 1)
+                length = end - start + 1
+
+                async def ranged_stream():
+                    # Telethon permite offset
+                    async for chunk in client.iter_download(msg.media, offset=start, request_size=min(length, 1024*1024)):
+                        yield chunk
+
+                headers = {
+                    "Content-Range": f"bytes {start}-{end}/{file_size}",
+                    "Accept-Ranges": "bytes",
+                    "Content-Length": str(length),
+                    "Content-Type": mime,
+                    "Content-Disposition": f'inline; filename="{filename}"'
+                }
+                return StreamingResponse(ranged_stream(), status_code=206, headers=headers, media_type=mime)
+
+        # Sin Range → archivo completo
+        async def full_stream():
             async for chunk in client.iter_download(msg.media):
                 yield chunk
 
-        return StreamingResponse(
-            file_iterator(),
-            media_type=mime,
-            headers={
-                "Accept-Ranges": "bytes",
-                "Content-Disposition": f'inline; filename="{filename}"'
-            }
-        )
+        headers = {
+            "Accept-Ranges": "bytes",
+            "Content-Length": str(file_size),
+            "Content-Type": mime,
+            "Content-Disposition": f'inline; filename="{filename}"'
+        }
+        return StreamingResponse(full_stream(), media_type=mime, headers=headers)
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -678,6 +712,7 @@ async def home(
     year: str = "",
     genero: str = "",
     estudio: str = "",
+    artista: str = "",
     section: str = "cine",
     username: str = Depends(verify_credentials)
 ):
@@ -688,7 +723,6 @@ async def home(
         all_series = []
         for g in groups.values():
             if g.get("final_category") == "music":
-                # Filtro fuerte: si tiene archivos > 80 MB, no es música
                 big_files = [ep for ep in g["episodes"] if ep.get("size_mb", 0) > 80]
                 if len(big_files) == 0:
                     all_series.append(g)
@@ -708,6 +742,9 @@ async def home(
         all_series = [s for s in all_series if 
                       (s.get("estudio") and estudio_lower in s["estudio"].lower()) or
                       (s.get("label") and estudio_lower in s["label"].lower())]
+    if artista and section == "music":
+        artista_lower = artista.lower().strip()
+        all_series = [s for s in all_series if s.get("artista") and artista_lower in s["artista"].lower()]
 
     if q:
         q_lower = q.lower().strip()
@@ -749,12 +786,14 @@ async def home(
             "page": page,
             "total_pages": total_pages,
             "all_genres": get_music_genres() if section == "music" else get_cine_genres(),
+            "all_artists": get_all_artists() if section == "music" else [],
             "all_years": get_all_years(),
             "all_studios": get_all_studios(),
             "sort": sort,
             "year": year,
             "genero": genero,
             "estudio": estudio,
+            "artista": artista,
             "section": section,
         }
     )

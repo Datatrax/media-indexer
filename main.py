@@ -142,7 +142,7 @@ def extract_info(filename: str, caption: str = "") -> Dict[str, Any]:
 
         if is_music_file:
             if " - " in clean or " – " in clean:
-                parts = re.split(r"\s*[-–]\s*", clean, 1)
+                parts = re.split(r"\s*[-–]\s*", clean, maxsplit=1)
                 if len(parts) == 2:
                     if not parsed.get("artista"):
                         parsed["artista"] = parts[0].strip()
@@ -472,9 +472,15 @@ def build_groups(all_items: List[Dict]) -> Dict[str, Dict]:
         elif "final eternal" in key or "my master" in key:
             g["title"] = "Sora no Otoshimono Final: Eternal My Master, Heaven’s Lost Property: My Eternal Master"
 
+        # ========== DECISIÓN DE CATEGORÍA CORREGIDA ==========
         num_episodes = len(g["episodes"])
+        cats = g["categories"]
 
-        if "music" in g["categories"]:
+        music_count = cats.count("music")
+        series_count = cats.count("series")
+        movies_count = cats.count("movies")
+
+        if music_count > 0 and music_count >= series_count and music_count >= movies_count:
             g["final_category"] = "music"
         elif "tokeijikake" in key or "final eternal" in key or "my master" in key:
             g["final_category"] = "movies"
@@ -484,12 +490,16 @@ def build_groups(all_items: List[Dict]) -> Dict[str, Dict]:
             g["final_category"] = "series"
         elif num_episodes <= 2 and any(ep.get("is_part") for ep in g["episodes"]):
             g["final_category"] = "movies"
-        elif g["categories"]:
-            most_common = Counter(g["categories"]).most_common(1)[0][0]
-            g["final_category"] = most_common
+        elif series_count >= movies_count and series_count > 0:
+            g["final_category"] = "series"
+        elif movies_count > 0:
+            g["final_category"] = "movies"
+        elif music_count > 0:
+            g["final_category"] = "music"
         else:
             g["final_category"] = "other"
 
+        # Orden
         if g.get("final_category") == "music":
             g["episodes"].sort(key=lambda x: x.get("id", 0))
         else:

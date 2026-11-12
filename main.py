@@ -247,8 +247,12 @@ def classify(filename: str, mime: str = "", caption: str = "", tipo: str = None)
     is_video = any(ext in text for ext in video_extensions) or mime.startswith("video/")
     is_audio = any(ext in text for ext in audio_extensions) or mime.startswith("audio/")
 
+    # === Prioridad alta para películas ===
     if is_video:
-        if any(x in text for x in ["movie", "pelicula", "película", "film"]):
+        if any(x in text for x in ["movie", "pelicula", "película", "film", "the movie"]):
+            return "movies"
+        # Si tiene "part" / "parte" y NO tiene patrón de episodio de serie → película
+        if ("part" in text or "parte" in text) and not re.search(r"s\d{1,2}e\d{1,2}", text):
             return "movies"
         return "series"
 
@@ -570,7 +574,6 @@ def get_all_artists() -> list:
 def get_music_years() -> list:
     years = set()
     for item in catalog.get("music", []):
-        # Solo años de archivos de audio reales
         mime = (item.get("mime") or "").lower()
         filename = (item.get("filename") or "").lower()
         if mime.startswith("audio/") or any(ext in filename for ext in [".mp3", ".flac", ".m4a", ".wav", ".aac", ".ogg"]):

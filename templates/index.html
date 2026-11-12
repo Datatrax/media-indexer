@@ -130,43 +130,75 @@
                 ⚙️ Búsqueda avanzada
             </summary>
             <div class="px-4 pb-4 pt-2 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 border-t border-gray-800">
-                {% if section != 'music' %}
-                <div>
-                    <label class="block text-xs text-gray-400 mb-1">Tipo</label>
-                    <select name="category" class="w-full px-3 py-2 rounded-lg bg-gray-900 border border-gray-700 text-sm">
-                        <option value="all" {{ 'selected' if category == 'all' else '' }}>Todos</option>
-                        <option value="series" {{ 'selected' if category == 'series' else '' }}>Series</option>
-                        <option value="movies" {{ 'selected' if category == 'movies' else '' }}>Películas</option>
-                    </select>
-                </div>
+
+                {% if section == 'music' %}
+                    <!-- Filtros solo para MÚSICA -->
+                    <div>
+                        <label class="block text-xs text-gray-400 mb-1">Año</label>
+                        <select name="year" class="w-full px-3 py-2 rounded-lg bg-gray-900 border border-gray-700 text-sm">
+                            <option value="">Todos los años</option>
+                            {% for y in all_years %}
+                            <option value="{{ y }}" {{ 'selected' if year == y|string else '' }}>{{ y }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs text-gray-400 mb-1">Género</label>
+                        <select name="genero" class="w-full px-3 py-2 rounded-lg bg-gray-900 border border-gray-700 text-sm">
+                            <option value="">Todos los géneros</option>
+                            {% for g in all_genres %}
+                            <option value="{{ g }}" {{ 'selected' if genero == g else '' }}>{{ g }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs text-gray-400 mb-1">Sello / Label</label>
+                        <select name="estudio" class="w-full px-3 py-2 rounded-lg bg-gray-900 border border-gray-700 text-sm">
+                            <option value="">Todos</option>
+                            {% for s in all_studios %}
+                            <option value="{{ s }}" {{ 'selected' if estudio == s else '' }}>{{ s }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                {% else %}
+                    <!-- Filtros para Cine & Series -->
+                    <div>
+                        <label class="block text-xs text-gray-400 mb-1">Tipo</label>
+                        <select name="category" class="w-full px-3 py-2 rounded-lg bg-gray-900 border border-gray-700 text-sm">
+                            <option value="all" {{ 'selected' if category == 'all' else '' }}>Todos</option>
+                            <option value="series" {{ 'selected' if category == 'series' else '' }}>Series</option>
+                            <option value="movies" {{ 'selected' if category == 'movies' else '' }}>Películas</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs text-gray-400 mb-1">Año</label>
+                        <select name="year" class="w-full px-3 py-2 rounded-lg bg-gray-900 border border-gray-700 text-sm">
+                            <option value="">Todos los años</option>
+                            {% for y in all_years %}
+                            <option value="{{ y }}" {{ 'selected' if year == y|string else '' }}>{{ y }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs text-gray-400 mb-1">Género</label>
+                        <select name="genero" class="w-full px-3 py-2 rounded-lg bg-gray-900 border border-gray-700 text-sm">
+                            <option value="">Todos los géneros</option>
+                            {% for g in all_genres %}
+                            <option value="{{ g }}" {{ 'selected' if genero == g else '' }}>{{ g }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs text-gray-400 mb-1">Estudio</label>
+                        <select name="estudio" class="w-full px-3 py-2 rounded-lg bg-gray-900 border border-gray-700 text-sm">
+                            <option value="">Todos</option>
+                            {% for s in all_studios %}
+                            <option value="{{ s }}" {{ 'selected' if estudio == s else '' }}>{{ s }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
                 {% endif %}
-                <div>
-                    <label class="block text-xs text-gray-400 mb-1">Año</label>
-                    <select name="year" class="w-full px-3 py-2 rounded-lg bg-gray-900 border border-gray-700 text-sm">
-                        <option value="">Todos los años</option>
-                        {% for y in all_years %}
-                        <option value="{{ y }}" {{ 'selected' if year == y|string else '' }}>{{ y }}</option>
-                        {% endfor %}
-                    </select>
-                </div>
-                <div>
-                    <label class="block text-xs text-gray-400 mb-1">Género</label>
-                    <select name="genero" class="w-full px-3 py-2 rounded-lg bg-gray-900 border border-gray-700 text-sm">
-                        <option value="">Todos los géneros</option>
-                        {% for g in all_genres %}
-                        <option value="{{ g }}" {{ 'selected' if genero == g else '' }}>{{ g }}</option>
-                        {% endfor %}
-                    </select>
-                </div>
-                <div>
-                    <label class="block text-xs text-gray-400 mb-1">Estudio / Sello</label>
-                    <select name="estudio" class="w-full px-3 py-2 rounded-lg bg-gray-900 border border-gray-700 text-sm">
-                        <option value="">Todos</option>
-                        {% for s in all_studios %}
-                        <option value="{{ s }}" {{ 'selected' if estudio == s else '' }}>{{ s }}</option>
-                        {% endfor %}
-                    </select>
-                </div>
+
                 <div class="sm:col-span-2 lg:col-span-4 flex gap-3">
                     <button type="submit" class="px-5 py-2 rounded-lg text-sm font-medium text-black" style="background: var(--accent)">
                         Aplicar filtros
@@ -420,21 +452,31 @@
     }
 
     // ===== SEEK QUE SÍ FUNCIONA =====
-    progress.addEventListener('pointerdown', () => { isSeeking = true; });
-    progress.addEventListener('pointerup', doSeek);
-    progress.addEventListener('change', doSeek);
+    progress.addEventListener('pointerdown', () => {
+        isSeeking = true;
+    });
 
-    function doSeek() {
-        if (!audio.duration) return;
-        audio.currentTime = (progress.value / 1000) * audio.duration;
+    progress.addEventListener('pointerup', () => {
+        if (audio.duration) {
+            audio.currentTime = (progress.value / 1000) * audio.duration;
+        }
         isSeeking = false;
-    }
+    });
 
     progress.addEventListener('input', () => {
         if (!audio.duration) return;
         const pct = progress.value / 10;
         document.getElementById('progress-mini').style.width = pct + '%';
         document.getElementById('current-time').textContent = formatTime((progress.value / 1000) * audio.duration);
+    });
+
+    // Click directo en la barra
+    progress.addEventListener('click', (e) => {
+        if (!audio.duration) return;
+        const rect = progress.getBoundingClientRect();
+        const percent = (e.clientX - rect.left) / rect.width;
+        audio.currentTime = percent * audio.duration;
+        progress.value = percent * 1000;
     });
 
     function seekRelative(seconds) {

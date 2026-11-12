@@ -2,13 +2,15 @@ import os
 import re
 import secrets
 import base64
+import zipfile
+import io
 from io import BytesIO
 from typing import Dict, Any, Set, List
 from collections import Counter, defaultdict
 
 from telethon import TelegramClient, events
 from telethon.sessions import StringSession
-from telethon.tl.types import MessageMediaDocument, MessageMediaPhoto
+from telethon.tl.types import MessageMediaDocument, MessageMediaPhoto, DocumentAttributeAudio
 
 from fastapi import FastAPI, Request, Depends, HTTPException, status
 from fastapi.responses import HTMLResponse, StreamingResponse
@@ -275,6 +277,14 @@ def classify(filename: str, mime: str = "", caption: str = "", tipo: str = None)
     return "other"
 
 
+def format_duration(seconds: int) -> str:
+    if not seconds:
+        return ""
+    m = seconds // 60
+    s = seconds % 60
+    return f"{m}:{s:02d}"
+
+
 async def process_message(msg):
     if not msg.media:
         return None
@@ -283,13 +293,15 @@ async def process_message(msg):
     mime = ""
     size = 0
     caption = msg.message or ""
+    duration_sec = None
 
     if isinstance(msg.media, MessageMediaDocument):
         doc = msg.media.document
         for attr in doc.attributes:
             if hasattr(attr, "file_name") and attr.file_name:
                 filename = attr.file_name
-                break
+            if isinstance(attr, DocumentAttributeAudio):
+                duration_sec = attr.duration
         mime = doc.mime_type or ""
         size = doc.size or 0
     elif isinstance(msg.media, MessageMediaPhoto):
@@ -324,6 +336,8 @@ async def process_message(msg):
         "resolucion": info["resolucion"],
         "quality": info["quality"],
         "duracion": info["duracion"],
+        "duration_sec": duration_sec,
+        "duration_str": format_duration(duration_sec) if duration_sec else "",
         "audios": info["audios"],
         "subtitulos": info["subtitulos"],
         "fansub": info["fansub"],
@@ -585,6 +599,43 @@ async def stream_audio(msg_id: int, username: str = Depends(verify_credentials))
                 "Accept-Ranges": "bytes",
                 "Content-Disposition": f'inline; filename="{filename}"'
             }
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/download-album")
+async def download_album(ids: str, username: str = Depends(verify_credentials)):
+    try:
+        id_list = [int(x.strip()) for x in ids.split(",") if x.strip().isdigit()]
+        if not id_list:
+            raise HTTPException(status_code=400, detail="No se proporcionaron IDs válidos")
+        if len(id_list) > 30:
+            raise HTTPException(status_code=400, detail="Máximo 30 pistas por descarga")
+
+        zip_buffer = io.BytesIO()
+        with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
+            for msg_id in id_list:
+                try:
+                    msg = await client.get_messages(CHANNEL_ID, ids=msg_id)
+                    if not msg or not msg.document:
+                        continue
+                    filename = f"track_{msg_id}.mp3"
+                    for attr in msg.document.attributes:
+                        if hasattr(attr, "file_name") and attr.file_name:
+                            filename = attr.file_name
+                            break
+                    file_bytes = await client.download_media(msg.media, file=bytes)
+                    zip_file.writestr(filename, file_bytes)
+                except Exception as e:
+                    print(f"Error descargando {msg_id}: {e}")
+                    continue
+
+        zip_buffer.seek(0)
+        return StreamingResponse(
+            zip_buffer,
+            media_type="application/zip",
+            headers={"Content-Disposition": "attachment; filename=album.zip"}
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

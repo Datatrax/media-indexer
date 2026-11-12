@@ -537,62 +537,63 @@ def get_grouped_counts():
 
 
 def get_music_genres() -> list:
-    genres: Set[str] = set()
+    genres = set()
     for item in catalog.get("music", []):
         if item.get("genero"):
-            for g in item["genero"].split(","):
+            for g in re.split(r"[,/|]", item["genero"]):
                 g = g.strip()
-                if g and g.lower() not in [
-                    "acción", "accion", "aventura", "aventuras", "comedia", "drama",
-                    "ecchi", "fantasía", "fantasia", "fantástico", "fantastico",
-                    "harem", "intriga", "romance", "sobrenatural", "ciencia ficción",
-                    "ciencia ficcion", "shonen", "seinen", "shojo"
-                ]:
+                if g and len(g) > 1:
                     genres.add(g)
-    return sorted(list(genres))
+    return sorted(genres)
 
 
 def get_cine_genres() -> list:
-    genres: Set[str] = set()
+    genres = set()
     for cat in ["series", "movies"]:
         for item in catalog.get(cat, []):
             if item.get("genero"):
-                for g in item["genero"].split(","):
+                for g in re.split(r"[,/|]", item["genero"]):
                     g = g.strip()
-                    if g:
+                    if g and len(g) > 1:
                         genres.add(g)
-    return sorted(list(genres))
+    return sorted(genres)
 
 
 def get_all_artists() -> list:
-    artists: Set[str] = set()
+    artists = set()
     for item in catalog.get("music", []):
         if item.get("artista"):
             artists.add(item["artista"].strip())
-    return sorted(list(artists))
+    return sorted(artists)
 
 
 def get_music_years() -> list:
     years = set()
     for item in catalog.get("music", []):
-        if item.get("year"):
+        year = item.get("year")
+        if year:
             try:
-                years.add(int(str(item["year"])[:4]))
+                y = int(str(year).strip()[:4])
+                if 1950 <= y <= 2030:
+                    years.add(y)
             except:
                 pass
-    return sorted(list(years), reverse=True)
+    return sorted(years, reverse=True)
 
 
 def get_cine_years() -> list:
     years = set()
     for cat in ["series", "movies"]:
         for item in catalog.get(cat, []):
-            if item.get("year"):
+            year = item.get("year")
+            if year:
                 try:
-                    years.add(int(str(item["year"])[:4]))
+                    y = int(str(year).strip()[:4])
+                    if 1950 <= y <= 2030:
+                        years.add(y)
                 except:
                     pass
-    return sorted(list(years), reverse=True)
+    return sorted(years, reverse=True)
 
 
 def get_music_labels() -> list:
@@ -600,9 +601,7 @@ def get_music_labels() -> list:
     for item in catalog.get("music", []):
         if item.get("label"):
             labels.add(item["label"].strip())
-        if item.get("estudio"):
-            labels.add(item["estudio"].strip())
-    return sorted(list(labels))
+    return sorted(labels)
 
 
 def get_cine_studios() -> list:
@@ -610,11 +609,11 @@ def get_cine_studios() -> list:
     for cat in ["series", "movies"]:
         for item in catalog.get(cat, []):
             if item.get("estudio"):
-                for s in item["estudio"].split(","):
+                for s in re.split(r"[,/|]", item["estudio"]):
                     s = s.strip()
                     if s:
                         studios.add(s)
-    return sorted(list(studios))
+    return sorted(studios)
 
 
 @app.on_event("startup")

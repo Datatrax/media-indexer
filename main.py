@@ -13,7 +13,7 @@ from telethon.sessions import StringSession
 from telethon.tl.types import MessageMediaDocument, MessageMediaPhoto, DocumentAttributeAudio
 
 from fastapi import FastAPI, Request, Depends, HTTPException, status
-from fastapi.responses import HTMLResponse, StreamingResponse, Response
+from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 import uvicorn
@@ -572,29 +572,48 @@ def get_all_artists() -> list:
     return sorted(list(artists))
 
 
-def get_all_years() -> list:
+def get_music_years() -> list:
     years = set()
-    for items in catalog.values():
-        for item in items:
+    for item in catalog.get("music", []):
+        if item.get("year"):
+            try:
+                years.add(int(str(item["year"])[:4]))
+            except:
+                pass
+    return sorted(list(years), reverse=True)
+
+
+def get_cine_years() -> list:
+    years = set()
+    for cat in ["series", "movies"]:
+        for item in catalog.get(cat, []):
             if item.get("year"):
                 try:
-                    years.add(int(item["year"]))
+                    years.add(int(str(item["year"])[:4]))
                 except:
                     pass
     return sorted(list(years), reverse=True)
 
 
-def get_all_studios() -> list:
+def get_music_labels() -> list:
+    labels = set()
+    for item in catalog.get("music", []):
+        if item.get("label"):
+            labels.add(item["label"].strip())
+        if item.get("estudio"):
+            labels.add(item["estudio"].strip())
+    return sorted(list(labels))
+
+
+def get_cine_studios() -> list:
     studios = set()
-    for items in catalog.values():
-        for item in items:
+    for cat in ["series", "movies"]:
+        for item in catalog.get(cat, []):
             if item.get("estudio"):
                 for s in item["estudio"].split(","):
                     s = s.strip()
                     if s:
                         studios.add(s)
-            if item.get("label"):
-                studios.add(item["label"])
     return sorted(list(studios))
 
 
@@ -626,7 +645,6 @@ async def stream_audio(msg_id: int, request: Request, username: str = Depends(ve
         range_header = request.headers.get("range")
 
         if range_header:
-            # Soporte real de Range para seeking
             range_match = re.match(r"bytes=(\d+)-(\d*)", range_header)
             if range_match:
                 start = int(range_match.group(1))
@@ -635,7 +653,6 @@ async def stream_audio(msg_id: int, request: Request, username: str = Depends(ve
                 length = end - start + 1
 
                 async def ranged_stream():
-                    # Telethon permite offset
                     async for chunk in client.iter_download(msg.media, offset=start, request_size=min(length, 1024*1024)):
                         yield chunk
 
@@ -648,7 +665,6 @@ async def stream_audio(msg_id: int, request: Request, username: str = Depends(ve
                 }
                 return StreamingResponse(ranged_stream(), status_code=206, headers=headers, media_type=mime)
 
-        # Sin Range → archivo completo
         async def full_stream():
             async for chunk in client.iter_download(msg.media):
                 yield chunk
@@ -733,7 +749,7 @@ async def home(
         all_series = [g for g in all_series if g.get("final_category") == category]
 
     if year:
-        all_series = [s for s in all_series if s.get("year") and str(s["year"]) == str(year)]
+        all_series = [s for s in all_series if s.get("year") and str(s["year"])[:4] == str(year)]
     if genero:
         genero_lower = genero.lower().strip()
         all_series = [s for s in all_series if s.get("genero") and genero_lower in s["genero"].lower()]
@@ -761,7 +777,7 @@ async def home(
         all_series = filtered
 
     if sort == "year":
-        all_series.sort(key=lambda x: int(x["year"]) if x.get("year") and str(x["year"]).isdigit() else 0, reverse=True)
+        all_series.sort(key=lambda x: int(str(x.get("year") or "0")[:4]) if str(x.get("year") or "").isdigit() else 0, reverse=True)
     elif sort == "date":
         all_series.sort(key=lambda x: x.get("latest_date") or "", reverse=True)
     else:
@@ -787,8 +803,8 @@ async def home(
             "total_pages": total_pages,
             "all_genres": get_music_genres() if section == "music" else get_cine_genres(),
             "all_artists": get_all_artists() if section == "music" else [],
-            "all_years": get_all_years(),
-            "all_studios": get_all_studios(),
+            "all_years": get_music_years() if section == "music" else get_cine_years(),
+            "all_studios": get_music_labels() if section == "music" else get_cine_studios(),
             "sort": sort,
             "year": year,
             "genero": genero,

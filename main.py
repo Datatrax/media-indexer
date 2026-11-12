@@ -570,14 +570,18 @@ def get_all_artists() -> list:
 def get_music_years() -> list:
     years = set()
     for item in catalog.get("music", []):
-        year = item.get("year")
-        if year:
-            try:
-                y = int(str(year).strip()[:4])
-                if 1950 <= y <= 2030:
-                    years.add(y)
-            except:
-                pass
+        # Solo años de archivos de audio reales
+        mime = (item.get("mime") or "").lower()
+        filename = (item.get("filename") or "").lower()
+        if mime.startswith("audio/") or any(ext in filename for ext in [".mp3", ".flac", ".m4a", ".wav", ".aac", ".ogg"]):
+            year = item.get("year")
+            if year:
+                try:
+                    y = int(str(year).strip()[:4])
+                    if 1950 <= y <= 2030:
+                        years.add(y)
+                except:
+                    pass
     return sorted(years, reverse=True)
 
 

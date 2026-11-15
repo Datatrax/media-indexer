@@ -95,6 +95,15 @@
             background-color: rgba(29, 185, 84, 0.18) !important;
             border: 1px solid rgba(29, 185, 84, 0.45);
         }
+
+
+        /* Mejor proporción de portadas */
+        .poster {
+            aspect-ratio: 2 / 3;
+            object-fit: cover;
+            width: 100%;
+            height: 100%;
+        }
     </style>
 </head>
 <body class="text-white min-h-screen 
@@ -244,12 +253,13 @@
         {% for series in items %}
         <div class="card rounded-2xl overflow-hidden">
             <div class="flex flex-col md:flex-row">
-                <div class="md:w-48 lg:w-52 flex-shrink-0 bg-black cursor-pointer"
+                <!-- Poster con mejor proporción -->
+                <div class="md:w-44 lg:w-48 flex-shrink-0 bg-black cursor-pointer overflow-hidden"
                      {% if series.thumbnail %}onclick="openLightbox(event, '{{ series.thumbnail }}')"{% endif %}>
                     {% if series.thumbnail %}
-                    <img src="{{ series.thumbnail }}" class="w-full h-64 md:h-full object-cover" alt="">
+                    <img src="{{ series.thumbnail }}" class="poster" alt="">
                     {% else %}
-                    <div class="w-full h-64 md:h-full flex items-center justify-center text-gray-600">Sin imagen</div>
+                    <div class="poster flex items-center justify-center text-gray-600 bg-gray-900">Sin imagen</div>
                     {% endif %}
                 </div>
 
@@ -451,7 +461,6 @@
                     class="w-10 h-10 rounded-full flex items-center justify-center text-black text-lg" style="background: var(--accent)">▶</button>
             <button onclick="nextTrack()" class="text-gray-400 hover:text-white text-xl">⏭</button>
             
-            <!-- Volumen -->
             <div class="flex items-center gap-1 ml-1">
                 <span class="text-gray-400 text-sm">🔊</span>
                 <input type="range" id="volume" min="0" max="1" step="0.05" value="0.85" 
@@ -554,7 +563,6 @@
     }
 
 
-    // Seek
     progress.addEventListener('pointerdown', () => isSeeking = true);
     progress.addEventListener('pointerup', () => {
         if (audio.duration) {

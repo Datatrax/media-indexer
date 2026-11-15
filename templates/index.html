@@ -306,11 +306,23 @@
                         {% if series.estudio %}<p><span class="text-gray-500">Estudio:</span> {{ series.estudio }}</p>{% endif %}
                         
                         {% if series.precuela %}
-                        <p><span class="text-gray-500">Precuela:</span> {{ series.precuela }}</p>
+                        <p>
+                            <span class="text-gray-500">Precuela:</span>
+                            <a href="?section={{ section }}&q={{ series.precuela|urlencode }}" 
+                               class="text-purple-400 hover:underline">
+                                {{ series.precuela }}
+                            </a>
+                        </p>
                         {% endif %}
                         
                         {% if series.secuela %}
-                        <p><span class="text-gray-500">Secuela:</span> {{ series.secuela }}</p>
+                        <p>
+                            <span class="text-gray-500">Secuela:</span>
+                            <a href="?section={{ section }}&q={{ series.secuela|urlencode }}" 
+                               class="text-purple-400 hover:underline">
+                                {{ series.secuela }}
+                            </a>
+                        </p>
                         {% endif %}
 
 

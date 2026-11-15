@@ -97,26 +97,17 @@
         }
 
 
-        /* ===== FORMATO HORIZONTAL ===== */
-        .poster-container {
-            width: 100%;
-            background: #000;
-            overflow: hidden;
-        }
+        /* Imagen arriba - completa */
         .poster {
             width: 100%;
-            height: 200px;
+            height: 280px;
             object-fit: cover;
             object-position: center center;
             display: block;
         }
         @media (min-width: 768px) {
-            .poster-container {
-                width: 340px;
-                flex-shrink: 0;
-            }
             .poster {
-                height: 190px;
+                height: 320px;
             }
         }
     </style>
@@ -126,7 +117,7 @@
     {{ 'section-movies' if section == 'movies' else '' }}">
 
 
-<div class="container mx-auto px-4 py-6 max-w-6xl">
+<div class="container mx-auto px-4 py-6 max-w-5xl">
 
 
     <!-- Header -->
@@ -264,182 +255,181 @@
 
 
     <!-- LISTADO -->
-    <div class="space-y-5">
+    <div class="space-y-8">
         {% for series in items %}
         <div class="card rounded-2xl overflow-hidden">
-            <div class="flex flex-col md:flex-row">
-                
-                <!-- Imagen HORIZONTAL -->
-                <div class="poster-container cursor-pointer"
-                     {% if series.thumbnail %}onclick="openLightbox(event, '{{ series.thumbnail }}')"{% endif %}>
-                    {% if series.thumbnail %}
-                    <img src="{{ series.thumbnail }}" class="poster" alt="">
-                    {% else %}
-                    <div class="poster flex items-center justify-center text-gray-600 bg-gray-900">Sin imagen</div>
-                    {% endif %}
+            
+            <!-- IMAGEN ARRIBA -->
+            <div class="cursor-pointer bg-black"
+                 {% if series.thumbnail %}onclick="openLightbox(event, '{{ series.thumbnail }}')"{% endif %}>
+                {% if series.thumbnail %}
+                <img src="{{ series.thumbnail }}" class="poster" alt="{{ series.title }}">
+                {% else %}
+                <div class="poster flex items-center justify-center text-gray-600 bg-gray-900">Sin imagen</div>
+                {% endif %}
+            </div>
+
+
+            <!-- INFORMACIÓN ABAJO -->
+            <div class="p-5">
+                <h2 class="text-xl md:text-2xl font-bold mb-1">{{ series.title }}</h2>
+
+
+                <div class="text-sm text-gray-400 mb-3 flex flex-wrap gap-x-3 gap-y-1">
+                    {% if series.year %}<span>{{ series.year }}</span>{% endif %}
+                    {% if series.artista %}<span class="text-green-400">{{ series.artista }}</span>{% endif %}
+                    {% if series.label %}<span>{{ series.label }}</span>{% endif %}
+                    {% if series.estudio %}<span>{{ series.estudio }}</span>{% endif %}
                 </div>
 
 
-                <div class="flex-1 p-5">
-                    <h2 class="text-xl font-bold mb-1">{{ series.title }}</h2>
+                {% if series.genero %}
+                <p class="text-sm mb-4">
+                    {% for g in series.genero.split(',') %}
+                    <a href="?section={{ section }}&q={{ g.strip()|urlencode }}&sort={{ sort }}"
+                       class="inline-block mr-2 mb-1 px-2.5 py-0.5 rounded-full text-xs
+                       {{ 'bg-green-900/50 text-green-300' if section == 'music' else 'bg-purple-900/40 text-purple-300' }}">
+                        {{ g.strip() }}
+                    </a>
+                    {% endfor %}
+                </p>
+                {% endif %}
 
 
-                    <div class="text-sm text-gray-400 mb-2 flex flex-wrap gap-x-3">
-                        {% if series.year %}<span>{{ series.year }}</span>{% endif %}
-                        {% if series.artista %}<span class="text-green-400">{{ series.artista }}</span>{% endif %}
-                        {% if series.label %}<span>{{ series.label }}</span>{% endif %}
-                        {% if series.estudio %}<span>{{ series.estudio }}</span>{% endif %}
+                <details class="mb-5">
+                    <summary class="cursor-pointer text-sm text-gray-400 hover:text-white">▼ Ver ficha completa</summary>
+                    <div class="mt-3 text-sm text-gray-300 space-y-1.5 bg-black/30 p-4 rounded-xl">
+                        {% if series.artista %}<p><span class="text-gray-500">Artista:</span> {{ series.artista }}</p>{% endif %}
+                        {% if series.album %}<p><span class="text-gray-500">Álbum:</span> {{ series.album }}</p>{% endif %}
+                        {% if series.year %}<p><span class="text-gray-500">Año:</span> {{ series.year }}</p>{% endif %}
+                        {% if series.label %}<p><span class="text-gray-500">Sello:</span> {{ series.label }}</p>{% endif %}
+                        {% if series.productor %}<p><span class="text-gray-500">Productor:</span> {{ series.productor }}</p>{% endif %}
+                        {% if series.estudio %}<p><span class="text-gray-500">Estudio:</span> {{ series.estudio }}</p>{% endif %}
+                        {% if series.sinopsis %}
+                        <div class="mt-3 pt-3 border-t border-gray-700">
+                            <p class="text-gray-500 mb-1">Descripción:</p>
+                            <p>{{ series.sinopsis }}</p>
+                        </div>
+                        {% endif %}
                     </div>
+                </details>
 
 
-                    {% if series.genero %}
-                    <p class="text-sm mb-3">
-                        {% for g in series.genero.split(',') %}
-                        <a href="?section={{ section }}&q={{ g.strip()|urlencode }}&sort={{ sort }}"
-                           class="inline-block mr-2 mb-1 px-2.5 py-0.5 rounded-full text-xs
-                           {{ 'bg-green-900/50 text-green-300' if section == 'music' else 'bg-purple-900/40 text-purple-300' }}">
-                            {{ g.strip() }}
-                        </a>
-                        {% endfor %}
-                    </p>
-                    {% endif %}
-
-
-                    <details class="mb-4">
-                        <summary class="cursor-pointer text-sm text-gray-400 hover:text-white">▼ Ver ficha completa</summary>
-                        <div class="mt-3 text-sm text-gray-300 space-y-1.5 bg-black/30 p-4 rounded-xl">
-                            {% if series.artista %}<p><span class="text-gray-500">Artista:</span> {{ series.artista }}</p>{% endif %}
-                            {% if series.album %}<p><span class="text-gray-500">Álbum:</span> {{ series.album }}</p>{% endif %}
-                            {% if series.year %}<p><span class="text-gray-500">Año:</span> {{ series.year }}</p>{% endif %}
-                            {% if series.label %}<p><span class="text-gray-500">Sello:</span> {{ series.label }}</p>{% endif %}
-                            {% if series.productor %}<p><span class="text-gray-500">Productor:</span> {{ series.productor }}</p>{% endif %}
-                            {% if series.estudio %}<p><span class="text-gray-500">Estudio:</span> {{ series.estudio }}</p>{% endif %}
-                            {% if series.sinopsis %}
-                            <div class="mt-3 pt-3 border-t border-gray-700">
-                                <p class="text-gray-500 mb-1">Descripción:</p>
-                                <p>{{ series.sinopsis }}</p>
-                            </div>
+                <div class="border-t border-gray-800 pt-4">
+                    {% if series.final_category == 'music' %}
+                        <div class="flex items-center justify-between mb-3">
+                            <h3 class="text-sm font-semibold text-gray-300">
+                                {% if series.episodes|length == 1 %}Single / EP{% else %}Pistas ({{ series.episodes|length }}){% endif %}
+                            </h3>
+                            {% if series.episodes|length > 1 %}
+                            <a href="/download-album?ids={% for ep in series.episodes %}{{ ep.id }}{% if not loop.last %},{% endif %}{% endfor %}"
+                               class="text-xs px-3 py-1.5 rounded-lg font-medium text-black" style="background: var(--accent)">
+                                Descargar álbum (.zip)
+                            </a>
                             {% endif %}
                         </div>
-                    </details>
 
 
-                    <div class="border-t border-gray-800 pt-4">
-                        {% if series.final_category == 'music' %}
-                            <div class="flex items-center justify-between mb-3">
-                                <h3 class="text-sm font-semibold text-gray-300">
-                                    {% if series.episodes|length == 1 %}Single / EP{% else %}Pistas ({{ series.episodes|length }}){% endif %}
-                                </h3>
-                                {% if series.episodes|length > 1 %}
-                                <a href="/download-album?ids={% for ep in series.episodes %}{{ ep.id }}{% if not loop.last %},{% endif %}{% endfor %}"
-                                   class="text-xs px-3 py-1.5 rounded-lg font-medium text-black" style="background: var(--accent)">
-                                    Descargar álbum (.zip)
-                                </a>
+                        <div class="space-y-2" id="album-{{ loop.index }}">
+                            {% for ep in series.episodes %}
+                            <div class="track-row flex items-center gap-3 bg-black/30 hover:bg-black/50 rounded-xl px-3 py-2.5 transition"
+                                 data-id="{{ ep.id }}"
+                                 data-title="{{ ep.title|e }}"
+                                 data-artist="{{ series.artista or series.title|e }}"
+                                 data-cover="{{ ep.thumbnail or series.thumbnail or '' }}">
+                                {% if ep.thumbnail %}
+                                <img src="{{ ep.thumbnail }}" class="w-11 h-11 rounded object-cover flex-shrink-0">
+                                {% else %}
+                                <div class="w-11 h-11 rounded bg-gray-800 flex items-center justify-center text-gray-500 flex-shrink-0">♪</div>
                                 {% endif %}
-                            </div>
-
-
-                            <div class="space-y-2" id="album-{{ loop.index }}">
-                                {% for ep in series.episodes %}
-                                <div class="track-row flex items-center gap-3 bg-black/30 hover:bg-black/50 rounded-xl px-3 py-2.5 transition"
-                                     data-id="{{ ep.id }}"
-                                     data-title="{{ ep.title|e }}"
-                                     data-artist="{{ series.artista or series.title|e }}"
-                                     data-cover="{{ ep.thumbnail or series.thumbnail or '' }}">
-                                    {% if ep.thumbnail %}
-                                    <img src="{{ ep.thumbnail }}" class="w-11 h-11 rounded object-cover flex-shrink-0">
-                                    {% else %}
-                                    <div class="w-11 h-11 rounded bg-gray-800 flex items-center justify-center text-gray-500 flex-shrink-0">♪</div>
-                                    {% endif %}
-                                    <button onclick="playTrackFromElement(this.closest('.track-row'))"
-                                            class="w-9 h-9 rounded-full flex items-center justify-center text-black font-bold flex-shrink-0"
-                                            style="background: var(--accent)">▶</button>
-                                    <div class="flex-1 min-w-0">
-                                        <p class="font-medium text-sm truncate">{{ ep.title }}</p>
-                                        <p class="text-xs text-gray-500">
-                                            {% if ep.duration_str %}{{ ep.duration_str }} · {% endif %}{{ ep.size_mb }} MB
-                                        </p>
-                                    </div>
-                                    <a href="/stream/{{ ep.id }}" download class="text-xs px-3 py-1.5 bg-gray-800 hover:bg-gray-700 rounded-lg flex-shrink-0">
-                                        Descargar
-                                    </a>
+                                <button onclick="playTrackFromElement(this.closest('.track-row'))"
+                                        class="w-9 h-9 rounded-full flex items-center justify-center text-black font-bold flex-shrink-0"
+                                        style="background: var(--accent)">▶</button>
+                                <div class="flex-1 min-w-0">
+                                    <p class="font-medium text-sm truncate">{{ ep.title }}</p>
+                                    <p class="text-xs text-gray-500">
+                                        {% if ep.duration_str %}{{ ep.duration_str }} · {% endif %}{{ ep.size_mb }} MB
+                                    </p>
                                 </div>
-                                {% endfor %}
+                                <a href="/stream/{{ ep.id }}" download class="text-xs px-3 py-1.5 bg-gray-800 hover:bg-gray-700 rounded-lg flex-shrink-0">
+                                    Descargar
+                                </a>
                             </div>
+                            {% endfor %}
+                        </div>
 
 
-                        {% else %}
-                            <h3 class="text-sm font-semibold text-gray-300 mb-3">
-                                {% if series.final_category == 'movies' %}Películas{% else %}Contenido{% endif %}
-                                ({{ series.episodes|length }})
-                            </h3>
+                    {% else %}
+                        <h3 class="text-sm font-semibold text-gray-300 mb-3">
+                            {% if series.final_category == 'movies' %}Películas{% else %}Contenido{% endif %}
+                            ({{ series.episodes|length }})
+                        </h3>
 
 
-                            {% if series.seasons %}
-                                {% for season_num, eps in series.seasons.items() %}
-                                <details class="mb-3" {% if loop.first %}open{% endif %}>
-                                    <summary class="cursor-pointer text-sm font-medium text-gray-300 hover:text-white mb-2">
-                                        <span class="season-arrow">▶</span>
-                                        Temporada {{ season_num }} ({{ eps|length }} episodios)
-                                    </summary>
-                                    <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 ml-4">
-                                        {% for ep in eps %}
-                                        <a href="{{ ep.link }}" target="_blank"
-                                           class="flex items-center justify-between px-3 py-2 bg-black/30 hover:bg-black/50 rounded-lg text-sm">
-                                            <span>Ep {{ ep.episode or '?' }}</span>
-                                            <span class="text-xs text-gray-500">{{ ep.size_mb }} MB</span>
-                                        </a>
-                                        {% endfor %}
-                                    </div>
-                                </details>
-                                {% endfor %}
-                            {% endif %}
-
-
-                            {% if series.ovas %}
-                            <details class="mb-3">
+                        {% if series.seasons %}
+                            {% for season_num, eps in series.seasons.items() %}
+                            <details class="mb-3" {% if loop.first %}open{% endif %}>
                                 <summary class="cursor-pointer text-sm font-medium text-gray-300 hover:text-white mb-2">
-                                    <span class="season-arrow">▶</span> OVAs / Specials ({{ series.ovas|length }})
+                                    <span class="season-arrow">▶</span>
+                                    Temporada {{ season_num }} ({{ eps|length }} episodios)
                                 </summary>
                                 <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 ml-4">
-                                    {% for ep in series.ovas %}
+                                    {% for ep in eps %}
                                     <a href="{{ ep.link }}" target="_blank"
                                        class="flex items-center justify-between px-3 py-2 bg-black/30 hover:bg-black/50 rounded-lg text-sm">
-                                        <span>{{ ep.special_type or 'OVA' }} {{ ep.episode or '' }}</span>
+                                        <span>Ep {{ ep.episode or '?' }}</span>
                                         <span class="text-xs text-gray-500">{{ ep.size_mb }} MB</span>
                                     </a>
                                     {% endfor %}
                                 </div>
                             </details>
-                            {% endif %}
-
-
-                            {% if series.parts %}
-                            <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
-                                {% for ep in series.parts %}
-                                <a href="{{ ep.link }}" target="_blank"
-                                   class="flex items-center justify-between px-3 py-2 bg-black/30 hover:bg-black/50 rounded-lg text-sm">
-                                    <span>Parte {{ ep.episode or '' }}</span>
-                                    <span class="text-xs text-gray-500">{{ ep.size_mb }} MB</span>
-                                </a>
-                                {% endfor %}
-                            </div>
-                            {% endif %}
-
-
-                            {% if not series.seasons and not series.ovas and not series.parts %}
-                            <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
-                                {% for ep in series.episodes %}
-                                <a href="{{ ep.link }}" target="_blank"
-                                   class="flex items-center justify-between px-3 py-2 bg-black/30 hover:bg-black/50 rounded-lg text-sm">
-                                    <span>{% if ep.episode %}Ep {{ ep.episode }}{% else %}Archivo{% endif %}</span>
-                                    <span class="text-xs text-gray-500">{{ ep.size_mb }} MB</span>
-                                </a>
-                                {% endfor %}
-                            </div>
-                            {% endif %}
+                            {% endfor %}
                         {% endif %}
-                    </div>
+
+
+                        {% if series.ovas %}
+                        <details class="mb-3">
+                            <summary class="cursor-pointer text-sm font-medium text-gray-300 hover:text-white mb-2">
+                                <span class="season-arrow">▶</span> OVAs / Specials ({{ series.ovas|length }})
+                            </summary>
+                            <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 ml-4">
+                                {% for ep in series.ovas %}
+                                <a href="{{ ep.link }}" target="_blank"
+                                   class="flex items-center justify-between px-3 py-2 bg-black/30 hover:bg-black/50 rounded-lg text-sm">
+                                    <span>{{ ep.special_type or 'OVA' }} {{ ep.episode or '' }}</span>
+                                    <span class="text-xs text-gray-500">{{ ep.size_mb }} MB</span>
+                                </a>
+                                {% endfor %}
+                            </div>
+                        </details>
+                        {% endif %}
+
+
+                        {% if series.parts %}
+                        <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+                            {% for ep in series.parts %}
+                            <a href="{{ ep.link }}" target="_blank"
+                               class="flex items-center justify-between px-3 py-2 bg-black/30 hover:bg-black/50 rounded-lg text-sm">
+                                <span>Parte {{ ep.episode or '' }}</span>
+                                <span class="text-xs text-gray-500">{{ ep.size_mb }} MB</span>
+                            </a>
+                            {% endfor %}
+                        </div>
+                        {% endif %}
+
+
+                        {% if not series.seasons and not series.ovas and not series.parts %}
+                        <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+                            {% for ep in series.episodes %}
+                            <a href="{{ ep.link }}" target="_blank"
+                               class="flex items-center justify-between px-3 py-2 bg-black/30 hover:bg-black/50 rounded-lg text-sm">
+                                <span>{% if ep.episode %}Ep {{ ep.episode }}{% else %}Archivo{% endif %}</span>
+                                <span class="text-xs text-gray-500">{{ ep.size_mb }} MB</span>
+                            </a>
+                            {% endfor %}
+                        </div>
+                        {% endif %}
+                    {% endif %}
                 </div>
             </div>
         </div>

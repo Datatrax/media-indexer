@@ -65,11 +65,11 @@ def normalize_title(title: str) -> str:
     t = title.lower().strip()
 
 
-    # Casos especiales Sora no Otoshimono
+    # Casos especiales Sora no Otoshimono (orden importante)
+    if "final eternal" in t or "eternal my master" in t or ("final" in t and "my master" in t):
+        return "sora no otoshimono final eternal my master"
     if "tokeijikake" in t or "angeloid of clockwork" in t:
         return "sora no otoshimono tokeijikake movie"
-    if ("final" in t and ("eternal" in t or "my master" in t)) or "eternal my master" in t:
-        return "sora no otoshimono final eternal my master"
     if "forte" in t:
         return "sora no otoshimono forte"
     if "ribbon hero" in t or "heroína del moño" in t or "heroina del mono" in t:
@@ -189,7 +189,7 @@ def extract_info(filename: str, caption: str = "") -> Dict[str, Any]:
         parsed["nombre"] = "Sora no Otoshimono Forte, Heaven’s Lost Property 2"
     elif "tokeijikake" in fname_lower or "angeloid of clockwork" in fname_lower:
         parsed["nombre"] = "Sora no Otoshimono: Tokeijikake no Angeloid, Heaven’s Lost Property the Movie: The Angeloid of Clockwork"
-    elif ("final" in fname_lower and ("eternal" in fname_lower or "my master" in fname_lower)) or "eternal my master" in fname_lower:
+    elif "final eternal" in fname_lower or "eternal my master" in fname_lower or ("final" in fname_lower and "my master" in fname_lower):
         parsed["nombre"] = "Sora no Otoshimono Final: Eternal My Master, Heaven’s Lost Property: My Eternal Master"
     elif "ribbon hero" in fname_lower:
         parsed["nombre"] = "The Ribbon Hero, La Heroína del Moño"
@@ -292,11 +292,13 @@ def classify(filename: str, mime: str = "", caption: str = "", tipo: str = None)
         return "series"
 
 
-    # Casos especiales conocidos
+    # Casos especiales conocidos (orden importante)
+    if "final eternal" in text or "eternal my master" in text or ("final" in text and "my master" in text):
+        return "movies"
+    if "tokeijikake" in text or "angeloid of clockwork" in text:
+        return "movies"
     if "forte" in text and ("sora" in text or "otoshimono" in text):
         return "series"
-    if any(x in text for x in ["tokeijikake", "angeloid of clockwork", "final eternal", "eternal my master", "my master"]):
-        return "movies"
     if "ribbon hero" in text:
         return "movies"
 
@@ -543,43 +545,42 @@ def build_groups(all_items: List[Dict]) -> Dict[str, Dict]:
 
 
     for key, g in grouped.items():
-        if "forte" in key:
-            g["title"] = "Sora no Otoshimono Forte, Heaven’s Lost Property 2"
+        if "final eternal" in key or "my master" in key:
+            g["title"] = "Sora no Otoshimono Final: Eternal My Master, Heaven’s Lost Property: My Eternal Master"
+            g["final_category"] = "movies"
         elif "tokeijikake" in key:
             g["title"] = "Sora no Otoshimono: Tokeijikake no Angeloid, Heaven’s Lost Property the Movie: The Angeloid of Clockwork"
-        elif "final eternal" in key or "my master" in key:
-            g["title"] = "Sora no Otoshimono Final: Eternal My Master, Heaven’s Lost Property: My Eternal Master"
-        elif "ribbon hero" in key:
-            g["title"] = "The Ribbon Hero, La Heroína del Moño"
-
-
-        num_episodes = len(g["episodes"])
-        cats = g["categories"]
-
-
-        music_count = cats.count("music")
-        series_count = cats.count("series")
-        movies_count = cats.count("movies")
-
-
-        if music_count > 0 and music_count >= series_count and music_count >= movies_count:
-            g["final_category"] = "music"
-        elif "tokeijikake" in key or "final eternal" in key or "my master" in key or "ribbon hero" in key:
             g["final_category"] = "movies"
         elif "forte" in key:
+            g["title"] = "Sora no Otoshimono Forte, Heaven’s Lost Property 2"
             g["final_category"] = "series"
-        elif num_episodes >= 4:
-            g["final_category"] = "series"
-        elif num_episodes <= 3 and any(ep.get("is_part") for ep in g["episodes"]):
+        elif "ribbon hero" in key:
+            g["title"] = "The Ribbon Hero, La Heroína del Moño"
             g["final_category"] = "movies"
-        elif movies_count > 0:
-            g["final_category"] = "movies"
-        elif series_count > 0:
-            g["final_category"] = "series"
-        elif music_count > 0:
-            g["final_category"] = "music"
         else:
-            g["final_category"] = "other"
+            num_episodes = len(g["episodes"])
+            cats = g["categories"]
+
+
+            music_count = cats.count("music")
+            series_count = cats.count("series")
+            movies_count = cats.count("movies")
+
+
+            if music_count > 0 and music_count >= series_count and music_count >= movies_count:
+                g["final_category"] = "music"
+            elif num_episodes >= 4:
+                g["final_category"] = "series"
+            elif num_episodes <= 3 and any(ep.get("is_part") for ep in g["episodes"]):
+                g["final_category"] = "movies"
+            elif movies_count > 0:
+                g["final_category"] = "movies"
+            elif series_count > 0:
+                g["final_category"] = "series"
+            elif music_count > 0:
+                g["final_category"] = "music"
+            else:
+                g["final_category"] = "other"
 
 
         if g.get("final_category") == "music":
@@ -627,9 +628,6 @@ def get_grouped_counts():
 
 
 
-# ========== FILTROS DESDE LOS GRUPOS (esto arregla los dropdowns vacíos) ==========
-
-
 def get_filters_from_groups(section: str):
     all_items = get_all_items()
     groups = build_groups(all_items)
@@ -659,7 +657,6 @@ def get_filters_from_groups(section: str):
             continue
 
 
-        # Año
         if g.get("year"):
             try:
                 y = int(str(g["year"]).strip()[:4])
@@ -669,7 +666,6 @@ def get_filters_from_groups(section: str):
                 pass
 
 
-        # Género
         if g.get("genero"):
             for gen in re.split(r"[,/|]", g["genero"]):
                 gen = gen.strip()
@@ -680,7 +676,6 @@ def get_filters_from_groups(section: str):
                 genres.add(gen)
 
 
-        # Estudio / Label
         if section == "music":
             if g.get("label"):
                 labels.add(g["label"].strip())
@@ -899,7 +894,6 @@ async def home(
     total_pages = max(1, (total_series + ITEMS_PER_PAGE - 1) // ITEMS_PER_PAGE)
 
 
-    # Filtros desde grupos
     filters = get_filters_from_groups(section)
 
 

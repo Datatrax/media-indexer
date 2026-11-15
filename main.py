@@ -5,7 +5,7 @@ import base64
 import zipfile
 import io
 from io import BytesIO
-from typing import Dict, Any, Set, List
+from typing import Dict, Any, List
 from collections import defaultdict
 
 from telethon import TelegramClient, events
@@ -59,6 +59,8 @@ def normalize_title(title: str) -> str:
         return "sora no otoshimono final eternal my master"
     if "forte" in t:
         return "sora no otoshimono forte"
+    if "ribbon hero" in t or "heroína del moño" in t or "heroina del mono" in t:
+        return "the ribbon hero"
     t = re.sub(r"[\(\[\{].*?[\)\]\}]", "", t)
     if "," in t:
         t = t.split(",")[0]
@@ -163,6 +165,8 @@ def extract_info(filename: str, caption: str = "") -> Dict[str, Any]:
         parsed["nombre"] = "Sora no Otoshimono: Tokeijikake no Angeloid, Heaven’s Lost Property the Movie: The Angeloid of Clockwork"
     elif "final" in fname_lower and ("eternal" in fname_lower or "my master" in fname_lower):
         parsed["nombre"] = "Sora no Otoshimono Final: Eternal My Master, Heaven’s Lost Property: My Eternal Master"
+    elif "ribbon hero" in fname_lower:
+        parsed["nombre"] = "The Ribbon Hero, La Heroína del Moño"
 
     episode = None
     season = 1
@@ -239,42 +243,49 @@ def extract_info(filename: str, caption: str = "") -> Dict[str, Any]:
 def classify(filename: str, mime: str = "", caption: str = "", tipo: str = None) -> str:
     text = (filename + " " + (caption or "")).lower()
     mime = (mime or "").lower()
+    tipo_lower = (tipo or "").lower()
+
+    # === PRIORIDAD MÁXIMA: Tipo del caption ===
+    if "película" in tipo_lower or "pelicula" in tipo_lower or "movie" in tipo_lower:
+        return "movies"
+    if "serie" in tipo_lower or "ova" in tipo_lower or "anime" in tipo_lower:
+        return "series"
+    if "música" in tipo_lower or "musica" in tipo_lower or "music" in tipo_lower:
+        return "music"
+
+    # También buscar en el caption completo
+    if re.search(r"tipo\s*:\s*(película|pelicula|movie)", text):
+        return "movies"
+    if re.search(r"tipo\s*:\s*(serie|ova|anime)", text):
+        return "series"
 
     video_extensions = [".mkv", ".mp4", ".avi", ".mov", ".wmv", ".m4v", ".webm"]
     audio_extensions = [".mp3", ".flac", ".m4a", ".wav", ".aac", ".ogg", ".opus"]
+    archive_extensions = [".rar", ".zip", ".7z"]
 
     is_video = any(ext in text for ext in video_extensions) or mime.startswith("video/")
     is_audio = any(ext in text for ext in audio_extensions) or mime.startswith("audio/")
+    is_archive = any(ext in text for ext in archive_extensions)
 
-    if is_video:
-        if any(x in text for x in ["movie", "pelicula", "película", "film", "the movie"]):
-            return "movies"
-        if ("part" in text or "parte" in text) and not re.search(r"s\d{1,2}e\d{1,2}", text):
-            return "movies"
-        return "series"
-
+    # Casos especiales conocidos
     if "forte" in text and ("sora" in text or "otoshimono" in text):
         return "series"
     if any(x in text for x in ["tokeijikake", "angeloid of clockwork", "final eternal", "eternal my master", "my master"]):
         return "movies"
-
-    if tipo:
-        t = tipo.lower()
-        if any(x in t for x in ["serie", "ova", "anime"]):
-            return "series"
-        if any(x in t for x in ["película", "pelicula", "movie"]):
-            return "movies"
-        if any(x in t for x in ["música", "musica", "music"]):
-            return "music"
+    if "ribbon hero" in text:
+        return "movies"
 
     if is_audio:
         return "music"
 
-    if re.search(r"(s\d{1,2}e\d{1,2}|season|temporada|[-–]\s*\d{1,3})", text) and "part" not in text:
-        return "series"
-
-    if is_video:
-        return "movies"
+    if is_video or is_archive:
+        if any(x in text for x in ["movie", "pelicula", "película", "film", "the movie"]):
+            return "movies"
+        if ("part" in text or "parte" in text) and not re.search(r"s\d{1,2}e\d{1,2}", text):
+            return "movies"
+        if re.search(r"s\d{1,2}e\d{1,2}|season|temporada", text):
+            return "series"
+        return "series"  # por defecto videos/archivos van a series
 
     return "other"
 
@@ -388,6 +399,7 @@ async def reindex():
         for key in catalog:
             catalog[key].sort(key=lambda x: x["date"], reverse=True)
         print(f"✅ Re-indexación completa: {count} archivos")
+        print(f"   Series: {len(catalog['series'])} | Películas: {len(catalog['movies'])} | Música: {len(catalog['music'])}")
     except Exception as e:
         print(f"❌ Error: {e}")
         raise
@@ -472,6 +484,8 @@ def build_groups(all_items: List[Dict]) -> Dict[str, Dict]:
             g["title"] = "Sora no Otoshimono: Tokeijikake no Angeloid, Heaven’s Lost Property the Movie: The Angeloid of Clockwork"
         elif "final eternal" in key or "my master" in key:
             g["title"] = "Sora no Otoshimono Final: Eternal My Master, Heaven’s Lost Property: My Eternal Master"
+        elif "ribbon hero" in key:
+            g["title"] = "The Ribbon Hero, La Heroína del Moño"
 
         num_episodes = len(g["episodes"])
         cats = g["categories"]
@@ -482,18 +496,18 @@ def build_groups(all_items: List[Dict]) -> Dict[str, Dict]:
 
         if music_count > 0 and music_count >= series_count and music_count >= movies_count:
             g["final_category"] = "music"
-        elif "tokeijikake" in key or "final eternal" in key or "my master" in key:
+        elif "tokeijikake" in key or "final eternal" in key or "my master" in key or "ribbon hero" in key:
             g["final_category"] = "movies"
         elif "forte" in key:
             g["final_category"] = "series"
         elif num_episodes >= 4:
             g["final_category"] = "series"
-        elif num_episodes <= 2 and any(ep.get("is_part") for ep in g["episodes"]):
+        elif num_episodes <= 3 and any(ep.get("is_part") for ep in g["episodes"]):
             g["final_category"] = "movies"
-        elif series_count >= movies_count and series_count > 0:
-            g["final_category"] = "series"
         elif movies_count > 0:
             g["final_category"] = "movies"
+        elif series_count > 0:
+            g["final_category"] = "series"
         elif music_count > 0:
             g["final_category"] = "music"
         else:
@@ -543,7 +557,7 @@ def get_music_genres() -> list:
         if item.get("genero"):
             for g in re.split(r"[,/|]", item["genero"]):
                 g = g.strip()
-                if g and len(g) > 1:
+                if g and len(g) > 1 and g.lower() not in ["acción", "accion", "aventura", "aventuras", "comedia", "drama", "ecchi", "fantasía", "fantastico", "harem", "intriga", "romance", "sobrenatural", "ciencia ficción"]:
                     genres.add(g)
     return sorted(genres)
 
@@ -724,7 +738,6 @@ async def download_album(ids: str, username: str = Depends(verify_credentials)):
 @app.get("/", response_class=HTMLResponse)
 async def home(
     request: Request,
-    category: str = "all",
     q: str = "",
     page: int = 1,
     sort: str = "title",
@@ -732,7 +745,7 @@ async def home(
     genero: str = "",
     estudio: str = "",
     artista: str = "",
-    section: str = "series",          # ahora por defecto "series"
+    section: str = "series",
     username: str = Depends(verify_credentials)
 ):
     all_items = get_all_items()
@@ -747,7 +760,7 @@ async def home(
                     all_series.append(g)
     elif section == "movies":
         all_series = [g for g in groups.values() if g.get("final_category") == "movies"]
-    else:  # series
+    else:
         all_series = [g for g in groups.values() if g.get("final_category") == "series"]
 
     if year:
@@ -799,7 +812,6 @@ async def home(
             "items": items,
             "total": sum(len(v) for v in catalog.values()),
             "counts": counts,
-            "category": category,
             "q": q,
             "page": page,
             "total_pages": total_pages,

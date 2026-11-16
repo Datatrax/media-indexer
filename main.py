@@ -265,11 +265,14 @@ def clean_series_title(raw: str) -> str:
     if not raw:
         return ""
     t = raw
+
+
+    # Limpieza más agresiva
+    t = re.sub(r'^\d{1,3}\s*', '', t)  # quitar número al inicio
+    t = re.sub(r'\s*\[.*?\]', '', t)   # quitar cualquier [ ... ]
+    t = re.sub(r'\s*\(.*?\)', '', t)   # quitar cualquier ( ... )
     t = re.sub(r'\s*[-–]?\s*(s\d{1,2}[\s\._-]*e\d{1,3}|temporada\s*\d+|season\s*\d+|cap[ií]tulo\s*\d+|ep\.?\s*\d+).*$', '', t, flags=re.I)
-    t = re.sub(r'\s*00\s*\(.*', '', t)
-    t = re.sub(r'\s*\[BD-.*?\]', '', t, flags=re.I)
-    t = re.sub(r'\s*\[.*?\]|\(OVA\)|\(ONA\)|\(Special\)|\(Especial\)', '', t, flags=re.I)
-    t = re.sub(r'\s*\b(ova|ona|special|especial)\b.*$', '', t, flags=re.I)
+    t = re.sub(r'\s*\b(ova|ona|special|especial|bd|1080p|720p|480p|lat|eng|jap|subs)\b.*$', '', t, flags=re.I)
     t = clean_text(t)
     return t.strip(" -–_()[]")
 
@@ -359,7 +362,7 @@ def build_groups():
                     else:
                         key = normalize_title(raw)
                         display_title = clean_series_title(raw)
-                        if not display_title or len(display_title) < 5:
+                        if not display_title or len(display_title) < 4:
                             display_title = raw
 
 
@@ -372,17 +375,16 @@ def build_groups():
 
 
             if cat != "music" or not item.get("is_photo"):
-                # Forzar título limpio en series
                 if cat in ["series", "movies"]:
                     clean_candidate = clean_series_title(display_title)
-                    if clean_candidate and len(clean_candidate) >= 5 and not re.search(r'00\s*\(|ova|bd-', clean_candidate, re.I):
+                    if clean_candidate and len(clean_candidate) >= 4:
                         g["title"] = clean_candidate
                     elif not g["title"]:
                         g["title"] = display_title
                 else:
                     current = g["title"]
-                    is_clean = display_title and len(display_title) >= 5 and not re.search(r'00\s*\(|ova|bd-|s\d+e', display_title, re.I)
-                    if is_clean and (not current or len(display_title) > len(current) or re.search(r'00\s*\(|ova|bd-', current, re.I)):
+                    is_clean = display_title and len(display_title) >= 4
+                    if is_clean and (not current or len(display_title) > len(current)):
                         g["title"] = display_title
                     elif not g["title"]:
                         g["title"] = display_title

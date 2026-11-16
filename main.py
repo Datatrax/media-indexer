@@ -205,17 +205,29 @@ def extract_info(msg) -> Optional[Dict[str, Any]]:
         **parsed
     }
 
-    ep_match = re.search(r'(?:s|temporada|season)?[\s\._-]*(\d{1,2})[\s\._-]*[ex][\s\._-]*(\d{1,3})', filename + " " + caption, re.I)
-    if ep_match:
-        info["season"] = int(ep_match.group(1))
-        info["episode"] = int(ep_match.group(2))
-    else:
-        ep_only = re.search(r'(?:ep|capítulo|capitulo|cap)[\s\._-]*(\d{1,3})', filename + " " + caption, re.I)
-        if ep_only:
-            info["episode"] = int(ep_only.group(1))
-
-    if re.search(r'\b(ova|ona|special|especial)\b', filename + " " + caption, re.I):
+    # Detección de OVA más estricta
+    is_ova = bool(re.search(r'\b(ova|ona|special|especial)\b', filename + " " + caption, re.I))
+    if is_ova:
         info["is_ova"] = True
+        info["title"] = "OVA"
+    else:
+        # Detección de episodio normal
+        ep_match = re.search(r'(?:s|temporada|season)?[\s\._-]*(\d{1,2})[\s\._-]*[ex][\s\._-]*(\d{1,3})', filename + " " + caption, re.I)
+        if ep_match:
+            info["season"] = int(ep_match.group(1))
+            info["episode"] = int(ep_match.group(2))
+            info["title"] = f"Ep {info['episode']}"
+        else:
+            ep_only = re.search(r'(?:ep|capítulo|capitulo|cap)[\s\._-]*(\d{1,3})', filename + " " + caption, re.I)
+            if ep_only:
+                info["episode"] = int(ep_only.group(1))
+                info["title"] = f"Ep {info['episode']}"
+            else:
+                # Número al final del nombre (más conservador)
+                num_match = re.search(r'[\s\._-]+(\d{1,2})(?:[\s\._-]|$)', filename, re.I)
+                if num_match and category in ["series", "movies"] and not is_ova:
+                    info["episode"] = int(num_match.group(1))
+                    info["title"] = f"Ep {info['episode']}"
 
     return info
 
@@ -276,13 +288,11 @@ def build_groups():
         "latest_date": "",
     })
 
-    # Primera pasada: recolectar portadas de series con Nombre
     series_covers = []
     for item in catalog["series"] + catalog["movies"]:
         if item.get("album") and (item.get("is_photo") or "tipo" in (item.get("caption") or "").lower()):
             series_covers.append(item)
 
-    # Ordenar portadas por id (más recientes primero)
     series_covers.sort(key=lambda x: x["id"], reverse=True)
 
     for cat in ["movies", "series", "music", "other"]:
@@ -312,7 +322,6 @@ def build_groups():
                     nombre = clean_text(item.get("album") or "")
                     raw = item.get("title") or item.get("filename") or ""
 
-                    # Si no tiene nombre propio, intentar heredar de una portada cercana
                     if not nombre and cat in ["series", "movies"]:
                         for cover in series_covers:
                             if cover["id"] > item["id"] and abs(cover["id"] - item["id"]) < 50:

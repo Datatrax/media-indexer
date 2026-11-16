@@ -251,7 +251,6 @@ def build_groups():
     for cat in ["movies", "series", "music", "other"]:
         for item in catalog[cat]:
             if cat == "music" and item.get("is_photo"):
-                # Solo usamos la foto para metadatos, no como track
                 artist = clean_text(item.get("artista") or "").lower()
                 album = clean_text(item.get("album") or "").lower()
                 if artist and album:
@@ -269,13 +268,15 @@ def build_groups():
                         key = f"music::{normalize_title(item.get('title', ''))}"
                         display = item.get("title")
                 else:
+                    # Solo agrupar series/movies si tienen Nombre explícito
                     nombre = clean_text(item.get("album") or "")
                     if nombre:
                         key = normalize_title(nombre)
                         display = nombre
                     else:
-                        key = normalize_title(item.get("title") or item.get("filename") or "")
-                        display = clean_series_title(item.get("title") or "")
+                        # Sin Nombre → grupo individual
+                        key = f"single::{item['id']}"
+                        display = item.get("title") or item.get("filename")
 
             g = groups[key]
             g["normalized"] = key
@@ -283,7 +284,7 @@ def build_groups():
             if not (cat == "music" and item.get("is_photo")):
                 g["episodes"].append(item)
 
-            if not g["title"] or (display and len(display) > len(g["title"])):
+            if not g["title"]:
                 g["title"] = display or item.get("title")
 
             for field in ["year", "genero", "estudio", "artista", "album", "label", "productor", "precuela", "secuela", "sinopsis"]:
@@ -539,9 +540,3 @@ async def health():
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 8000))
     uvicorn.run(app, host="0.0.0.0", port=port)
-Copia y pega este archivo.
-
-Esta versión restaura la lógica de música (no mete la foto como track y agrupa por artista + álbum) y mantiene una agrupación simple para series.
-
-Después de reindexar, revisa primero la sección de música para confirmar que volvió a funcionar.
-

@@ -539,3 +539,9 @@ async def health():
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 8000))
     uvicorn.run(app, host="0.0.0.0", port=port)
+Copia y pega este archivo.
+
+Esta versión restaura la lógica de música (no mete la foto como track y agrupa por artista + álbum) y mantiene una agrupación simple para series.
+
+Después de reindexar, revisa primero la sección de música para confirmar que volvió a funcionar.
+

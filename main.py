@@ -420,33 +420,8 @@ def build_groups():
                     g["parts"].append(item)
 
 
-    # Segunda pasada: fusionar grupos de series con títulos muy similares
-    series_groups = [g for g in groups.values() if g["final_category"] in ["series", "movies"]]
-    merged = {}
-    for g in series_groups:
-        clean_key = normalize_title(g["title"])
-        if clean_key in merged:
-            # Fusionar episodios
-            merged[clean_key]["episodes"].extend(g["episodes"])
-            for season, eps in g["seasons"].items():
-                merged[clean_key]["seasons"][season].extend(eps)
-            merged[clean_key]["ovas"].extend(g["ovas"])
-            merged[clean_key]["parts"].extend(g["parts"])
-            if g.get("thumbnail") and not merged[clean_key]["thumbnail"]:
-                merged[clean_key]["thumbnail"] = g["thumbnail"]
-            if g.get("sinopsis") and not merged[clean_key]["sinopsis"]:
-                merged[clean_key]["sinopsis"] = g["sinopsis"]
-            if g.get("year") and not merged[clean_key]["year"]:
-                merged[clean_key]["year"] = g["year"]
-        else:
-            merged[clean_key] = g
-
-
-    final_groups = list(merged.values()) + [g for g in groups.values() if g["final_category"] == "music"]
-
-
     result = []
-    for g in final_groups:
+    for g in groups.values():
         if not g["episodes"]:
             continue
         if g["final_category"] == "music":

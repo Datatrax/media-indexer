@@ -108,7 +108,6 @@ def parse_caption(caption: str) -> Dict[str, str]:
             elif key in ['sinopsis', 'descripción', 'descripcion', 'synopsis', 'plot']:
                 info['sinopsis'] = val
         else:
-            # Capturar texto largo como posible sinopsis
             if len(line) > 25:
                 free_text_lines.append(line)
 
@@ -328,7 +327,6 @@ def build_groups():
     for cat in ["movies", "series", "music", "other"]:
         for item in catalog[cat]:
             if cat == "music" and item.get("is_photo"):
-                # Solo metadatos y thumbnail de la foto
                 artist = clean_text(item.get("artista") or "").lower()
                 album = clean_text(item.get("album") or "").lower()
                 if artist and album:
@@ -351,17 +349,19 @@ def build_groups():
                         key = f"music::{normalize_title(item.get('title', ''))}"
                         display_title = item.get("title")
                 else:
+                    # Series / Movies: priorizar Nombre del caption
+                    nombre = clean_text(item.get("album") or "")  # album se usa también para Nombre en series
                     raw = item.get("title") or item.get("filename") or ""
-                    key = normalize_title(raw)
-                    display_title = clean_series_title(raw)
 
 
-                    if not display_title or len(display_title) < 5 or re.search(r'00\s*\(|ova|bd-', display_title, re.I):
-                        display_title = clean_series_title(item.get("filename") or raw)
-
-
-                    if not display_title or len(display_title) < 5:
-                        display_title = raw
+                    if nombre:
+                        key = normalize_title(nombre)
+                        display_title = nombre
+                    else:
+                        key = normalize_title(raw)
+                        display_title = clean_series_title(raw)
+                        if not display_title or len(display_title) < 5:
+                            display_title = raw
 
 
             g = groups[key]

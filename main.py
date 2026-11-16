@@ -211,19 +211,20 @@ def extract_info(msg) -> Optional[Dict[str, Any]]:
         info["is_ova"] = True
         info["title"] = "OVA"
     else:
-        # Detección de episodio normal
-        ep_match = re.search(r'(?:s|temporada|season)?[\s\._-]*(\d{1,2})[\s\._-]*[ex][\s\._-]*(\d{1,3})', filename + " " + caption, re.I)
+        # Detección de temporada + episodio (más flexible)
+        ep_match = re.search(r'(?:s|temporada|season)[\s\._-]*(\d{1,2})[\s\._-]*[ex][\s\._-]*(\d{1,3})', filename + " " + caption, re.I)
         if ep_match:
             info["season"] = int(ep_match.group(1))
             info["episode"] = int(ep_match.group(2))
             info["title"] = f"Ep {info['episode']}"
         else:
-            ep_only = re.search(r'(?:ep|capítulo|capitulo|cap)[\s\._-]*(\d{1,3})', filename + " " + caption, re.I)
+            # Solo episodio
+            ep_only = re.search(r'(?:ep|capítulo|capitulo|cap|e)[\s\._-]*(\d{1,3})', filename + " " + caption, re.I)
             if ep_only:
                 info["episode"] = int(ep_only.group(1))
                 info["title"] = f"Ep {info['episode']}"
             else:
-                # Número al final del nombre (más conservador)
+                # Número al final
                 num_match = re.search(r'[\s\._-]+(\d{1,2})(?:[\s\._-]|$)', filename, re.I)
                 if num_match and category in ["series", "movies"] and not is_ova:
                     info["episode"] = int(num_match.group(1))

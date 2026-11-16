@@ -66,34 +66,6 @@ def clean_text(text: str) -> str:
 
 
 
-def normalize_title(title: str) -> str:
-    if not title:
-        return ""
-    t = title.lower().strip()
-
-
-    # Casos especiales
-    if "final eternal" in t or "eternal my master" in t:
-        return "sora no otoshimono final eternal my master"
-    if "tokeijikake" in t:
-        return "sora no otoshimono tokeijikake no angeloid"
-    if "forte" in t and "sora" in t:
-        return "sora no otoshimono forte"
-    if "ribbon hero" in t:
-        return "the ribbon hero"
-
-
-    # Quitar información de episodios de forma agresiva
-    t = re.sub(r'\b(s\d{1,2}[\s\._-]*e\d{1,3}|temporada\s*\d+|season\s*\d+|cap[ií]tulo\s*\d+|ep\.?\s*\d+|ova|ona|special|especial)\b', '', t, flags=re.I)
-    t = re.sub(r'\b(bd|bluray|1080p|720p|480p|x264|x265|hevc|aac|flac|mp3|mkv|mp4|avi|rar|zip)\b', '', t, flags=re.I)
-    t = re.sub(r'\[.*?\]|\(.*?\)|\{.*?\}', '', t)
-    t = re.sub(r'[^\w\s]', ' ', t)
-    t = re.sub(r'\s+', ' ', t).strip()
-    return t
-
-
-
-
 def parse_caption(caption: str) -> Dict[str, str]:
     info = {}
     if not caption:
@@ -116,7 +88,10 @@ def parse_caption(caption: str) -> Dict[str, str]:
         elif key in ['artista', 'artist', 'autor']:
             info['artista'] = val
         elif key in ['álbum', 'album', 'disco', 'nombre']:
-            info['album'] = val
+            # Nombre se usa tanto para álbum como para título de película
+            if 'album' not in info:
+                info['album'] = val
+            info['nombre'] = val
         elif key in ['año', 'year', 'fecha']:
             info['year'] = val
         elif key in ['género', 'genero', 'genre', 'géneros', 'generos']:
@@ -164,8 +139,8 @@ def classify(filename: str, mime: str, size: int, caption: str, parsed: Dict) ->
         return 'music'
 
 
-    if size > 70 * 1024 * 1024 and any(x in fname for x in ['.mkv', '.mp4', '.avi', '.rar', '.zip']):
-        if any(x in cap for x in ['película', 'pelicula', 'movie', 'film']):
+    if size > 60 * 1024 * 1024 and any(x in fname for x in ['.mkv', '.mp4', '.avi', '.rar', '.zip']):
+        if any(x in cap for x in ['película', 'pelicula', 'movie', 'film', 'tipo: película']):
             return 'movies'
 
 
@@ -212,13 +187,13 @@ def extract_info(msg) -> Optional[Dict[str, Any]]:
     category = classify(filename, mime, size, caption, parsed)
 
 
-    # Limpieza del título de la pista
+    # --- Limpieza de título de pista ---
     track_title = filename
     track_title = re.sub(r'\.[a-z0-9]{2,5}$', '', track_title, flags=re.I)
     track_title = re.sub(r'^\d{1,3}[\s\.\-_]+', '', track_title)
 
 
-    # Separar "Artista – Canción" o "Artista - Canción"
+    # Separar "Artista – Canción"
     if '–' in track_title or ' - ' in track_title:
         parts = re.split(r'\s*[–-]\s*', track_title, maxsplit=1)
         if len(parts) == 2:
@@ -228,7 +203,7 @@ def extract_info(msg) -> Optional[Dict[str, Any]]:
 
 
     track_title = clean_text(track_title)
-    if not track_title:
+    if not track_title or len(track_title) < 2:
         track_title = filename
 
 
@@ -269,6 +244,33 @@ def extract_info(msg) -> Optional[Dict[str, Any]]:
 
 
 
+def normalize_title(title: str) -> str:
+    if not title:
+        return ""
+    t = title.lower().strip()
+
+
+    if "final eternal" in t or "eternal my master" in t:
+        return "sora no otoshimono final eternal my master"
+    if "tokeijikake" in t:
+        return "sora no otoshimono tokeijikake no angeloid"
+    if "forte" in t and "sora" in t:
+        return "sora no otoshimono forte"
+    if "ribbon hero" in t:
+        return "the ribbon hero"
+
+
+    # Limpiar basura de episodios y calidad
+    t = re.sub(r'\b(s\d{1,2}[\s\._-]*e\d{1,3}|temporada\s*\d+|season\s*\d+|cap[ií]tulo\s*\d+|ep\.?\s*\d+|ova|ona|special|especial)\b', '', t, flags=re.I)
+    t = re.sub(r'\b(bd|bluray|1080p|720p|480p|x264|x265|hevc|aac|flac|mp3|mkv|mp4|avi|rar|zip|part\d+)\b', '', t, flags=re.I)
+    t = re.sub(r'\[.*?\]|\(.*?\)|\{.*?\}', '', t)
+    t = re.sub(r'[^\w\s]', ' ', t)
+    t = re.sub(r'\s+', ' ', t).strip()
+    return t
+
+
+
+
 def build_groups():
     groups = defaultdict(lambda: {
         "title": "",
@@ -297,28 +299,28 @@ def build_groups():
         for item in catalog[cat]:
             if cat == "music":
                 artist = clean_text(item.get("artista") or "").lower()
-                album = clean_text(item.get("album") or "").lower()
+                album = clean_text(item.get("album") or item.get("nombre") or "").lower()
 
 
                 if artist and album:
                     key = f"music::{artist}::{album}"
-                    display_title = item.get("album") or item.get("title")
+                    display_title = item.get("album") or item.get("nombre") or item.get("title")
                 elif artist:
                     key = f"music::{artist}::{normalize_title(item.get('title', ''))}"
-                    display_title = f"{item.get('artista', 'Unknown')} - {item.get('title')}"
+                    display_title = f"{item.get('artista')} - {item.get('title')}"
                 else:
                     key = f"music::{normalize_title(item.get('title', ''))}"
                     display_title = item.get("title")
             else:
-                key = normalize_title(item.get("title") or item.get("filename", ""))
-                raw_title = item.get("title") or item.get("filename") or ""
-                # Limpiar el título de display de info de episodio
+                # Series / Películas: usar nombre del caption si existe
+                raw = item.get("nombre") or item.get("title") or item.get("filename") or ""
+                key = normalize_title(raw)
                 display_title = re.sub(
-                    r'\s*[-–]?\s*(s\d{1,2}[\s\._-]*e\d{1,3}|temporada\s*\d+|season\s*\d+|cap[ií]tulo\s*\d+|ep\.?\s*\d+).*$',
-                    '', raw_title, flags=re.I
+                    r'\s*[-–]?\s*(s\d{1,2}[\s\._-]*e\d{1,3}|temporada\s*\d+|season\s*\d+|cap[ií]tulo\s*\d+|ep\.?\s*\d+|ova|ona).*$',
+                    '', raw, flags=re.I
                 ).strip(" -–_")
-                if not display_title:
-                    display_title = raw_title
+                if not display_title or len(display_title) < 3:
+                    display_title = raw
 
 
             g = groups[key]
@@ -326,8 +328,8 @@ def build_groups():
             g["episodes"].append(item)
 
 
-            # Preferir el título más largo y limpio
-            if not g["title"] or (display_title and len(display_title) > len(g["title"]) and "s0" not in display_title.lower()):
+            # Preferir título más limpio y largo
+            if not g["title"] or (display_title and len(display_title) > len(g["title"]) and not re.search(r's\d+e\d+|ova|bd-', display_title, re.I)):
                 g["title"] = display_title
 
 

@@ -67,7 +67,6 @@ def clean_text(text: str) -> str:
 
 
 def normalize_title(title: str) -> str:
-    """Limpia el título para usarlo como clave de agrupación"""
     if not title:
         return ""
     t = title.lower().strip()
@@ -84,16 +83,10 @@ def normalize_title(title: str) -> str:
         return "the ribbon hero"
 
 
-    # Quitar episodios / temporadas
+    # Quitar información de episodios de forma agresiva
     t = re.sub(r'\b(s\d{1,2}[\s\._-]*e\d{1,3}|temporada\s*\d+|season\s*\d+|cap[ií]tulo\s*\d+|ep\.?\s*\d+|ova|ona|special|especial)\b', '', t, flags=re.I)
-    
-    # Quitar calidad y extensiones
     t = re.sub(r'\b(bd|bluray|1080p|720p|480p|x264|x265|hevc|aac|flac|mp3|mkv|mp4|avi|rar|zip)\b', '', t, flags=re.I)
-    
-    # Quitar paréntesis y corchetes
     t = re.sub(r'\[.*?\]|\(.*?\)|\{.*?\}', '', t)
-    
-    # Quitar caracteres especiales
     t = re.sub(r'[^\w\s]', ' ', t)
     t = re.sub(r'\s+', ' ', t).strip()
     return t
@@ -111,8 +104,6 @@ def parse_caption(caption: str) -> Dict[str, str]:
         line = line.strip()
         if ':' not in line:
             continue
-
-
         key, val = line.split(':', 1)
         key = key.strip().lower()
         val = val.strip()
@@ -124,7 +115,7 @@ def parse_caption(caption: str) -> Dict[str, str]:
             info['tipo'] = val.lower()
         elif key in ['artista', 'artist', 'autor']:
             info['artista'] = val
-        elif key in ['álbum', 'album', 'disco', 'nombre']:          # ← Aquí está el fix importante
+        elif key in ['álbum', 'album', 'disco', 'nombre']:
             info['album'] = val
         elif key in ['año', 'year', 'fecha']:
             info['year'] = val
@@ -144,7 +135,6 @@ def parse_caption(caption: str) -> Dict[str, str]:
             info['sinopsis'] = val
 
 
-    # Buscar año suelto
     year_match = re.search(r'\b(19|20)\d{2}\b', caption)
     if year_match and 'year' not in info:
         info['year'] = year_match.group(0)
@@ -222,28 +212,29 @@ def extract_info(msg) -> Optional[Dict[str, Any]]:
     category = classify(filename, mime, size, caption, parsed)
 
 
-    # ===== Limpieza del título de la pista =====
+    # Limpieza del título de la pista
     track_title = filename
-    track_title = re.sub(r'\.[a-z0-9]{2,5}$', '', track_title, flags=re.I)  # quitar extensión
-    track_title = re.sub(r'^\d{1,3}[\s\.\-_]+', '', track_title)            # quitar número de pista
+    track_title = re.sub(r'\.[a-z0-9]{2,5}$', '', track_title, flags=re.I)
+    track_title = re.sub(r'^\d{1,3}[\s\.\-_]+', '', track_title)
 
 
-    # Si el archivo es tipo "Artista – Canción" o "Artista - Canción"
+    # Separar "Artista – Canción" o "Artista - Canción"
     if '–' in track_title or ' - ' in track_title:
-        parts = re.split(r'\s*[–-]\s*', track_title, 1)
+        parts = re.split(r'\s*[–-]\s*', track_title, maxsplit=1)
         if len(parts) == 2:
-            # Si no tenemos artista en el caption, lo tomamos del nombre del archivo
             if not parsed.get('artista'):
                 parsed['artista'] = parts[0].strip()
             track_title = parts[1].strip()
 
 
     track_title = clean_text(track_title)
+    if not track_title:
+        track_title = filename
 
 
     info = {
         "id": msg.id,
-        "title": track_title or filename,
+        "title": track_title,
         "filename": filename,
         "category": category,
         "size_mb": round(size / (1024 * 1024), 2) if size else 0,
@@ -258,7 +249,7 @@ def extract_info(msg) -> Optional[Dict[str, Any]]:
     }
 
 
-    # Detectar temporada / episodio
+    # Temporada / Episodio
     ep_match = re.search(r'(?:s|temporada|season)?[\s\._-]*(\d{1,2})[\s\._-]*[ex][\s\._-]*(\d{1,3})', filename + " " + caption, re.I)
     if ep_match:
         info["season"] = int(ep_match.group(1))
@@ -311,23 +302,23 @@ def build_groups():
 
                 if artist and album:
                     key = f"music::{artist}::{album}"
-                    display_title = item.get("album")
+                    display_title = item.get("album") or item.get("title")
                 elif artist:
                     key = f"music::{artist}::{normalize_title(item.get('title', ''))}"
-                    display_title = f"{item.get('artista')} - {item.get('title')}"
+                    display_title = f"{item.get('artista', 'Unknown')} - {item.get('title')}"
                 else:
                     key = f"music::{normalize_title(item.get('title', ''))}"
                     display_title = item.get("title")
             else:
-                # Series / Películas
                 key = normalize_title(item.get("title") or item.get("filename", ""))
-                display_title = item.get("title") or item.get("filename")
-                
-                # Limpiar el título de display de información de episodio
+                raw_title = item.get("title") or item.get("filename") or ""
+                # Limpiar el título de display de info de episodio
                 display_title = re.sub(
-                    r'\b(s\d{1,2}[\s\._-]*e\d{1,3}|temporada\s*\d+|season\s*\d+|cap[ií]tulo\s*\d+|ep\.?\s*\d+)\b',
-                    '', display_title, flags=re.I
+                    r'\s*[-–]?\s*(s\d{1,2}[\s\._-]*e\d{1,3}|temporada\s*\d+|season\s*\d+|cap[ií]tulo\s*\d+|ep\.?\s*\d+).*$',
+                    '', raw_title, flags=re.I
                 ).strip(" -–_")
+                if not display_title:
+                    display_title = raw_title
 
 
             g = groups[key]
@@ -335,12 +326,11 @@ def build_groups():
             g["episodes"].append(item)
 
 
-            # Solo poner título si aún no tiene uno bueno
-            if not g["title"] or len(display_title) > len(g["title"]):
+            # Preferir el título más largo y limpio
+            if not g["title"] or (display_title and len(display_title) > len(g["title"]) and "s0" not in display_title.lower()):
                 g["title"] = display_title
 
 
-            # Metadata
             for field in ["year", "genero", "estudio", "artista", "album", "label", "productor", "precuela", "secuela", "sinopsis"]:
                 if item.get(field) and not g.get(field):
                     g[field] = item.get(field)
@@ -354,7 +344,6 @@ def build_groups():
                 g["latest_date"] = item["date"]
 
 
-            # Categoría final
             if cat == "music":
                 g["final_category"] = "music"
             elif cat == "movies":
@@ -366,7 +355,6 @@ def build_groups():
                     g["final_category"] = cat
 
 
-            # Organizar temporadas / OVAs
             if g["final_category"] in ["series", "movies"]:
                 if item.get("is_ova"):
                     g["ovas"].append(item)
@@ -376,7 +364,6 @@ def build_groups():
                     g["parts"].append(item)
 
 
-    # Ordenar
     result = []
     for key, g in groups.items():
         if not g["episodes"]:
@@ -449,7 +436,6 @@ async def process_message(msg):
         return
 
 
-    # Thumbnail
     try:
         if msg.photo or (hasattr(msg.media, 'document') and getattr(msg.media.document, 'thumbs', None)):
             thumb_bytes = await client.download_media(msg, file=bytes, thumb=-1)

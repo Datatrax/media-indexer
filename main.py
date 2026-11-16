@@ -190,7 +190,7 @@ def extract_info(msg) -> Optional[Dict[str, Any]]:
     track_title = re.sub(r'^\d{1,3}[\s\.\-_]+', '', track_title)
 
 
-    # Separar "Artista – Canción" o "Artista - Canción"
+    # Separar "Artista – Canción"
     if '–' in track_title or ' - ' in track_title:
         parts = re.split(r'\s*[–-]\s*', track_title, maxsplit=1)
         if len(parts) == 2:
@@ -247,7 +247,6 @@ def normalize_title(title: str) -> str:
     t = title.lower().strip()
 
 
-    # Casos especiales
     if "final eternal" in t or "eternal my master" in t:
         return "sora no otoshimono final eternal my master"
     if "tokeijikake" in t:
@@ -301,10 +300,10 @@ def build_groups():
 
                 if artist and album:
                     key = f"music::{artist}::{album}"
-                    display_title = item.get("album") or item.get("title")
+                    display_title = item.get("album") or "Álbum"
                 elif artist:
-                    key = f"music::{artist}::{normalize_title(item.get('title', ''))}"
-                    display_title = f"{item.get('artista')} - {item.get('title')}"
+                    key = f"music::{artist}::single"
+                    display_title = item.get("artista") or "Unknown"
                 else:
                     key = f"music::{normalize_title(item.get('title', ''))}"
                     display_title = item.get("title")
@@ -312,10 +311,10 @@ def build_groups():
                 key = normalize_title(item.get("title") or item.get("filename", ""))
                 raw = item.get("title") or item.get("filename") or ""
                 display_title = re.sub(
-                    r'\s*[-–]?\s*(s\d{1,2}[\s\._-]*e\d{1,3}|temporada\s*\d+|season\s*\d+|cap[ií]tulo\s*\d+|ep\.?\s*\d+|ova|ona|special|especial).*$',
+                    r'\s*[-–]?\s*(s\d{1,2}[\s\._-]*e\d{1,3}|temporada\s*\d+|season\s*\d+|cap[ií]tulo\s*\d+|ep\.?\s*\d+|ova|ona|special|especial|00\s*\().*$',
                     '', raw, flags=re.I
                 ).strip(" -–_")
-                if not display_title:
+                if not display_title or len(display_title) < 3:
                     display_title = raw
 
 

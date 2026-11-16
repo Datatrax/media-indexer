@@ -67,12 +67,13 @@ def clean_text(text: str) -> str:
 
 
 def normalize_title(title: str) -> str:
+    """Limpia el título para usarlo como clave de agrupación"""
     if not title:
         return ""
     t = title.lower().strip()
 
 
-    # Casos especiales de películas
+    # Casos especiales
     if "final eternal" in t or "eternal my master" in t:
         return "sora no otoshimono final eternal my master"
     if "tokeijikake" in t:
@@ -83,9 +84,16 @@ def normalize_title(title: str) -> str:
         return "the ribbon hero"
 
 
-    t = re.sub(r'\[.*?\]|\(.*?\)|\{.*?\}', '', t)
-    t = re.sub(r'\b(s\d{1,2}e\d{1,3}|temporada\s*\d+|season\s*\d+|cap[ií]tulo\s*\d+|ep\.?\s*\d+|ova|ona|special)\b', '', t, flags=re.I)
+    # Quitar episodios / temporadas
+    t = re.sub(r'\b(s\d{1,2}[\s\._-]*e\d{1,3}|temporada\s*\d+|season\s*\d+|cap[ií]tulo\s*\d+|ep\.?\s*\d+|ova|ona|special|especial)\b', '', t, flags=re.I)
+    
+    # Quitar calidad y extensiones
     t = re.sub(r'\b(bd|bluray|1080p|720p|480p|x264|x265|hevc|aac|flac|mp3|mkv|mp4|avi|rar|zip)\b', '', t, flags=re.I)
+    
+    # Quitar paréntesis y corchetes
+    t = re.sub(r'\[.*?\]|\(.*?\)|\{.*?\}', '', t)
+    
+    # Quitar caracteres especiales
     t = re.sub(r'[^\w\s]', ' ', t)
     t = re.sub(r'\s+', ' ', t).strip()
     return t
@@ -103,6 +111,8 @@ def parse_caption(caption: str) -> Dict[str, str]:
         line = line.strip()
         if ':' not in line:
             continue
+
+
         key, val = line.split(':', 1)
         key = key.strip().lower()
         val = val.strip()
@@ -114,7 +124,7 @@ def parse_caption(caption: str) -> Dict[str, str]:
             info['tipo'] = val.lower()
         elif key in ['artista', 'artist', 'autor']:
             info['artista'] = val
-        elif key in ['álbum', 'album', 'disco', 'nombre']:
+        elif key in ['álbum', 'album', 'disco', 'nombre']:          # ← Aquí está el fix importante
             info['album'] = val
         elif key in ['año', 'year', 'fecha']:
             info['year'] = val
@@ -134,6 +144,7 @@ def parse_caption(caption: str) -> Dict[str, str]:
             info['sinopsis'] = val
 
 
+    # Buscar año suelto
     year_match = re.search(r'\b(19|20)\d{2}\b', caption)
     if year_match and 'year' not in info:
         info['year'] = year_match.group(0)
@@ -163,7 +174,7 @@ def classify(filename: str, mime: str, size: int, caption: str, parsed: Dict) ->
         return 'music'
 
 
-    if size > 80 * 1024 * 1024 and any(x in fname for x in ['.mkv', '.mp4', '.avi', '.rar', '.zip']):
+    if size > 70 * 1024 * 1024 and any(x in fname for x in ['.mkv', '.mp4', '.avi', '.rar', '.zip']):
         if any(x in cap for x in ['película', 'pelicula', 'movie', 'film']):
             return 'movies'
 
@@ -211,21 +222,23 @@ def extract_info(msg) -> Optional[Dict[str, Any]]:
     category = classify(filename, mime, size, caption, parsed)
 
 
-    # ===== LIMPIEZA DEL TÍTULO DE LA CANCIÓN =====
+    # ===== Limpieza del título de la pista =====
     track_title = filename
-    # Quitar extensión
-    track_title = re.sub(r'\.[a-z0-9]{2,5}$', '', track_title, flags=re.I)
-    # Quitar número de pista al inicio (01 -, 01., 1. etc)
-    track_title = re.sub(r'^\d{1,3}[\s\.\-_]+', '', track_title)
-    # Quitar cosas entre paréntesis/corchetes al final
-    track_title = re.sub(r'[\(\[\{].*?[\)\]\}]$', '', track_title).strip()
+    track_title = re.sub(r'\.[a-z0-9]{2,5}$', '', track_title, flags=re.I)  # quitar extensión
+    track_title = re.sub(r'^\d{1,3}[\s\.\-_]+', '', track_title)            # quitar número de pista
+
+
+    # Si el archivo es tipo "Artista – Canción" o "Artista - Canción"
+    if '–' in track_title or ' - ' in track_title:
+        parts = re.split(r'\s*[–-]\s*', track_title, 1)
+        if len(parts) == 2:
+            # Si no tenemos artista en el caption, lo tomamos del nombre del archivo
+            if not parsed.get('artista'):
+                parsed['artista'] = parts[0].strip()
+            track_title = parts[1].strip()
+
+
     track_title = clean_text(track_title)
-
-
-    # Si el caption tiene "Nombre:" lo usamos
-    if parsed.get('album') and category == 'music':
-        # Preferimos el nombre del álbum del caption para el grupo
-        pass
 
 
     info = {
@@ -245,20 +258,19 @@ def extract_info(msg) -> Optional[Dict[str, Any]]:
     }
 
 
-    # Detectar episodio / temporada
-    ep_match = re.search(r'(?:s|temporada|season)?\s*(\d{1,2})\s*[ex]\s*(\d{1,3})', filename + " " + caption, re.I)
+    # Detectar temporada / episodio
+    ep_match = re.search(r'(?:s|temporada|season)?[\s\._-]*(\d{1,2})[\s\._-]*[ex][\s\._-]*(\d{1,3})', filename + " " + caption, re.I)
     if ep_match:
         info["season"] = int(ep_match.group(1))
         info["episode"] = int(ep_match.group(2))
     else:
-        ep_only = re.search(r'(?:ep|capítulo|capitulo|cap)\.?\s*(\d{1,3})', filename + " " + caption, re.I)
+        ep_only = re.search(r'(?:ep|capítulo|capitulo|cap)[\s\._-]*(\d{1,3})', filename + " " + caption, re.I)
         if ep_only:
             info["episode"] = int(ep_only.group(1))
 
 
     if re.search(r'\b(ova|ona|special|especial)\b', filename + " " + caption, re.I):
         info["is_ova"] = True
-        info["special_type"] = "OVA"
 
 
     return info
@@ -299,17 +311,23 @@ def build_groups():
 
                 if artist and album:
                     key = f"music::{artist}::{album}"
-                    display_title = item.get("album") or item.get("title")
+                    display_title = item.get("album")
                 elif artist:
-                    # Si no hay álbum, agrupamos por artista + título limpio de la canción
                     key = f"music::{artist}::{normalize_title(item.get('title', ''))}"
                     display_title = f"{item.get('artista')} - {item.get('title')}"
                 else:
                     key = f"music::{normalize_title(item.get('title', ''))}"
                     display_title = item.get("title")
             else:
+                # Series / Películas
                 key = normalize_title(item.get("title") or item.get("filename", ""))
                 display_title = item.get("title") or item.get("filename")
+                
+                # Limpiar el título de display de información de episodio
+                display_title = re.sub(
+                    r'\b(s\d{1,2}[\s\._-]*e\d{1,3}|temporada\s*\d+|season\s*\d+|cap[ií]tulo\s*\d+|ep\.?\s*\d+)\b',
+                    '', display_title, flags=re.I
+                ).strip(" -–_")
 
 
             g = groups[key]
@@ -317,7 +335,8 @@ def build_groups():
             g["episodes"].append(item)
 
 
-            if not g["title"]:
+            # Solo poner título si aún no tiene uno bueno
+            if not g["title"] or len(display_title) > len(g["title"]):
                 g["title"] = display_title
 
 
@@ -335,6 +354,7 @@ def build_groups():
                 g["latest_date"] = item["date"]
 
 
+            # Categoría final
             if cat == "music":
                 g["final_category"] = "music"
             elif cat == "movies":
@@ -346,6 +366,7 @@ def build_groups():
                     g["final_category"] = cat
 
 
+            # Organizar temporadas / OVAs
             if g["final_category"] in ["series", "movies"]:
                 if item.get("is_ova"):
                     g["ovas"].append(item)
@@ -355,6 +376,7 @@ def build_groups():
                     g["parts"].append(item)
 
 
+    # Ordenar
     result = []
     for key, g in groups.items():
         if not g["episodes"]:
@@ -362,7 +384,6 @@ def build_groups():
 
 
         if g["final_category"] == "music":
-            # Ordenar por ID de mensaje (orden de subida)
             g["episodes"].sort(key=lambda x: x.get("id", 0))
         else:
             for season in g["seasons"]:
@@ -428,7 +449,7 @@ async def process_message(msg):
         return
 
 
-    # Intentar bajar thumbnail de forma segura
+    # Thumbnail
     try:
         if msg.photo or (hasattr(msg.media, 'document') and getattr(msg.media.document, 'thumbs', None)):
             thumb_bytes = await client.download_media(msg, file=bytes, thumb=-1)

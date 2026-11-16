@@ -349,8 +349,7 @@ def build_groups():
                         key = f"music::{normalize_title(item.get('title', ''))}"
                         display_title = item.get("title")
                 else:
-                    # Series / Movies: priorizar Nombre del caption
-                    nombre = clean_text(item.get("album") or "")  # album se usa también para Nombre en series
+                    nombre = clean_text(item.get("album") or "")
                     raw = item.get("title") or item.get("filename") or ""
 
 
@@ -373,12 +372,20 @@ def build_groups():
 
 
             if cat != "music" or not item.get("is_photo"):
-                current = g["title"]
-                is_clean = display_title and len(display_title) >= 5 and not re.search(r'00\s*\(|ova|bd-|s\d+e', display_title, re.I)
-                if is_clean and (not current or len(display_title) > len(current) or re.search(r'00\s*\(|ova|bd-', current, re.I)):
-                    g["title"] = display_title
-                elif not g["title"]:
-                    g["title"] = display_title
+                # Forzar título limpio en series
+                if cat in ["series", "movies"]:
+                    clean_candidate = clean_series_title(display_title)
+                    if clean_candidate and len(clean_candidate) >= 5 and not re.search(r'00\s*\(|ova|bd-', clean_candidate, re.I):
+                        g["title"] = clean_candidate
+                    elif not g["title"]:
+                        g["title"] = display_title
+                else:
+                    current = g["title"]
+                    is_clean = display_title and len(display_title) >= 5 and not re.search(r'00\s*\(|ova|bd-|s\d+e', display_title, re.I)
+                    if is_clean and (not current or len(display_title) > len(current) or re.search(r'00\s*\(|ova|bd-', current, re.I)):
+                        g["title"] = display_title
+                    elif not g["title"]:
+                        g["title"] = display_title
 
 
             for field in ["year", "genero", "estudio", "artista", "album", "label", "productor", "precuela", "secuela", "sinopsis"]:

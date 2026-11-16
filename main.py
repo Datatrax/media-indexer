@@ -184,7 +184,6 @@ def extract_info(msg) -> Optional[Dict[str, Any]]:
     category = classify(filename, mime, size, caption, parsed)
 
 
-    # Limpieza del título de la pista
     track_title = filename
     track_title = re.sub(r'\.[a-z0-9]{2,5}$', '', track_title, flags=re.I)
     track_title = re.sub(r'^\d{1,3}[\s\.\-_]+', '', track_title)
@@ -300,8 +299,8 @@ def build_groups():
                     key = f"music::{artist}::{album}"
                     display_title = item.get("album") or item.get("title")
                 elif artist:
-                    key = f"music::{artist}::unknown"
-                    display_title = item.get("artista") or "Unknown Artist"
+                    key = f"music::{artist}"
+                    display_title = item.get("artista") or "Unknown"
                 else:
                     key = f"music::{normalize_title(item.get('title', ''))}"
                     display_title = item.get("title")
@@ -309,9 +308,9 @@ def build_groups():
                 key = normalize_title(item.get("title") or item.get("filename", ""))
                 raw = item.get("title") or item.get("filename") or ""
                 display_title = re.sub(
-                    r'\s*[-–]?\s*(s\d{1,2}[\s\._-]*e\d{1,3}|temporada\s*\d+|season\s*\d+|cap[ií]tulo\s*\d+|ep\.?\s*\d+|ova|ona|special|especial|00\s*\().*$',
+                    r'\s*[-–]?\s*(s\d{1,2}[\s\._-]*e\d{1,3}|temporada\s*\d+|season\s*\d+|cap[ií]tulo\s*\d+|ep\.?\s*\d+|ova|ona|special|especial|00\s*\(|bd-).*$',
                     '', raw, flags=re.I
-                ).strip(" -–_")
+                ).strip(" -–_()[]")
                 if not display_title or len(display_title) < 4:
                     display_title = raw
 

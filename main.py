@@ -5,8 +5,7 @@ import base64
 import zipfile
 from io import BytesIO
 from typing import Dict, Any, List, Optional
-from collections import defaultdict, Counter
-from datetime import datetime
+from collections import defaultdict
 
 
 from telethon import TelegramClient
@@ -15,7 +14,7 @@ from telethon.tl.types import MessageMediaDocument, MessageMediaPhoto
 
 
 from fastapi import FastAPI, Request, Depends, HTTPException, status, Query
-from fastapi.responses import HTMLResponse, StreamingResponse, Response
+from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 import uvicorn
@@ -27,7 +26,6 @@ load_dotenv()
 
 API_ID = int(os.getenv("API_ID"))
 API_HASH = os.getenv("API_HASH")
-BOT_TOKEN = os.getenv("BOT_TOKEN")
 CHANNEL_ID = int(os.getenv("CHANNEL_ID"))
 SESSION_STRING = os.getenv("SESSION_STRING")
 ADMIN_USER = os.getenv("ADMIN_USER", "admin")
@@ -60,13 +58,10 @@ def verify_credentials(credentials: HTTPBasicCredentials = Depends(security)):
 
 
 
-# ==================== UTILIDADES ====================
-
-
 def clean_text(text: str) -> str:
     if not text:
         return ""
-    return re.sub(r'\s+', ' ', text).strip()
+    return re.sub(r'\s+', ' ', str(text)).strip()
 
 
 
@@ -78,9 +73,9 @@ def normalize_title(title: str) -> str:
 
 
     # Casos especiales de películas
-    if "final eternal" in t or "eternal my master" in t or ("final" in t and "my master" in t):
+    if "final eternal" in t or "eternal my master" in t:
         return "sora no otoshimono final eternal my master"
-    if "tokeijikake" in t or "clockwork" in t:
+    if "tokeijikake" in t:
         return "sora no otoshimono tokeijikake no angeloid"
     if "forte" in t and "sora" in t:
         return "sora no otoshimono forte"
@@ -88,7 +83,6 @@ def normalize_title(title: str) -> str:
         return "the ribbon hero"
 
 
-    # Limpieza general
     t = re.sub(r'\[.*?\]|\(.*?\)|\{.*?\}', '', t)
     t = re.sub(r'\b(s\d{1,2}e\d{1,3}|temporada\s*\d+|season\s*\d+|cap[ií]tulo\s*\d+|ep\.?\s*\d+|ova|ona|special)\b', '', t, flags=re.I)
     t = re.sub(r'\b(bd|bluray|1080p|720p|480p|x264|x265|hevc|aac|flac|mp3|mkv|mp4|avi|rar|zip)\b', '', t, flags=re.I)
@@ -105,41 +99,41 @@ def parse_caption(caption: str) -> Dict[str, str]:
         return info
 
 
-    lines = caption.split('\n')
-    for line in lines:
+    for line in caption.split('\n'):
         line = line.strip()
-        if not line:
+        if ':' not in line:
             continue
-        # Formato "Clave: Valor"
-        if ':' in line:
-            key, val = line.split(':', 1)
-            key = key.strip().lower()
-            val = val.strip()
-            if key in ['tipo', 'type']:
-                info['tipo'] = val.lower()
-            elif key in ['artista', 'artist', 'autor']:
-                info['artista'] = val
-            elif key in ['álbum', 'album', 'disco']:
-                info['album'] = val
-            elif key in ['año', 'year', 'fecha']:
-                info['year'] = val
-            elif key in ['género', 'genero', 'genre', 'géneros']:
-                info['genero'] = val
-            elif key in ['estudio', 'studio']:
-                info['estudio'] = val
-            elif key in ['sello', 'label', 'discográfica']:
-                info['label'] = val
-            elif key in ['productor', 'producer']:
-                info['productor'] = val
-            elif key in ['precuela', 'prequel']:
-                info['precuela'] = val
-            elif key in ['secuela', 'sequel']:
-                info['secuela'] = val
-            elif key in ['sinopsis', 'descripción', 'descripcion', 'synopsis', 'plot']:
-                info['sinopsis'] = val
+        key, val = line.split(':', 1)
+        key = key.strip().lower()
+        val = val.strip()
+        if not val:
+            continue
 
 
-    # También buscar patrones sueltos
+        if key in ['tipo', 'type']:
+            info['tipo'] = val.lower()
+        elif key in ['artista', 'artist', 'autor']:
+            info['artista'] = val
+        elif key in ['álbum', 'album', 'disco', 'nombre']:
+            info['album'] = val
+        elif key in ['año', 'year', 'fecha']:
+            info['year'] = val
+        elif key in ['género', 'genero', 'genre', 'géneros', 'generos']:
+            info['genero'] = val
+        elif key in ['estudio', 'studio']:
+            info['estudio'] = val
+        elif key in ['sello', 'label', 'discográfica', 'discografica']:
+            info['label'] = val
+        elif key in ['productor', 'producer']:
+            info['productor'] = val
+        elif key in ['precuela', 'prequel']:
+            info['precuela'] = val
+        elif key in ['secuela', 'sequel']:
+            info['secuela'] = val
+        elif key in ['sinopsis', 'descripción', 'descripcion', 'synopsis', 'plot']:
+            info['sinopsis'] = val
+
+
     year_match = re.search(r'\b(19|20)\d{2}\b', caption)
     if year_match and 'year' not in info:
         info['year'] = year_match.group(0)
@@ -156,33 +150,28 @@ def classify(filename: str, mime: str, size: int, caption: str, parsed: Dict) ->
     tipo = parsed.get('tipo', '')
 
 
-    # Prioridad al campo Tipo del caption
-    if 'película' in tipo or 'pelicula' in tipo or 'movie' in tipo:
+    if any(x in tipo for x in ['película', 'pelicula', 'movie', 'film']):
         return 'movies'
-    if 'serie' in tipo or 'series' in tipo or 'anime' in tipo:
+    if any(x in tipo for x in ['serie', 'series', 'anime']):
         return 'series'
-    if 'música' in tipo or 'musica' in tipo or 'music' in tipo or 'álbum' in tipo or 'album' in tipo:
+    if any(x in tipo for x in ['música', 'musica', 'music', 'álbum', 'album']):
         return 'music'
 
 
-    # Extensiones de audio
     audio_ext = ('.mp3', '.flac', '.wav', '.m4a', '.aac', '.ogg', '.wma', '.alac')
     if any(fname.endswith(ext) for ext in audio_ext) or (mime and mime.startswith('audio/')):
         return 'music'
 
 
-    # Videos grandes → probablemente película
     if size > 80 * 1024 * 1024 and any(x in fname for x in ['.mkv', '.mp4', '.avi', '.rar', '.zip']):
         if any(x in cap for x in ['película', 'pelicula', 'movie', 'film']):
             return 'movies'
 
 
-    # Series por patrones de episodios
     if re.search(r's\d{1,2}e\d{1,3}|temporada\s*\d+|season\s*\d+|cap\.?\s*\d+', fname + " " + cap, re.I):
         return 'series'
 
 
-    # Por defecto
     if any(x in fname for x in ['.mkv', '.mp4', '.avi']):
         return 'movies'
     return 'other'
@@ -204,12 +193,12 @@ def extract_info(msg) -> Optional[Dict[str, Any]]:
     if isinstance(msg.media, MessageMediaDocument):
         doc = msg.media.document
         for attr in doc.attributes:
-            if hasattr(attr, 'file_name'):
-                filename = attr.file_name or ""
+            if hasattr(attr, 'file_name') and attr.file_name:
+                filename = attr.file_name
             if hasattr(attr, 'duration'):
-                duration = attr.duration or 0
-        mime = doc.mime_type or ""
-        size = doc.size or 0
+                duration = getattr(attr, 'duration', 0) or 0
+        mime = getattr(doc, 'mime_type', '') or ""
+        size = getattr(doc, 'size', 0) or 0
     elif isinstance(msg.media, MessageMediaPhoto):
         filename = f"photo_{msg.id}.jpg"
         mime = "image/jpeg"
@@ -219,60 +208,44 @@ def extract_info(msg) -> Optional[Dict[str, Any]]:
 
     caption = msg.message or ""
     parsed = parse_caption(caption)
-
-
     category = classify(filename, mime, size, caption, parsed)
 
 
-    # Título limpio
-    title = filename
+    # ===== LIMPIEZA DEL TÍTULO DE LA CANCIÓN =====
+    track_title = filename
+    # Quitar extensión
+    track_title = re.sub(r'\.[a-z0-9]{2,5}$', '', track_title, flags=re.I)
+    # Quitar número de pista al inicio (01 -, 01., 1. etc)
+    track_title = re.sub(r'^\d{1,3}[\s\.\-_]+', '', track_title)
+    # Quitar cosas entre paréntesis/corchetes al final
+    track_title = re.sub(r'[\(\[\{].*?[\)\]\}]$', '', track_title).strip()
+    track_title = clean_text(track_title)
+
+
+    # Si el caption tiene "Nombre:" lo usamos
     if parsed.get('album') and category == 'music':
-        title = parsed.get('album')
-    elif parsed.get('artista') and category == 'music':
-        title = f"{parsed.get('artista')} - {filename}"
-
-
-    # Limpiar título de la canción
-    clean_title = re.sub(r'\.[a-z0-9]{2,4}$', '', filename, flags=re.I)
-    clean_title = re.sub(r'^\d+[\.\-\s]+', '', clean_title)  # quitar número de track
-
-
-    # Thumbnail
-    thumbnail = None
-    try:
-        if msg.photo or (hasattr(msg.media, 'document') and msg.media.document.thumbs):
-            thumb = client.loop.run_until_complete(client.download_media(msg, file=bytes, thumb=-1))
-            if thumb:
-                thumbnail = "data:image/jpeg;base64," + base64.b64encode(thumb).decode()
-    except Exception:
+        # Preferimos el nombre del álbum del caption para el grupo
         pass
-
-
-    # Duración formateada
-    duration_str = ""
-    if duration:
-        m, s = divmod(int(duration), 60)
-        duration_str = f"{m}:{s:02d}"
 
 
     info = {
         "id": msg.id,
-        "title": clean_title or filename,
+        "title": track_title or filename,
         "filename": filename,
         "category": category,
         "size_mb": round(size / (1024 * 1024), 2) if size else 0,
         "mime": mime,
         "date": msg.date.isoformat() if msg.date else "",
         "link": f"https://t.me/c/{str(CHANNEL_ID)[4:]}/{msg.id}" if str(CHANNEL_ID).startswith("-100") else "",
-        "thumbnail": thumbnail,
+        "thumbnail": None,
         "duration": duration,
-        "duration_str": duration_str,
+        "duration_str": f"{duration // 60}:{duration % 60:02d}" if duration else "",
         "caption": caption,
         **parsed
     }
 
 
-    # Extraer episodio / temporada
+    # Detectar episodio / temporada
     ep_match = re.search(r'(?:s|temporada|season)?\s*(\d{1,2})\s*[ex]\s*(\d{1,3})', filename + " " + caption, re.I)
     if ep_match:
         info["season"] = int(ep_match.group(1))
@@ -319,18 +292,18 @@ def build_groups():
 
     for cat in ["movies", "series", "music", "other"]:
         for item in catalog[cat]:
-            # ========== CLAVE DE AGRUPACIÓN ==========
             if cat == "music":
-                artist = (item.get("artista") or "").strip().lower()
-                album = (item.get("album") or "").strip().lower()
+                artist = clean_text(item.get("artista") or "").lower()
+                album = clean_text(item.get("album") or "").lower()
 
 
                 if artist and album:
                     key = f"music::{artist}::{album}"
                     display_title = item.get("album") or item.get("title")
                 elif artist:
+                    # Si no hay álbum, agrupamos por artista + título limpio de la canción
                     key = f"music::{artist}::{normalize_title(item.get('title', ''))}"
-                    display_title = item.get("title")
+                    display_title = f"{item.get('artista')} - {item.get('title')}"
                 else:
                     key = f"music::{normalize_title(item.get('title', ''))}"
                     display_title = item.get("title")
@@ -348,7 +321,7 @@ def build_groups():
                 g["title"] = display_title
 
 
-            # Metadata (priorizar la que tenga más info)
+            # Metadata
             for field in ["year", "genero", "estudio", "artista", "album", "label", "productor", "precuela", "secuela", "sinopsis"]:
                 if item.get(field) and not g.get(field):
                     g[field] = item.get(field)
@@ -362,7 +335,6 @@ def build_groups():
                 g["latest_date"] = item["date"]
 
 
-            # Clasificación final
             if cat == "music":
                 g["final_category"] = "music"
             elif cat == "movies":
@@ -374,7 +346,6 @@ def build_groups():
                     g["final_category"] = cat
 
 
-            # Temporadas / OVAs / Parts (solo series/movies)
             if g["final_category"] in ["series", "movies"]:
                 if item.get("is_ova"):
                     g["ovas"].append(item)
@@ -384,18 +355,16 @@ def build_groups():
                     g["parts"].append(item)
 
 
-    # Ordenar episodios
     result = []
     for key, g in groups.items():
         if not g["episodes"]:
             continue
 
 
-        # Ordenar tracks de música por orden de subida (id) o por nombre
         if g["final_category"] == "music":
+            # Ordenar por ID de mensaje (orden de subida)
             g["episodes"].sort(key=lambda x: x.get("id", 0))
         else:
-            # Ordenar temporadas
             for season in g["seasons"]:
                 g["seasons"][season].sort(key=lambda x: x.get("episode") or 0)
             g["ovas"].sort(key=lambda x: x.get("episode") or 0)
@@ -420,8 +389,6 @@ def get_filters_from_groups(groups: List[Dict], section: str):
 
     for g in groups:
         if section == "music" and g["final_category"] != "music":
-            continue
-        if section in ["series", "movies"] and g["final_category"] == "music":
             continue
         if section == "movies" and g["final_category"] != "movies":
             continue
@@ -455,13 +422,22 @@ def get_filters_from_groups(groups: List[Dict], section: str):
 
 
 
-# ==================== INDEXACIÓN ====================
-
-
 async def process_message(msg):
     info = extract_info(msg)
     if not info:
         return
+
+
+    # Intentar bajar thumbnail de forma segura
+    try:
+        if msg.photo or (hasattr(msg.media, 'document') and getattr(msg.media.document, 'thumbs', None)):
+            thumb_bytes = await client.download_media(msg, file=bytes, thumb=-1)
+            if thumb_bytes:
+                info["thumbnail"] = "data:image/jpeg;base64," + base64.b64encode(thumb_bytes).decode()
+    except Exception:
+        pass
+
+
     cat = info["category"]
     if cat in catalog:
         catalog[cat].append(info)
@@ -497,9 +473,6 @@ async def startup_event():
 
 
 
-# ==================== RUTAS ====================
-
-
 @app.get("/", response_class=HTMLResponse)
 async def index(
     request: Request,
@@ -516,16 +489,14 @@ async def index(
     groups = build_groups()
 
 
-    # Filtrar por sección
     if section == "music":
         items = [g for g in groups if g["final_category"] == "music"]
     elif section == "movies":
         items = [g for g in groups if g["final_category"] == "movies"]
-    else:  # series
+    else:
         items = [g for g in groups if g["final_category"] in ["series", "movies"]]
 
 
-    # Búsqueda
     if q:
         q_lower = q.lower()
         items = [
@@ -538,7 +509,6 @@ async def index(
         ]
 
 
-    # Filtros avanzados
     if year:
         items = [g for g in items if str(g.get("year")) == year]
     if genero:
@@ -549,7 +519,6 @@ async def index(
         items = [g for g in items if artista.lower() in (g.get("artista") or "").lower()]
 
 
-    # Orden
     if sort == "year":
         items.sort(key=lambda x: int(x["year"]) if x.get("year") and str(x["year"]).isdigit() else 0, reverse=True)
     elif sort == "date":
@@ -558,10 +527,8 @@ async def index(
         items.sort(key=lambda x: (x.get("title") or "").lower())
 
 
-    total_items = len(items)
     filters = get_filters_from_groups(groups, section)
-
-
+    total_items = len(items)
     start = (page - 1) * ITEMS_PER_PAGE
     end = start + ITEMS_PER_PAGE
     page_items = items[start:end]
@@ -610,17 +577,18 @@ async def stream_file(msg_id: int, request: Request, username: str = Depends(ver
 
 
         file_size = msg.media.document.size if hasattr(msg.media, 'document') else 0
-        mime = msg.media.document.mime_type if hasattr(msg.media, 'document') else "application/octet-stream"
+        mime = getattr(msg.media.document, 'mime_type', 'application/octet-stream') if hasattr(msg.media, 'document') else "application/octet-stream"
         filename = "file"
         for attr in getattr(msg.media.document, 'attributes', []):
-            if hasattr(attr, 'file_name'):
+            if hasattr(attr, 'file_name') and attr.file_name:
                 filename = attr.file_name
                 break
 
 
         range_header = request.headers.get("range")
         if range_header and file_size:
-            start, end = 0, file_size - 1
+            start = 0
+            end = file_size - 1
             match = re.search(r'bytes=(\d+)-(\d*)', range_header)
             if match:
                 start = int(match.group(1))
@@ -635,13 +603,16 @@ async def stream_file(msg_id: int, request: Request, username: str = Depends(ver
                     yield chunk
 
 
-            headers = {
-                "Content-Range": f"bytes {start}-{end}/{file_size}",
-                "Accept-Ranges": "bytes",
-                "Content-Length": str(length),
-                "Content-Type": mime,
-            }
-            return StreamingResponse(ranged(), status_code=206, headers=headers, media_type=mime)
+            return StreamingResponse(
+                ranged(),
+                status_code=206,
+                media_type=mime,
+                headers={
+                    "Content-Range": f"bytes {start}-{end}/{file_size}",
+                    "Accept-Ranges": "bytes",
+                    "Content-Length": str(length),
+                }
+            )
 
 
         async def full():
@@ -649,11 +620,15 @@ async def stream_file(msg_id: int, request: Request, username: str = Depends(ver
                 yield chunk
 
 
-        return StreamingResponse(full(), media_type=mime, headers={
-            "Content-Disposition": f'inline; filename="{filename}"',
-            "Accept-Ranges": "bytes",
-            "Content-Length": str(file_size) if file_size else undefined,
-        })
+        return StreamingResponse(
+            full(),
+            media_type=mime,
+            headers={
+                "Content-Disposition": f'inline; filename="{filename}"',
+                "Accept-Ranges": "bytes",
+                "Content-Length": str(file_size) if file_size else "0",
+            }
+        )
     except Exception as e:
         raise HTTPException(500, str(e))
 
@@ -676,11 +651,12 @@ async def download_album(ids: str = Query(...), username: str = Depends(verify_c
                     continue
                 filename = f"{mid}.bin"
                 for attr in getattr(msg.media.document, 'attributes', []):
-                    if hasattr(attr, 'file_name'):
+                    if hasattr(attr, 'file_name') and attr.file_name:
                         filename = attr.file_name
                         break
                 data = await client.download_media(msg, file=bytes)
-                zf.writestr(filename, data)
+                if data:
+                    zf.writestr(filename, data)
 
 
         buffer.seek(0)

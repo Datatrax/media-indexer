@@ -108,7 +108,8 @@ def parse_caption(caption: str) -> Dict[str, str]:
             elif key in ['sinopsis', 'descripción', 'descripcion', 'synopsis', 'plot']:
                 info['sinopsis'] = val
         else:
-            if len(line) > 30:
+            # Capturar texto largo como posible sinopsis
+            if len(line) > 25:
                 free_text_lines.append(line)
 
 
@@ -118,7 +119,7 @@ def parse_caption(caption: str) -> Dict[str, str]:
 
     if 'album' not in info and lines:
         for line in lines:
-            if 3 <= len(line) <= 45 and ':' not in line and not re.search(r'\d{1,2}:\d{2}', line):
+            if 3 <= len(line) <= 50 and ':' not in line and not re.search(r'\d{1,2}:\d{2}', line):
                 info['album'] = line
                 break
 
@@ -326,10 +327,14 @@ def build_groups():
 
     for cat in ["movies", "series", "music", "other"]:
         for item in catalog[cat]:
-            # No agregar fotos como tracks en música
             if cat == "music" and item.get("is_photo"):
-                # Solo usamos la foto para metadatos y thumbnail, no como episodio
-                pass
+                # Solo metadatos y thumbnail de la foto
+                artist = clean_text(item.get("artista") or "").lower()
+                album = clean_text(item.get("album") or "").lower()
+                if artist and album:
+                    key = f"music::{artist}::{album}"
+                else:
+                    continue
             else:
                 if cat == "music":
                     artist = clean_text(item.get("artista") or "").lower()
@@ -359,15 +364,15 @@ def build_groups():
                         display_title = raw
 
 
-                g = groups[key]
-                g["normalized"] = key
+            g = groups[key]
+            g["normalized"] = key
 
 
-                # Solo agregar a episodios si no es foto de música
-                if not (cat == "music" and item.get("is_photo")):
-                    g["episodes"].append(item)
+            if not (cat == "music" and item.get("is_photo")):
+                g["episodes"].append(item)
 
 
+            if cat != "music" or not item.get("is_photo"):
                 current = g["title"]
                 is_clean = display_title and len(display_title) >= 5 and not re.search(r'00\s*\(|ova|bd-|s\d+e', display_title, re.I)
                 if is_clean and (not current or len(display_title) > len(current) or re.search(r'00\s*\(|ova|bd-', current, re.I)):
@@ -376,44 +381,42 @@ def build_groups():
                     g["title"] = display_title
 
 
-                for field in ["year", "genero", "estudio", "artista", "album", "label", "productor", "precuela", "secuela", "sinopsis"]:
-                    if item.get(field) and not g.get(field):
-                        g[field] = item.get(field)
+            for field in ["year", "genero", "estudio", "artista", "album", "label", "productor", "precuela", "secuela", "sinopsis"]:
+                if item.get(field) and not g.get(field):
+                    g[field] = item.get(field)
 
 
-                if item.get("thumbnail") and not g["thumbnail"]:
-                    g["thumbnail"] = item["thumbnail"]
+            if item.get("thumbnail") and not g["thumbnail"]:
+                g["thumbnail"] = item["thumbnail"]
 
 
-                if item.get("date") and item["date"] > (g["latest_date"] or ""):
-                    g["latest_date"] = item["date"]
+            if item.get("date") and item["date"] > (g["latest_date"] or ""):
+                g["latest_date"] = item["date"]
 
 
-                if cat == "music":
-                    g["final_category"] = "music"
-                elif cat == "movies":
-                    g["final_category"] = "movies"
-                elif cat == "series":
-                    g["final_category"] = "series"
-                else:
-                    if not g["final_category"]:
-                        g["final_category"] = cat
+            if cat == "music":
+                g["final_category"] = "music"
+            elif cat == "movies":
+                g["final_category"] = "movies"
+            elif cat == "series":
+                g["final_category"] = "series"
+            else:
+                if not g["final_category"]:
+                    g["final_category"] = cat
 
 
-                if g["final_category"] in ["series", "movies"]:
-                    if item.get("is_ova"):
-                        g["ovas"].append(item)
-                    elif item.get("season") is not None:
-                        g["seasons"][item["season"]].append(item)
-                    elif item.get("episode") is not None and g["final_category"] == "movies":
-                        g["parts"].append(item)
+            if g["final_category"] in ["series", "movies"] and not (cat == "music" and item.get("is_photo")):
+                if item.get("is_ova"):
+                    g["ovas"].append(item)
+                elif item.get("season") is not None:
+                    g["seasons"][item["season"]].append(item)
+                elif item.get("episode") is not None and g["final_category"] == "movies":
+                    g["parts"].append(item)
 
 
     result = []
     for key, g in groups.items():
-        if not g["episodes"] and g["final_category"] != "music":
-            continue
-        if g["final_category"] == "music" and not g["episodes"]:
+        if not g["episodes"]:
             continue
 
 

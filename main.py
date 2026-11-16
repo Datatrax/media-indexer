@@ -268,13 +268,12 @@ def build_groups():
                         key = f"music::{normalize_title(item.get('title', ''))}"
                         display = item.get("title")
                 else:
-                    # Solo agrupar series/movies si tienen Nombre explícito
+                    # Prioriza Nombre del caption
                     nombre = clean_text(item.get("album") or "")
                     if nombre:
                         key = normalize_title(nombre)
                         display = nombre
                     else:
-                        # Sin Nombre → grupo individual
                         key = f"single::{item['id']}"
                         display = item.get("title") or item.get("filename")
 

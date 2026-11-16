@@ -162,6 +162,13 @@ def extract_info(msg) -> Optional[Dict[str, Any]]:
     title = re.sub(r'\.[a-z0-9]{2,5}$', '', filename, flags=re.I)
     title = clean_text(title)
 
+    if '–' in title or ' - ' in title:
+        parts = re.split(r'\s*[–-]\s*', title, maxsplit=1)
+        if len(parts) == 2:
+            if not parsed.get('artista'):
+                parsed['artista'] = parts[0].strip()
+            title = parts[1].strip()
+
     info = {
         "id": msg.id,
         "title": title,
@@ -179,7 +186,6 @@ def extract_info(msg) -> Optional[Dict[str, Any]]:
         **parsed
     }
 
-    # Detección simple de episodio
     ep_match = re.search(r'(?:s|temporada|season)[\s\._-]*(\d{1,2})[\s\._-]*[ex][\s\._-]*(\d{1,3})', filename + " " + caption, re.I)
     if ep_match:
         info["season"] = int(ep_match.group(1))
@@ -245,29 +251,37 @@ def build_groups():
     for cat in ["movies", "series", "music", "other"]:
         for item in catalog[cat]:
             if cat == "music" and item.get("is_photo"):
-                continue
-
-            if cat == "music":
+                # Solo usamos la foto para metadatos, no como track
                 artist = clean_text(item.get("artista") or "").lower()
                 album = clean_text(item.get("album") or "").lower()
                 if artist and album:
                     key = f"music::{artist}::{album}"
-                    display = item.get("album") or item.get("title")
                 else:
-                    key = f"music::{normalize_title(item.get('title', ''))}"
-                    display = item.get("title")
+                    continue
             else:
-                nombre = clean_text(item.get("album") or "")
-                if nombre:
-                    key = normalize_title(nombre)
-                    display = nombre
+                if cat == "music":
+                    artist = clean_text(item.get("artista") or "").lower()
+                    album = clean_text(item.get("album") or "").lower()
+                    if artist and album:
+                        key = f"music::{artist}::{album}"
+                        display = item.get("album") or item.get("title")
+                    else:
+                        key = f"music::{normalize_title(item.get('title', ''))}"
+                        display = item.get("title")
                 else:
-                    key = normalize_title(item.get("title") or item.get("filename") or "")
-                    display = clean_series_title(item.get("title") or "")
+                    nombre = clean_text(item.get("album") or "")
+                    if nombre:
+                        key = normalize_title(nombre)
+                        display = nombre
+                    else:
+                        key = normalize_title(item.get("title") or item.get("filename") or "")
+                        display = clean_series_title(item.get("title") or "")
 
             g = groups[key]
             g["normalized"] = key
-            g["episodes"].append(item)
+
+            if not (cat == "music" and item.get("is_photo")):
+                g["episodes"].append(item)
 
             if not g["title"] or (display and len(display) > len(g["title"])):
                 g["title"] = display or item.get("title")
@@ -284,7 +298,7 @@ def build_groups():
 
             g["final_category"] = cat if cat in ["music", "movies", "series"] else "other"
 
-            if cat in ["series", "movies"]:
+            if cat in ["series", "movies"] and not (cat == "music" and item.get("is_photo")):
                 if item.get("is_ova"):
                     g["ovas"].append(item)
                 elif item.get("season") is not None:

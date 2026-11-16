@@ -73,10 +73,11 @@ def parse_caption(caption: str) -> Dict[str, str]:
 
 
     lines = [line.strip() for line in caption.split('\n') if line.strip()]
+    free_text_lines = []
 
 
     for line in lines:
-        if ':' in line:
+        if ':' in line and len(line.split(':', 1)[0].strip()) < 25:
             key, val = line.split(':', 1)
             key = key.strip().lower()
             val = val.strip()
@@ -90,7 +91,7 @@ def parse_caption(caption: str) -> Dict[str, str]:
                 info['artista'] = val
             elif key in ['álbum', 'album', 'disco', 'nombre']:
                 info['album'] = val
-            elif key in ['año', 'year', 'fecha']:
+            elif key in ['año', 'year', 'fecha', 'date']:
                 info['year'] = val
             elif key in ['género', 'genero', 'genre', 'géneros', 'generos']:
                 info['genero'] = val
@@ -106,11 +107,18 @@ def parse_caption(caption: str) -> Dict[str, str]:
                 info['secuela'] = val
             elif key in ['sinopsis', 'descripción', 'descripcion', 'synopsis', 'plot']:
                 info['sinopsis'] = val
+        else:
+            if len(line) > 30:
+                free_text_lines.append(line)
+
+
+    if 'sinopsis' not in info and free_text_lines:
+        info['sinopsis'] = "\n".join(free_text_lines)
 
 
     if 'album' not in info and lines:
         for line in lines:
-            if 3 <= len(line) <= 40 and ':' not in line and not re.search(r'\d{1,2}:\d{2}', line):
+            if 3 <= len(line) <= 45 and ':' not in line and not re.search(r'\d{1,2}:\d{2}', line):
                 info['album'] = line
                 break
 
@@ -141,6 +149,11 @@ def classify(filename: str, mime: str, size: int, caption: str, parsed: Dict) ->
 
     audio_ext = ('.mp3', '.flac', '.wav', '.m4a', '.aac', '.ogg', '.wma', '.alac')
     if any(fname.endswith(ext) for ext in audio_ext) or (mime and mime.startswith('audio/')):
+        return 'music'
+
+
+    # Si es una foto con metadatos de álbum, tratarla como música
+    if mime.startswith('image/') and (parsed.get('album') or parsed.get('artista')):
         return 'music'
 
 
@@ -250,7 +263,6 @@ def clean_series_title(raw: str) -> str:
     if not raw:
         return ""
     t = raw
-    # Quitar basura al final del nombre
     t = re.sub(r'\s*[-–]?\s*(s\d{1,2}[\s\._-]*e\d{1,3}|temporada\s*\d+|season\s*\d+|cap[ií]tulo\s*\d+|ep\.?\s*\d+|ova|ona|special|especial).*$', '', t, flags=re.I)
     t = re.sub(r'\s*\[.*?\]|\(.*?\)|\{.*?\}', '', t)
     t = re.sub(r'\s*00\s*\(.*', '', t)
@@ -338,11 +350,11 @@ def build_groups():
             g["episodes"].append(item)
 
 
-            # Preferir el título más limpio y largo
             if not g["title"] or (display_title and len(display_title) > len(g["title"]) and not re.search(r'00\s*\(|ova|bd-|s\d+e', display_title, re.I)):
                 g["title"] = display_title
 
 
+            # Propagar metadatos (prioridad a los que ya existen, pero llenar vacíos)
             for field in ["year", "genero", "estudio", "artista", "album", "label", "productor", "precuela", "secuela", "sinopsis"]:
                 if item.get(field) and not g.get(field):
                     g[field] = item.get(field)

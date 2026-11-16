@@ -75,7 +75,6 @@ def parse_caption(caption: str) -> Dict[str, str]:
     lines = [line.strip() for line in caption.split('\n') if line.strip()]
 
 
-    # Primero buscar formato "Clave: Valor"
     for line in lines:
         if ':' in line:
             key, val = line.split(':', 1)
@@ -109,7 +108,6 @@ def parse_caption(caption: str) -> Dict[str, str]:
                 info['sinopsis'] = val
 
 
-    # Si no se detectó álbum, intentar con una línea corta suelta (común en tracks)
     if 'album' not in info and lines:
         for line in lines:
             if 3 <= len(line) <= 40 and ':' not in line and not re.search(r'\d{1,2}:\d{2}', line):
@@ -194,7 +192,6 @@ def extract_info(msg) -> Optional[Dict[str, Any]]:
     category = classify(filename, mime, size, caption, parsed)
 
 
-    # Limpieza del título de la pista
     track_title = filename
     track_title = re.sub(r'\.[a-z0-9]{2,5}$', '', track_title, flags=re.I)
     track_title = re.sub(r'^\d{1,3}[\s\.\-_]+', '', track_title)
@@ -249,6 +246,21 @@ def extract_info(msg) -> Optional[Dict[str, Any]]:
 
 
 
+def clean_series_title(raw: str) -> str:
+    if not raw:
+        return ""
+    t = raw
+    # Quitar basura al final del nombre
+    t = re.sub(r'\s*[-–]?\s*(s\d{1,2}[\s\._-]*e\d{1,3}|temporada\s*\d+|season\s*\d+|cap[ií]tulo\s*\d+|ep\.?\s*\d+|ova|ona|special|especial).*$', '', t, flags=re.I)
+    t = re.sub(r'\s*\[.*?\]|\(.*?\)|\{.*?\}', '', t)
+    t = re.sub(r'\s*00\s*\(.*', '', t)
+    t = re.sub(r'\s*\[BD-.*?\]', '', t, flags=re.I)
+    t = clean_text(t)
+    return t.strip(" -–_")
+
+
+
+
 def normalize_title(title: str) -> str:
     if not title:
         return ""
@@ -265,9 +277,7 @@ def normalize_title(title: str) -> str:
         return "the ribbon hero"
 
 
-    t = re.sub(r'\b(s\d{1,2}[\s\._-]*e\d{1,3}|temporada\s*\d+|season\s*\d+|cap[ií]tulo\s*\d+|ep\.?\s*\d+|ova|ona|special|especial)\b', '', t, flags=re.I)
-    t = re.sub(r'\b(bd|bluray|1080p|720p|480p|x264|x265|hevc|aac|flac|mp3|mkv|mp4|avi|rar|zip|part\d+)\b', '', t, flags=re.I)
-    t = re.sub(r'\[.*?\]|\(.*?\)|\{.*?\}', '', t)
+    t = clean_series_title(t)
     t = re.sub(r'[^\w\s]', ' ', t)
     t = re.sub(r'\s+', ' ', t).strip()
     return t
@@ -316,12 +326,9 @@ def build_groups():
                     key = f"music::{normalize_title(item.get('title', ''))}"
                     display_title = item.get("title")
             else:
-                key = normalize_title(item.get("title") or item.get("filename", ""))
                 raw = item.get("title") or item.get("filename") or ""
-                display_title = re.sub(
-                    r'\s*[-–]?\s*(s\d{1,2}[\s\._-]*e\d{1,3}|temporada\s*\d+|season\s*\d+|cap[ií]tulo\s*\d+|ep\.?\s*\d+|ova|ona|special|especial|00\s*\(|bd-).*$',
-                    '', raw, flags=re.I
-                ).strip(" -–_()[]")
+                key = normalize_title(raw)
+                display_title = clean_series_title(raw)
                 if not display_title or len(display_title) < 4:
                     display_title = raw
 
@@ -331,7 +338,8 @@ def build_groups():
             g["episodes"].append(item)
 
 
-            if not g["title"] or (display_title and len(display_title) > len(g["title"])):
+            # Preferir el título más limpio y largo
+            if not g["title"] or (display_title and len(display_title) > len(g["title"]) and not re.search(r'00\s*\(|ova|bd-|s\d+e', display_title, re.I)):
                 g["title"] = display_title
 
 

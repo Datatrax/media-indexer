@@ -190,7 +190,6 @@ def extract_info(msg) -> Optional[Dict[str, Any]]:
     track_title = re.sub(r'^\d{1,3}[\s\.\-_]+', '', track_title)
 
 
-    # Separar "Artista – Canción"
     if '–' in track_title or ' - ' in track_title:
         parts = re.split(r'\s*[–-]\s*', track_title, maxsplit=1)
         if len(parts) == 2:
@@ -221,7 +220,6 @@ def extract_info(msg) -> Optional[Dict[str, Any]]:
     }
 
 
-    # Temporada / Episodio
     ep_match = re.search(r'(?:s|temporada|season)?[\s\._-]*(\d{1,2})[\s\._-]*[ex][\s\._-]*(\d{1,3})', filename + " " + caption, re.I)
     if ep_match:
         info["season"] = int(ep_match.group(1))
@@ -300,10 +298,10 @@ def build_groups():
 
                 if artist and album:
                     key = f"music::{artist}::{album}"
-                    display_title = item.get("album") or "Álbum"
+                    display_title = item.get("album") or item.get("title")
                 elif artist:
-                    key = f"music::{artist}::single"
-                    display_title = item.get("artista") or "Unknown"
+                    key = f"music::{artist}::unknown"
+                    display_title = item.get("artista") or "Unknown Artist"
                 else:
                     key = f"music::{normalize_title(item.get('title', ''))}"
                     display_title = item.get("title")
@@ -314,7 +312,7 @@ def build_groups():
                     r'\s*[-–]?\s*(s\d{1,2}[\s\._-]*e\d{1,3}|temporada\s*\d+|season\s*\d+|cap[ií]tulo\s*\d+|ep\.?\s*\d+|ova|ona|special|especial|00\s*\().*$',
                     '', raw, flags=re.I
                 ).strip(" -–_")
-                if not display_title or len(display_title) < 3:
+                if not display_title or len(display_title) < 4:
                     display_title = raw
 
 

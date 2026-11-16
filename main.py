@@ -72,39 +72,49 @@ def parse_caption(caption: str) -> Dict[str, str]:
         return info
 
 
-    for line in caption.split('\n'):
-        line = line.strip()
-        if ':' not in line:
-            continue
-        key, val = line.split(':', 1)
-        key = key.strip().lower()
-        val = val.strip()
-        if not val:
-            continue
+    lines = [line.strip() for line in caption.split('\n') if line.strip()]
 
 
-        if key in ['tipo', 'type']:
-            info['tipo'] = val.lower()
-        elif key in ['artista', 'artist', 'autor']:
-            info['artista'] = val
-        elif key in ['álbum', 'album', 'disco', 'nombre']:
-            info['album'] = val
-        elif key in ['año', 'year', 'fecha']:
-            info['year'] = val
-        elif key in ['género', 'genero', 'genre', 'géneros', 'generos']:
-            info['genero'] = val
-        elif key in ['estudio', 'studio']:
-            info['estudio'] = val
-        elif key in ['sello', 'label', 'discográfica', 'discografica']:
-            info['label'] = val
-        elif key in ['productor', 'producer']:
-            info['productor'] = val
-        elif key in ['precuela', 'prequel']:
-            info['precuela'] = val
-        elif key in ['secuela', 'sequel']:
-            info['secuela'] = val
-        elif key in ['sinopsis', 'descripción', 'descripcion', 'synopsis', 'plot']:
-            info['sinopsis'] = val
+    # Primero buscar formato "Clave: Valor"
+    for line in lines:
+        if ':' in line:
+            key, val = line.split(':', 1)
+            key = key.strip().lower()
+            val = val.strip()
+            if not val:
+                continue
+
+
+            if key in ['tipo', 'type']:
+                info['tipo'] = val.lower()
+            elif key in ['artista', 'artist', 'autor']:
+                info['artista'] = val
+            elif key in ['álbum', 'album', 'disco', 'nombre']:
+                info['album'] = val
+            elif key in ['año', 'year', 'fecha']:
+                info['year'] = val
+            elif key in ['género', 'genero', 'genre', 'géneros', 'generos']:
+                info['genero'] = val
+            elif key in ['estudio', 'studio']:
+                info['estudio'] = val
+            elif key in ['sello', 'label', 'discográfica', 'discografica']:
+                info['label'] = val
+            elif key in ['productor', 'producer']:
+                info['productor'] = val
+            elif key in ['precuela', 'prequel']:
+                info['precuela'] = val
+            elif key in ['secuela', 'sequel']:
+                info['secuela'] = val
+            elif key in ['sinopsis', 'descripción', 'descripcion', 'synopsis', 'plot']:
+                info['sinopsis'] = val
+
+
+    # Si no se detectó álbum, intentar con una línea corta suelta (común en tracks)
+    if 'album' not in info and lines:
+        for line in lines:
+            if 3 <= len(line) <= 40 and ':' not in line and not re.search(r'\d{1,2}:\d{2}', line):
+                info['album'] = line
+                break
 
 
     year_match = re.search(r'\b(19|20)\d{2}\b', caption)
@@ -184,6 +194,7 @@ def extract_info(msg) -> Optional[Dict[str, Any]]:
     category = classify(filename, mime, size, caption, parsed)
 
 
+    # Limpieza del título de la pista
     track_title = filename
     track_title = re.sub(r'\.[a-z0-9]{2,5}$', '', track_title, flags=re.I)
     track_title = re.sub(r'^\d{1,3}[\s\.\-_]+', '', track_title)

@@ -152,7 +152,6 @@ def classify(filename: str, mime: str, size: int, caption: str, parsed: Dict) ->
         return 'music'
 
 
-    # Si es una foto con metadatos de álbum, tratarla como música
     if mime.startswith('image/') and (parsed.get('album') or parsed.get('artista')):
         return 'music'
 
@@ -182,6 +181,7 @@ def extract_info(msg) -> Optional[Dict[str, Any]]:
     mime = ""
     size = 0
     duration = 0
+    is_photo = False
 
 
     if isinstance(msg.media, MessageMediaDocument):
@@ -196,6 +196,7 @@ def extract_info(msg) -> Optional[Dict[str, Any]]:
     elif isinstance(msg.media, MessageMediaPhoto):
         filename = f"photo_{msg.id}.jpg"
         mime = "image/jpeg"
+        is_photo = True
     else:
         return None
 
@@ -236,6 +237,7 @@ def extract_info(msg) -> Optional[Dict[str, Any]]:
         "duration": duration,
         "duration_str": f"{duration // 60}:{duration % 60:02d}" if duration else "",
         "caption": caption,
+        "is_photo": is_photo,
         **parsed
     }
 
@@ -263,12 +265,13 @@ def clean_series_title(raw: str) -> str:
     if not raw:
         return ""
     t = raw
-    t = re.sub(r'\s*[-–]?\s*(s\d{1,2}[\s\._-]*e\d{1,3}|temporada\s*\d+|season\s*\d+|cap[ií]tulo\s*\d+|ep\.?\s*\d+|ova|ona|special|especial).*$', '', t, flags=re.I)
-    t = re.sub(r'\s*\[.*?\]|\(.*?\)|\{.*?\}', '', t)
+    t = re.sub(r'\s*[-–]?\s*(s\d{1,2}[\s\._-]*e\d{1,3}|temporada\s*\d+|season\s*\d+|cap[ií]tulo\s*\d+|ep\.?\s*\d+).*$', '', t, flags=re.I)
     t = re.sub(r'\s*00\s*\(.*', '', t)
     t = re.sub(r'\s*\[BD-.*?\]', '', t, flags=re.I)
+    t = re.sub(r'\s*\[.*?\]|\(OVA\)|\(ONA\)|\(Special\)|\(Especial\)', '', t, flags=re.I)
+    t = re.sub(r'\s*\b(ova|ona|special|especial)\b.*$', '', t, flags=re.I)
     t = clean_text(t)
-    return t.strip(" -–_")
+    return t.strip(" -–_()[]")
 
 
 
@@ -323,74 +326,94 @@ def build_groups():
 
     for cat in ["movies", "series", "music", "other"]:
         for item in catalog[cat]:
-            if cat == "music":
-                artist = clean_text(item.get("artista") or "").lower()
-                album = clean_text(item.get("album") or "").lower()
+            # No agregar fotos como tracks en música
+            if cat == "music" and item.get("is_photo"):
+                # Solo usamos la foto para metadatos y thumbnail, no como episodio
+                pass
+            else:
+                if cat == "music":
+                    artist = clean_text(item.get("artista") or "").lower()
+                    album = clean_text(item.get("album") or "").lower()
 
 
-                if artist and album:
-                    key = f"music::{artist}::{album}"
-                    display_title = item.get("album") or item.get("title")
-                elif artist:
-                    key = f"music::{artist}"
-                    display_title = item.get("artista") or "Unknown"
+                    if artist and album:
+                        key = f"music::{artist}::{album}"
+                        display_title = item.get("album") or item.get("title")
+                    elif artist:
+                        key = f"music::{artist}"
+                        display_title = item.get("artista") or "Unknown"
+                    else:
+                        key = f"music::{normalize_title(item.get('title', ''))}"
+                        display_title = item.get("title")
                 else:
-                    key = f"music::{normalize_title(item.get('title', ''))}"
-                    display_title = item.get("title")
-            else:
-                raw = item.get("title") or item.get("filename") or ""
-                key = normalize_title(raw)
-                display_title = clean_series_title(raw)
-                if not display_title or len(display_title) < 4:
-                    display_title = raw
+                    raw = item.get("title") or item.get("filename") or ""
+                    key = normalize_title(raw)
+                    display_title = clean_series_title(raw)
 
 
-            g = groups[key]
-            g["normalized"] = key
-            g["episodes"].append(item)
+                    if not display_title or len(display_title) < 5 or re.search(r'00\s*\(|ova|bd-', display_title, re.I):
+                        display_title = clean_series_title(item.get("filename") or raw)
 
 
-            if not g["title"] or (display_title and len(display_title) > len(g["title"]) and not re.search(r'00\s*\(|ova|bd-|s\d+e', display_title, re.I)):
-                g["title"] = display_title
+                    if not display_title or len(display_title) < 5:
+                        display_title = raw
 
 
-            # Propagar metadatos (prioridad a los que ya existen, pero llenar vacíos)
-            for field in ["year", "genero", "estudio", "artista", "album", "label", "productor", "precuela", "secuela", "sinopsis"]:
-                if item.get(field) and not g.get(field):
-                    g[field] = item.get(field)
+                g = groups[key]
+                g["normalized"] = key
 
 
-            if item.get("thumbnail") and not g["thumbnail"]:
-                g["thumbnail"] = item["thumbnail"]
+                # Solo agregar a episodios si no es foto de música
+                if not (cat == "music" and item.get("is_photo")):
+                    g["episodes"].append(item)
 
 
-            if item.get("date") and item["date"] > (g["latest_date"] or ""):
-                g["latest_date"] = item["date"]
+                current = g["title"]
+                is_clean = display_title and len(display_title) >= 5 and not re.search(r'00\s*\(|ova|bd-|s\d+e', display_title, re.I)
+                if is_clean and (not current or len(display_title) > len(current) or re.search(r'00\s*\(|ova|bd-', current, re.I)):
+                    g["title"] = display_title
+                elif not g["title"]:
+                    g["title"] = display_title
 
 
-            if cat == "music":
-                g["final_category"] = "music"
-            elif cat == "movies":
-                g["final_category"] = "movies"
-            elif cat == "series":
-                g["final_category"] = "series"
-            else:
-                if not g["final_category"]:
-                    g["final_category"] = cat
+                for field in ["year", "genero", "estudio", "artista", "album", "label", "productor", "precuela", "secuela", "sinopsis"]:
+                    if item.get(field) and not g.get(field):
+                        g[field] = item.get(field)
 
 
-            if g["final_category"] in ["series", "movies"]:
-                if item.get("is_ova"):
-                    g["ovas"].append(item)
-                elif item.get("season") is not None:
-                    g["seasons"][item["season"]].append(item)
-                elif item.get("episode") is not None and g["final_category"] == "movies":
-                    g["parts"].append(item)
+                if item.get("thumbnail") and not g["thumbnail"]:
+                    g["thumbnail"] = item["thumbnail"]
+
+
+                if item.get("date") and item["date"] > (g["latest_date"] or ""):
+                    g["latest_date"] = item["date"]
+
+
+                if cat == "music":
+                    g["final_category"] = "music"
+                elif cat == "movies":
+                    g["final_category"] = "movies"
+                elif cat == "series":
+                    g["final_category"] = "series"
+                else:
+                    if not g["final_category"]:
+                        g["final_category"] = cat
+
+
+                if g["final_category"] in ["series", "movies"]:
+                    if item.get("is_ova"):
+                        g["ovas"].append(item)
+                    elif item.get("season") is not None:
+                        g["seasons"][item["season"]].append(item)
+                    elif item.get("episode") is not None and g["final_category"] == "movies":
+                        g["parts"].append(item)
 
 
     result = []
     for key, g in groups.items():
-        if not g["episodes"]:
+        if not g["episodes"] and g["final_category"] != "music":
+            continue
+        if g["final_category"] == "music" and not g["episodes"]:
             continue
 
 

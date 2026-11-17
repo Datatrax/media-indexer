@@ -279,7 +279,8 @@ def build_groups():
             g = groups[key]
             g["normalized"] = key
 
-            if not (cat == "music" and item.get("is_photo")):
+            # No agregar fotos como episodios en series/movies
+            if not item.get("is_photo") or cat == "music":
                 g["episodes"].append(item)
 
             if not g["title"]:
@@ -297,7 +298,7 @@ def build_groups():
 
             g["final_category"] = cat if cat in ["music", "movies", "series"] else "other"
 
-            if cat in ["series", "movies"] and not (cat == "music" and item.get("is_photo")):
+            if cat in ["series", "movies"] and not item.get("is_photo"):
                 if item.get("is_ova"):
                     g["ovas"].append(item)
                 elif item.get("season") is not None:
@@ -328,7 +329,7 @@ def get_filters_from_groups(groups: List[Dict], section: str):
             continue
         if section == "movies" and g["final_category"] != "movies":
             continue
-        if section == "series" and g["final_category"] not in ["series", "movies"]:
+        if section == "series" and g["final_category"] != "series":
             continue
         if g.get("year"):
             years.add(str(g["year"]))
@@ -408,7 +409,7 @@ async def index(
     elif section == "movies":
         items = [g for g in groups if g["final_category"] == "movies"]
     else:
-        items = [g for g in groups if g["final_category"] in ["series", "movies"]]
+        items = [g for g in groups if g["final_category"] == "series"]
 
     if q:
         ql = q.lower()

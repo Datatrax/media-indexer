@@ -531,10 +531,11 @@ async def stream_file(msg_id: int, request: Request, username: str = Depends(ver
 
 
 @app.get("/download-album")
-async def download_album(ids: str = Query(...), username: str = Depends(verify_credentials)):
+async def download_album(ids: str = Query(...), name: str = Query("Album"), username: str = Depends(verify_credentials)):
     try:
         id_list = [int(x) for x in ids.split(",") if x.strip().isdigit()]
         buffer = BytesIO()
+        safe_name = re.sub(r'[<>:"/\\|?*]', '', name).strip() or "Album"
         with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zf:
             for mid in id_list:
                 msg = await client.get_messages(CHANNEL_ID, ids=mid)
@@ -547,18 +548,19 @@ async def download_album(ids: str = Query(...), username: str = Depends(verify_c
                         break
                 data = await client.download_media(msg, file=bytes)
                 if data:
-                    zf.writestr(filename, data)
+                    zf.writestr(f"{safe_name}/{filename}", data)
         buffer.seek(0)
-        return StreamingResponse(buffer, media_type="application/zip", headers={"Content-Disposition": "attachment; filename=album.zip"})
+        return StreamingResponse(buffer, media_type="application/zip", headers={"Content-Disposition": f'attachment; filename="{safe_name}.zip"'})
     except Exception as e:
         raise HTTPException(500, str(e))
 
 
 @app.get("/download-season")
-async def download_season(ids: str = Query(...), username: str = Depends(verify_credentials)):
+async def download_season(ids: str = Query(...), name: str = Query("Temporada"), username: str = Depends(verify_credentials)):
     try:
         id_list = [int(x) for x in ids.split(",") if x.strip().isdigit()]
         buffer = BytesIO()
+        safe_name = re.sub(r'[<>:"/\\|?*]', '', name).strip() or "Temporada"
         with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zf:
             for mid in id_list:
                 msg = await client.get_messages(CHANNEL_ID, ids=mid)
@@ -571,9 +573,9 @@ async def download_season(ids: str = Query(...), username: str = Depends(verify_
                         break
                 data = await client.download_media(msg, file=bytes)
                 if data:
-                    zf.writestr(filename, data)
+                    zf.writestr(f"{safe_name}/{filename}", data)
         buffer.seek(0)
-        return StreamingResponse(buffer, media_type="application/zip", headers={"Content-Disposition": "attachment; filename=temporada.zip"})
+        return StreamingResponse(buffer, media_type="application/zip", headers={"Content-Disposition": f'attachment; filename="{safe_name}.zip"'})
     except Exception as e:
         raise HTTPException(500, str(e))
 

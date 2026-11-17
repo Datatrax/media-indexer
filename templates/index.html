@@ -102,18 +102,22 @@
         }
 
         .fav-btn, .seen-btn {
-            background: none;
+            background: rgba(0,0,0,0.6);
             border: none;
-            font-size: 1.1rem;
+            font-size: 1.3rem;
             cursor: pointer;
-            opacity: 0.5;
-            transition: opacity 0.2s;
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0.7;
+            transition: all 0.2s;
         }
-        .fav-btn.active, .seen-btn.active {
-            opacity: 1;
-        }
-        .fav-btn.active { color: #f43f5e; }
-        .seen-btn.active { color: #22c55e; }
+        .fav-btn:hover, .seen-btn:hover { opacity: 1; }
+        .fav-btn.active { color: #f43f5e; opacity: 1; background: rgba(0,0,0,0.8); }
+        .seen-btn.active { color: #22c55e; opacity: 1; background: rgba(0,0,0,0.8); }
     </style>
 </head>
 <body class="text-white min-h-screen 
@@ -269,8 +273,8 @@
                 <div class="poster flex items-center justify-center text-gray-600 bg-gray-900">Sin imagen</div>
                 {% endif %}
                 <div class="absolute top-3 right-3 flex gap-2">
-                    <button class="fav-btn" onclick="toggleFav(this, '{{ series.title|e }}')">♡</button>
-                    <button class="seen-btn" onclick="toggleSeen(this, '{{ series.title|e }}')">○</button>
+                    <button class="fav-btn" onclick="toggleFav(event, this, '{{ series.title|e }}')">♡</button>
+                    <button class="seen-btn" onclick="toggleSeen(event, this, '{{ series.title|e }}')">○</button>
                 </div>
             </div>
 
@@ -342,7 +346,7 @@
                                 {% if series.episodes|length == 1 %}Single / EP{% else %}Pistas ({{ series.episodes|length }}){% endif %}
                             </h3>
                             {% if series.episodes|length > 1 %}
-                            <a href="/download-album?ids={% for ep in series.episodes %}{{ ep.id }}{% if not loop.last %},{% endif %}{% endfor %}"
+                            <a href="/download-album?ids={% for ep in series.episodes %}{{ ep.id }}{% if not loop.last %},{% endif %}{% endfor %}&name={{ series.title|urlencode }}"
                                class="text-xs px-3 py-1.5 rounded-lg font-medium text-black" style="background: var(--accent)">
                                 Descargar álbum (.zip)
                             </a>
@@ -391,8 +395,8 @@
                                         <span class="season-arrow">▶</span>
                                         Temporada {{ season_num }} ({{ eps|length }} episodios)
                                     </span>
-                                    <a href="/download-season?ids={% for ep in eps %}{{ ep.id }}{% if not loop.last %},{% endif %}{% endfor %}"
-                                       class="text-xs px-2 py-1 rounded bg-gray-800 hover:bg-gray-700 ml-2" onclick="event.stopPropagation()">
+                                    <a href="/download-season?ids={% for ep in eps %}{{ ep.id }}{% if not loop.last %},{% endif %}{% endfor %}&name={{ series.title|urlencode }} - Temporada {{ season_num }}"
+                                       class="text-xs px-2 py-1 rounded bg-gray-800 hover:bg-gray-700" onclick="event.stopPropagation()">
                                         ZIP
                                     </a>
                                 </summary>
@@ -410,6 +414,13 @@
                         {% endif %}
 
                         {% if series.parts %}
+                        <div class="flex items-center justify-between mb-2">
+                            <span class="text-sm text-gray-400">Archivos</span>
+                            <a href="/download-season?ids={% for ep in series.parts %}{{ ep.id }}{% if not loop.last %},{% endif %}{% endfor %}&name={{ series.title|urlencode }}"
+                               class="text-xs px-2 py-1 rounded bg-gray-800 hover:bg-gray-700">
+                                ZIP
+                            </a>
+                        </div>
                         <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 mb-3">
                             {% for ep in series.parts %}
                             <a href="{{ ep.link }}" target="_blank"
@@ -423,8 +434,12 @@
 
                         {% if series.ovas %}
                         <details class="mb-3">
-                            <summary class="cursor-pointer text-sm font-medium text-gray-300 hover:text-white mb-2">
-                                <span class="season-arrow">▶</span> OVAs / Specials ({{ series.ovas|length }})
+                            <summary class="cursor-pointer text-sm font-medium text-gray-300 hover:text-white mb-2 flex items-center justify-between">
+                                <span><span class="season-arrow">▶</span> OVAs / Specials ({{ series.ovas|length }})</span>
+                                <a href="/download-season?ids={% for ep in series.ovas %}{{ ep.id }}{% if not loop.last %},{% endif %}{% endfor %}&name={{ series.title|urlencode }} - OVAs"
+                                   class="text-xs px-2 py-1 rounded bg-gray-800 hover:bg-gray-700" onclick="event.stopPropagation()">
+                                    ZIP
+                                </a>
                             </summary>
                             <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 ml-4">
                                 {% for ep in series.ovas %}
@@ -439,6 +454,13 @@
                         {% endif %}
 
                         {% if not series.seasons and not series.ovas and not series.parts %}
+                        <div class="flex items-center justify-between mb-2">
+                            <span class="text-sm text-gray-400">Archivos</span>
+                            <a href="/download-season?ids={% for ep in series.episodes %}{{ ep.id }}{% if not loop.last %},{% endif %}{% endfor %}&name={{ series.title|urlencode }}"
+                               class="text-xs px-2 py-1 rounded bg-gray-800 hover:bg-gray-700">
+                                ZIP
+                            </a>
+                        </div>
                         <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
                             {% for ep in series.episodes %}
                             <a href="{{ ep.link }}" target="_blank"
@@ -503,7 +525,6 @@
     let currentPlaylist = [];
     let currentIndex = -1;
 
-    // Favoritos y Visto (localStorage)
     function getStorage(key) {
         return JSON.parse(localStorage.getItem(key) || '{}');
     }
@@ -511,8 +532,9 @@
         localStorage.setItem(key, JSON.stringify(data));
     }
 
-    function toggleFav(btn, title) {
-        event.stopPropagation();
+    function toggleFav(e, btn, title) {
+        e.stopPropagation();
+        e.preventDefault();
         const favs = getStorage('favs');
         if (favs[title]) {
             delete favs[title];
@@ -526,8 +548,9 @@
         setStorage('favs', favs);
     }
 
-    function toggleSeen(btn, title) {
-        event.stopPropagation();
+    function toggleSeen(e, btn, title) {
+        e.stopPropagation();
+        e.preventDefault();
         const seen = getStorage('seen');
         if (seen[title]) {
             delete seen[title];
@@ -541,7 +564,6 @@
         setStorage('seen', seen);
     }
 
-    // Restaurar estados al cargar
     document.addEventListener('DOMContentLoaded', () => {
         const favs = getStorage('favs');
         const seen = getStorage('seen');

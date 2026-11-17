@@ -300,9 +300,16 @@ def build_groups():
             if item.get("date") and item["date"] > (g["latest_date"] or ""):
                 g["latest_date"] = item["date"]
 
-            g["final_category"] = cat if cat in ["music", "movies", "series"] else "other"
+            # Forzar categoría por Tipo si existe
+            tipo = (item.get("tipo") or "").lower()
+            if 'película' in tipo or 'pelicula' in tipo or 'movie' in tipo:
+                g["final_category"] = "movies"
+            elif 'serie' in tipo or 'series' in tipo or 'anime' in tipo:
+                g["final_category"] = "series"
+            elif not g["final_category"]:
+                g["final_category"] = cat if cat in ["music", "movies", "series"] else "other"
 
-            if cat in ["series", "movies"] and not (cat == "music" and item.get("is_photo")):
+            if g["final_category"] in ["series", "movies"] and not (cat == "music" and item.get("is_photo")):
                 if item.get("is_ova"):
                     g["ovas"].append(item)
                 elif item.get("season") is not None:

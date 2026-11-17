@@ -207,11 +207,16 @@ def extract_info(msg) -> Optional[Dict[str, Any]]:
                     info["episode"] = int(num_match.group(1))
                     info["title"] = f"Cap {info['episode']}"
 
-    ova_match = re.search(r'\b(ova|ona|special)[\s\._-]*(\d+)?\b', filename + " " + caption, re.I)
+    # Mejor detección de OVA con número
+    ova_match = re.search(r'(\d{1,2})\s*ova|ova[\s\._-]*(\d{1,2})', filename + " " + caption, re.I)
     if ova_match:
         info["is_ova"] = True
-        num = ova_match.group(2)
+        num = ova_match.group(1) or ova_match.group(2)
+        info["episode"] = int(num) if num else None
         info["title"] = f"OVA {num}" if num else "OVA"
+    elif re.search(r'\b(ova|ona|special)\b', filename + " " + caption, re.I):
+        info["is_ova"] = True
+        info["title"] = "OVA"
 
     return info
 
@@ -324,7 +329,6 @@ def build_groups():
         if g["final_category"] == "music":
             g["episodes"].sort(key=lambda x: x.get("id", 0))
         else:
-            # Ordenar temporadas de menor a mayor
             sorted_seasons = dict(sorted(g["seasons"].items()))
             g["seasons"] = sorted_seasons
             for s in g["seasons"]:

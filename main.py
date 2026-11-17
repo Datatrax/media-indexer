@@ -112,7 +112,7 @@ def classify(filename: str, mime: str, size: int, caption: str, parsed: Dict) ->
         return 'movies'
     if any(x in tipo for x in ['serie', 'series', 'anime']):
         return 'series'
-    if any(x in tipo for x in ['música', 'musica', 'music', 'álbum', 'album']):
+    if any(x in tipo for x in ['música', 'musica', 'music', 'álbum', 'album', 'artista', 'artist']):
         return 'music'
 
     if any(fname.endswith(ext) for ext in ['.mp3', '.flac', '.m4a', '.wav', '.ogg']) or (mime and mime.startswith('audio/')):
@@ -183,6 +183,7 @@ def extract_info(msg) -> Optional[Dict[str, Any]]:
         "duration_str": f"{duration // 60}:{duration % 60:02d}" if duration else "",
         "caption": caption,
         "is_photo": is_photo,
+        "is_artist": "artista" in (parsed.get("tipo") or "").lower(),
         **parsed
     }
 
@@ -263,11 +264,19 @@ def build_groups():
         "thumbnail": None,
         "latest_date": "",
         "total_size": 0,
+        "is_artist": False,
     })
 
     for cat in ["movies", "series", "music", "other"]:
         for item in catalog[cat]:
-            if cat == "music" and item.get("is_photo"):
+            if item.get("is_artist"):
+                artist = clean_text(item.get("artista") or "").lower()
+                if artist:
+                    key = f"artist::{artist}"
+                    display = item.get("artista")
+                else:
+                    continue
+            elif cat == "music" and item.get("is_photo"):
                 artist = clean_text(item.get("artista") or "").lower()
                 album = clean_text(item.get("album") or "").lower()
                 if artist and album:
@@ -296,7 +305,14 @@ def build_groups():
             g = groups[key]
             g["normalized"] = key
 
-            # Las fotos no se agregan como pistas/episodios
+            if item.get("is_artist"):
+                g["is_artist"] = True
+                g["title"] = display
+                for field in ["year", "genero", "sinopsis", "thumbnail"]:
+                    if item.get(field):
+                        g[field] = item[field]
+                continue
+
             if not item.get("is_photo"):
                 g["episodes"].append(item)
                 g["total_size"] += item.get("size_mb", 0)
@@ -328,6 +344,9 @@ def build_groups():
 
     result = []
     for g in groups.values():
+        if g.get("is_artist"):
+            result.append(g)
+            continue
         if not g["episodes"]:
             continue
         if g["final_category"] == "music":
@@ -347,7 +366,7 @@ def build_groups():
 def get_filters_from_groups(groups: List[Dict], section: str):
     years, genres, studios, artists, labels = set(), set(), set(), set(), set()
     for g in groups:
-        if section == "music" and g["final_category"] != "music":
+        if section == "music" and g["final_category"] != "music" and not g.get("is_artist"):
             continue
         if section == "movies" and g["final_category"] != "movies":
             continue
@@ -422,20 +441,25 @@ async def index(
     artista: str = "",
     sort: str = "title",
     page: int = 1,
+    view: str = "albums",
     username: str = Depends(verify_credentials)
 ):
     groups = build_groups()
 
+    if section == "music" and view == "artists":
+        items = [g for g in groups if g.get("is_artist")]
+    elif section == "music":
+        items = [g for g in groups if g["final_category"] == "music" and not g.get("is_artist")]
+        if artista:
+            items = [g for g in items if artista.lower() in (g.get("artista") or "").lower()]
+    elif section == "movies":
+        items = [g for g in groups if g["final_category"] == "movies"]
+    else:
+        items = [g for g in groups if g["final_category"] == "series"]
+
     if q:
         ql = q.lower()
-        items = [g for g in groups if ql in (g.get("title") or "").lower() or ql in (g.get("artista") or "").lower() or ql in (g.get("album") or "").lower()]
-    else:
-        if section == "music":
-            items = [g for g in groups if g["final_category"] == "music"]
-        elif section == "movies":
-            items = [g for g in groups if g["final_category"] == "movies"]
-        else:
-            items = [g for g in groups if g["final_category"] == "series"]
+        items = [g for g in items if ql in (g.get("title") or "").lower() or ql in (g.get("artista") or "").lower() or ql in (g.get("album") or "").lower()]
 
     if year:
         items = [g for g in items if str(g.get("year")) == year]
@@ -443,8 +467,6 @@ async def index(
         items = [g for g in items if genero.lower() in (g.get("genero") or "").lower()]
     if estudio:
         items = [g for g in items if estudio.lower() in (g.get("estudio") or g.get("label") or "").lower()]
-    if artista:
-        items = [g for g in items if artista.lower() in (g.get("artista") or "").lower()]
 
     if sort == "year":
         items.sort(key=lambda x: int(x["year"]) if x.get("year") and str(x["year"]).isdigit() else 0, reverse=True)
@@ -464,7 +486,8 @@ async def index(
     counts = {
         "series": sum(1 for g in groups if g["final_category"] == "series"),
         "movies": sum(1 for g in groups if g["final_category"] == "movies"),
-        "music": sum(1 for g in groups if g["final_category"] == "music"),
+        "music": sum(1 for g in groups if g["final_category"] == "music" and not g.get("is_artist")),
+        "artists": sum(1 for g in groups if g.get("is_artist")),
     }
 
     return templates.TemplateResponse("index.html", {
@@ -485,6 +508,7 @@ async def index(
         "genero": genero,
         "estudio": estudio,
         "artista": artista,
+        "view": view,
     })
 
 
@@ -542,7 +566,6 @@ async def download_album(ids: str = Query(...), name: str = Query("Album"), user
                 msg = await client.get_messages(CHANNEL_ID, ids=mid)
                 if not msg or not msg.media:
                     continue
-                # Ignorar fotos
                 if isinstance(msg.media, MessageMediaPhoto):
                     continue
                 if not hasattr(msg.media, 'document'):

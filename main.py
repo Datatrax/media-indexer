@@ -108,12 +108,12 @@ def classify(filename: str, mime: str, size: int, caption: str, parsed: Dict) ->
     cap = (caption or "").lower()
     tipo = parsed.get('tipo', '')
 
-    # Prioridad alta al campo Tipo
-    if any(x in tipo for x in ['película', 'pelicula', 'movie', 'film']):
+    # Clasificación estricta por Tipo
+    if 'película' in tipo or 'pelicula' in tipo or 'movie' in tipo or 'film' in tipo:
         return 'movies'
-    if any(x in tipo for x in ['serie', 'series', 'anime']):
+    if 'serie' in tipo or 'series' in tipo or 'anime' in tipo:
         return 'series'
-    if any(x in tipo for x in ['música', 'musica', 'music', 'álbum', 'album']):
+    if 'música' in tipo or 'musica' in tipo or 'music' in tipo or 'álbum' in tipo or 'album' in tipo:
         return 'music'
 
     if any(fname.endswith(ext) for ext in ['.mp3', '.flac', '.m4a', '.wav', '.ogg']) or (mime and mime.startswith('audio/')):
@@ -122,17 +122,12 @@ def classify(filename: str, mime: str, size: int, caption: str, parsed: Dict) ->
     if mime.startswith('image/') and (parsed.get('album') or parsed.get('artista')):
         return 'music'
 
-    # Series por patrón de episodio
     if re.search(r's\d{1,2}e\d{1,3}|temporada\s*\d+|season\s*\d+', fname + " " + cap, re.I):
         return 'series'
 
-    # Movies solo si es claramente película (evitar mezclar)
-    if any(x in fname for x in ['.mkv', '.mp4', '.avi']) and not re.search(r'ep|cap|capítulo|s\d', fname, re.I):
-        if 'película' in cap or 'pelicula' in cap or 'movie' in cap:
-            return 'movies'
-
+    # Por defecto, si es video y no es claramente película, va a series
     if any(x in fname for x in ['.mkv', '.mp4', '.avi']):
-        return 'series'  # Por defecto series si es video
+        return 'series'
     return 'other'
 
 
@@ -193,20 +188,23 @@ def extract_info(msg) -> Optional[Dict[str, Any]]:
         **parsed
     }
 
+    # Mejor detección de episodio
     ep_match = re.search(r'(?:s|temporada|season)[\s\._-]*(\d{1,2})[\s\._-]*[ex][\s\._-]*(\d{1,3})', filename + " " + caption, re.I)
     if ep_match:
         info["season"] = int(ep_match.group(1))
         info["episode"] = int(ep_match.group(2))
-        info["title"] = f"Ep {info['episode']}"
+        info["title"] = f"Cap {info['episode']}"
     else:
-        ep_only = re.search(r'(?:ep|cap|capítulo)[\s\._-]*(\d{1,3})', filename + " " + caption, re.I)
+        ep_only = re.search(r'(?:ep|cap|capítulo|e)[\s\._-]*(\d{1,3})', filename + " " + caption, re.I)
         if ep_only:
             info["episode"] = int(ep_only.group(1))
-            info["title"] = f"Ep {info['episode']}"
+            info["title"] = f"Cap {info['episode']}"
         else:
-            # Si no se detecta episodio, usar un título genérico pero no "Parte"
-            if category in ["series", "movies"]:
-                info["title"] = "Archivo"
+            # Número al final del nombre de archivo
+            num_match = re.search(r'[\s\._-]+(\d{1,2})(?:[\s\._-]|$)', filename, re.I)
+            if num_match and category in ["series", "movies"]:
+                info["episode"] = int(num_match.group(1))
+                info["title"] = f"Cap {info['episode']}"
 
     if re.search(r'\b(ova|ona|special)\b', filename + " " + caption, re.I):
         info["is_ova"] = True

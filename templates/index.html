@@ -372,7 +372,7 @@
                                     {% for ep in eps %}
                                     <a href="{{ ep.link }}" target="_blank"
                                        class="flex items-center justify-between px-3 py-2 bg-black/30 hover:bg-black/50 rounded-lg text-sm">
-                                        <span>{{ ep.title or 'Ep ' ~ (ep.episode or '?') }}</span>
+                                        <span>{{ ep.title or 'Cap ' ~ (ep.episode or '?') }}</span>
                                         <span class="text-xs text-gray-500">{{ ep.size_mb }} MB</span>
                                     </a>
                                     {% endfor %}

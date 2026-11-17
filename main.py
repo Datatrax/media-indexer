@@ -108,7 +108,6 @@ def classify(filename: str, mime: str, size: int, caption: str, parsed: Dict) ->
     cap = (caption or "").lower()
     tipo = parsed.get('tipo', '')
 
-    # Clasificación estricta por Tipo
     if 'película' in tipo or 'pelicula' in tipo or 'movie' in tipo or 'film' in tipo:
         return 'movies'
     if 'serie' in tipo or 'series' in tipo or 'anime' in tipo:
@@ -125,7 +124,6 @@ def classify(filename: str, mime: str, size: int, caption: str, parsed: Dict) ->
     if re.search(r's\d{1,2}e\d{1,3}|temporada\s*\d+|season\s*\d+', fname + " " + cap, re.I):
         return 'series'
 
-    # Por defecto, si es video y no es claramente película, va a series
     if any(x in fname for x in ['.mkv', '.mp4', '.avi']):
         return 'series'
     return 'other'
@@ -188,7 +186,6 @@ def extract_info(msg) -> Optional[Dict[str, Any]]:
         **parsed
     }
 
-    # Mejor detección de episodio
     ep_match = re.search(r'(?:s|temporada|season)[\s\._-]*(\d{1,2})[\s\._-]*[ex][\s\._-]*(\d{1,3})', filename + " " + caption, re.I)
     if ep_match:
         info["season"] = int(ep_match.group(1))
@@ -200,7 +197,6 @@ def extract_info(msg) -> Optional[Dict[str, Any]]:
             info["episode"] = int(ep_only.group(1))
             info["title"] = f"Cap {info['episode']}"
         else:
-            # Número al final del nombre de archivo
             num_match = re.search(r'[\s\._-]+(\d{1,2})(?:[\s\._-]|$)', filename, re.I)
             if num_match and category in ["series", "movies"]:
                 info["episode"] = int(num_match.group(1))

@@ -104,20 +104,28 @@ def parse_caption(caption: str) -> Dict[str, str]:
 
 
 def classify(filename: str, mime: str, size: int, caption: str, parsed: Dict) -> str:
-    tipo = (parsed.get('tipo') or "").lower()
+    fname = (filename or "").lower()
+    cap = (caption or "").lower()
+    tipo = parsed.get('tipo', '')
 
-    if 'película' in tipo or 'pelicula' in tipo or 'movie' in tipo or 'film' in tipo:
+    if any(x in tipo for x in ['película', 'pelicula', 'movie']):
         return 'movies'
-    if 'serie' in tipo or 'series' in tipo or 'anime' in tipo:
+    if any(x in tipo for x in ['serie', 'series', 'anime']):
         return 'series'
-    if 'música' in tipo or 'musica' in tipo or 'music' in tipo or 'álbum' in tipo or 'album' in tipo:
+    if any(x in tipo for x in ['música', 'musica', 'music', 'álbum', 'album']):
         return 'music'
 
-    fname = (filename or "").lower()
     if any(fname.endswith(ext) for ext in ['.mp3', '.flac', '.m4a', '.wav', '.ogg']) or (mime and mime.startswith('audio/')):
         return 'music'
-    if any(x in fname for x in ['.mkv', '.mp4', '.avi']):
+
+    if mime.startswith('image/') and (parsed.get('album') or parsed.get('artista')):
+        return 'music'
+
+    if re.search(r's\d{1,2}e\d{1,3}|temporada\s*\d+|season\s*\d+', fname + " " + cap, re.I):
         return 'series'
+
+    if any(x in fname for x in ['.mkv', '.mp4', '.avi']):
+        return 'movies'
     return 'other'
 
 
@@ -184,15 +192,10 @@ def extract_info(msg) -> Optional[Dict[str, Any]]:
         info["episode"] = int(ep_match.group(2))
         info["title"] = f"Cap {info['episode']}"
     else:
-        ep_only = re.search(r'(?:ep|cap|capítulo|e)[\s\._-]*(\d{1,3})', filename + " " + caption, re.I)
+        ep_only = re.search(r'(?:ep|cap|capítulo)[\s\._-]*(\d{1,3})', filename + " " + caption, re.I)
         if ep_only:
             info["episode"] = int(ep_only.group(1))
             info["title"] = f"Cap {info['episode']}"
-        else:
-            num_match = re.search(r'[\s\._-]+(\d{1,2})(?:[\s\._-]|$)', filename, re.I)
-            if num_match and category in ["series", "movies"]:
-                info["episode"] = int(num_match.group(1))
-                info["title"] = f"Cap {info['episode']}"
 
     if re.search(r'\b(ova|ona|special)\b', filename + " " + caption, re.I):
         info["is_ova"] = True
@@ -292,21 +295,14 @@ def build_groups():
             if item.get("date") and item["date"] > (g["latest_date"] or ""):
                 g["latest_date"] = item["date"]
 
-            # Forzar categoría por Tipo
-            tipo = (item.get("tipo") or "").lower()
-            if 'película' in tipo or 'pelicula' in tipo or 'movie' in tipo:
-                g["final_category"] = "movies"
-            elif 'serie' in tipo or 'series' in tipo or 'anime' in tipo:
-                g["final_category"] = "series"
-            elif not g["final_category"]:
-                g["final_category"] = cat if cat in ["music", "movies", "series"] else "other"
+            g["final_category"] = cat if cat in ["music", "movies", "series"] else "other"
 
-            if g["final_category"] in ["series", "movies"] and not (cat == "music" and item.get("is_photo")):
+            if cat in ["series", "movies"] and not (cat == "music" and item.get("is_photo")):
                 if item.get("is_ova"):
                     g["ovas"].append(item)
                 elif item.get("season") is not None:
                     g["seasons"][item["season"]].append(item)
-                else:
+                elif item.get("episode") is not None:
                     g["parts"].append(item)
 
     result = []

@@ -98,10 +98,22 @@
             display: block;
         }
         @media (min-width: 768px) {
-            .poster {
-                height: 320px;
-            }
+            .poster { height: 320px; }
         }
+
+        .fav-btn, .seen-btn {
+            background: none;
+            border: none;
+            font-size: 1.1rem;
+            cursor: pointer;
+            opacity: 0.5;
+            transition: opacity 0.2s;
+        }
+        .fav-btn.active, .seen-btn.active {
+            opacity: 1;
+        }
+        .fav-btn.active { color: #f43f5e; }
+        .seen-btn.active { color: #22c55e; }
     </style>
 </head>
 <body class="text-white min-h-screen 
@@ -140,15 +152,22 @@
         </p>
     </div>
 
-    <!-- Búsqueda -->
+    <!-- Búsqueda + Orden -->
     <form method="get" class="mb-6">
         <input type="hidden" name="section" value="{{ section }}">
-        <input type="hidden" name="sort" value="{{ sort }}">
 
-        <div class="relative mb-3">
-            <input type="text" name="q" value="{{ q }}" placeholder="Buscar..."
-                   class="w-full px-4 py-3.5 rounded-xl bg-black/40 border border-gray-700 text-sm focus:outline-none pl-12">
-            <span class="absolute left-4 top-3.5 text-gray-500">🔍</span>
+        <div class="flex gap-3 mb-3">
+            <div class="relative flex-1">
+                <input type="text" name="q" value="{{ q }}" placeholder="Buscar..."
+                       class="w-full px-4 py-3.5 rounded-xl bg-black/40 border border-gray-700 text-sm focus:outline-none pl-12">
+                <span class="absolute left-4 top-3.5 text-gray-500">🔍</span>
+            </div>
+            <select name="sort" onchange="this.form.submit()" class="px-4 py-3 rounded-xl bg-gray-900 border border-gray-700 text-sm">
+                <option value="title" {{ 'selected' if sort == 'title' else '' }}>Título</option>
+                <option value="date" {{ 'selected' if sort == 'date' else '' }}>Fecha de subida</option>
+                <option value="size" {{ 'selected' if sort == 'size' else '' }}>Tamaño</option>
+                <option value="year" {{ 'selected' if sort == 'year' else '' }}>Año</option>
+            </select>
         </div>
 
         <details class="bg-black/30 rounded-xl overflow-hidden" {% if year or genero or estudio or artista %}open{% endif %}>
@@ -239,16 +258,20 @@
     <!-- LISTADO -->
     <div class="space-y-8">
         {% for series in items %}
-        <div class="card rounded-2xl overflow-hidden">
+        <div class="card rounded-2xl overflow-hidden" data-group="{{ series.title|e }}">
             
             <!-- IMAGEN ARRIBA -->
-            <div class="cursor-pointer bg-black"
+            <div class="cursor-pointer bg-black relative"
                  {% if series.thumbnail %}onclick="openLightbox(event, '{{ series.thumbnail }}')"{% endif %}>
                 {% if series.thumbnail %}
                 <img src="{{ series.thumbnail }}" class="poster" alt="{{ series.title }}">
                 {% else %}
                 <div class="poster flex items-center justify-center text-gray-600 bg-gray-900">Sin imagen</div>
                 {% endif %}
+                <div class="absolute top-3 right-3 flex gap-2">
+                    <button class="fav-btn" onclick="toggleFav(this, '{{ series.title|e }}')">♡</button>
+                    <button class="seen-btn" onclick="toggleSeen(this, '{{ series.title|e }}')">○</button>
+                </div>
             </div>
 
             <!-- INFORMACIÓN ABAJO -->
@@ -260,6 +283,7 @@
                     {% if series.artista %}<span class="text-green-400">{{ series.artista }}</span>{% endif %}
                     {% if series.label %}<span>{{ series.label }}</span>{% endif %}
                     {% if series.estudio %}<span>{{ series.estudio }}</span>{% endif %}
+                    {% if series.total_size %}<span>{{ "%.1f"|format(series.total_size) }} MB</span>{% endif %}
                 </div>
 
                 {% if series.genero %}
@@ -291,20 +315,14 @@
                         {% if series.precuela %}
                         <p>
                             <span class="text-gray-500">Precuela:</span>
-                            <a href="?q={{ series.precuela|urlencode }}" 
-                               class="text-purple-400 hover:underline">
-                                {{ series.precuela }}
-                            </a>
+                            <a href="?q={{ series.precuela|urlencode }}" class="text-purple-400 hover:underline">{{ series.precuela }}</a>
                         </p>
                         {% endif %}
                         
                         {% if series.secuela %}
                         <p>
                             <span class="text-gray-500">Secuela:</span>
-                            <a href="?q={{ series.secuela|urlencode }}" 
-                               class="text-purple-400 hover:underline">
-                                {{ series.secuela }}
-                            </a>
+                            <a href="?q={{ series.secuela|urlencode }}" class="text-purple-400 hover:underline">{{ series.secuela }}</a>
                         </p>
                         {% endif %}
 
@@ -368,9 +386,15 @@
                         {% if series.seasons %}
                             {% for season_num, eps in series.seasons.items() %}
                             <details class="mb-3" {% if loop.first %}open{% endif %}>
-                                <summary class="cursor-pointer text-sm font-medium text-gray-300 hover:text-white mb-2">
-                                    <span class="season-arrow">▶</span>
-                                    Temporada {{ season_num }} ({{ eps|length }} episodios)
+                                <summary class="cursor-pointer text-sm font-medium text-gray-300 hover:text-white mb-2 flex items-center justify-between">
+                                    <span>
+                                        <span class="season-arrow">▶</span>
+                                        Temporada {{ season_num }} ({{ eps|length }} episodios)
+                                    </span>
+                                    <a href="/download-season?ids={% for ep in eps %}{{ ep.id }}{% if not loop.last %},{% endif %}{% endfor %}"
+                                       class="text-xs px-2 py-1 rounded bg-gray-800 hover:bg-gray-700 ml-2" onclick="event.stopPropagation()">
+                                        ZIP
+                                    </a>
                                 </summary>
                                 <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 ml-4">
                                     {% for ep in eps %}
@@ -478,6 +502,64 @@
     let isSeeking = false;
     let currentPlaylist = [];
     let currentIndex = -1;
+
+    // Favoritos y Visto (localStorage)
+    function getStorage(key) {
+        return JSON.parse(localStorage.getItem(key) || '{}');
+    }
+    function setStorage(key, data) {
+        localStorage.setItem(key, JSON.stringify(data));
+    }
+
+    function toggleFav(btn, title) {
+        event.stopPropagation();
+        const favs = getStorage('favs');
+        if (favs[title]) {
+            delete favs[title];
+            btn.classList.remove('active');
+            btn.textContent = '♡';
+        } else {
+            favs[title] = true;
+            btn.classList.add('active');
+            btn.textContent = '♥';
+        }
+        setStorage('favs', favs);
+    }
+
+    function toggleSeen(btn, title) {
+        event.stopPropagation();
+        const seen = getStorage('seen');
+        if (seen[title]) {
+            delete seen[title];
+            btn.classList.remove('active');
+            btn.textContent = '○';
+        } else {
+            seen[title] = true;
+            btn.classList.add('active');
+            btn.textContent = '●';
+        }
+        setStorage('seen', seen);
+    }
+
+    // Restaurar estados al cargar
+    document.addEventListener('DOMContentLoaded', () => {
+        const favs = getStorage('favs');
+        const seen = getStorage('seen');
+        document.querySelectorAll('.fav-btn').forEach(btn => {
+            const title = btn.closest('[data-group]').dataset.group;
+            if (favs[title]) {
+                btn.classList.add('active');
+                btn.textContent = '♥';
+            }
+        });
+        document.querySelectorAll('.seen-btn').forEach(btn => {
+            const title = btn.closest('[data-group]').dataset.group;
+            if (seen[title]) {
+                btn.classList.add('active');
+                btn.textContent = '●';
+            }
+        });
+    });
 
     function playTrackFromElement(el) {
         const id = el.dataset.id;

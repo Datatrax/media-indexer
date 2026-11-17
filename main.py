@@ -295,14 +295,12 @@ def build_groups():
             g = groups[key]
             g["normalized"] = key
 
-            # Las fotos no se agregan como episodios, pero sí aportan metadata
             if not item.get("is_photo") or cat == "music":
                 g["episodes"].append(item)
 
             if not g["title"]:
                 g["title"] = display or item.get("title")
 
-            # Priorizar metadata de la portada (foto)
             for field in ["year", "genero", "estudio", "artista", "album", "label", "productor", "precuela", "secuela", "sinopsis"]:
                 if item.get(field):
                     if item.get("is_photo") or not g.get(field):
@@ -425,16 +423,17 @@ async def index(
 ):
     groups = build_groups()
 
-    if section == "music":
-        items = [g for g in groups if g["final_category"] == "music"]
-    elif section == "movies":
-        items = [g for g in groups if g["final_category"] == "movies"]
-    else:
-        items = [g for g in groups if g["final_category"] == "series"]
-
     if q:
+        # Si hay búsqueda, buscar en todas las secciones
         ql = q.lower()
-        items = [g for g in items if ql in (g.get("title") or "").lower() or ql in (g.get("artista") or "").lower() or ql in (g.get("album") or "").lower()]
+        items = [g for g in groups if ql in (g.get("title") or "").lower() or ql in (g.get("artista") or "").lower() or ql in (g.get("album") or "").lower()]
+    else:
+        if section == "music":
+            items = [g for g in groups if g["final_category"] == "music"]
+        elif section == "movies":
+            items = [g for g in groups if g["final_category"] == "movies"]
+        else:
+            items = [g for g in groups if g["final_category"] == "series"]
 
     if year:
         items = [g for g in items if str(g.get("year")) == year]

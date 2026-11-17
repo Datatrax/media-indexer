@@ -296,7 +296,8 @@ def build_groups():
             g = groups[key]
             g["normalized"] = key
 
-            if not item.get("is_photo") or cat == "music":
+            # Las fotos no se agregan como pistas/episodios
+            if not item.get("is_photo"):
                 g["episodes"].append(item)
                 g["total_size"] += item.get("size_mb", 0)
 
@@ -541,6 +542,11 @@ async def download_album(ids: str = Query(...), name: str = Query("Album"), user
                 msg = await client.get_messages(CHANNEL_ID, ids=mid)
                 if not msg or not msg.media:
                     continue
+                # Ignorar fotos
+                if isinstance(msg.media, MessageMediaPhoto):
+                    continue
+                if not hasattr(msg.media, 'document'):
+                    continue
                 filename = f"{mid}.bin"
                 for attr in getattr(msg.media.document, 'attributes', []):
                     if hasattr(attr, 'file_name') and attr.file_name:
@@ -565,6 +571,10 @@ async def download_season(ids: str = Query(...), name: str = Query("Temporada"),
             for mid in id_list:
                 msg = await client.get_messages(CHANNEL_ID, ids=mid)
                 if not msg or not msg.media:
+                    continue
+                if isinstance(msg.media, MessageMediaPhoto):
+                    continue
+                if not hasattr(msg.media, 'document'):
                     continue
                 filename = f"{mid}.bin"
                 for attr in getattr(msg.media.document, 'attributes', []):

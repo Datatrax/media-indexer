@@ -324,6 +324,9 @@ def build_groups():
         if g["final_category"] == "music":
             g["episodes"].sort(key=lambda x: x.get("id", 0))
         else:
+            # Ordenar temporadas de menor a mayor
+            sorted_seasons = dict(sorted(g["seasons"].items()))
+            g["seasons"] = sorted_seasons
             for s in g["seasons"]:
                 g["seasons"][s].sort(key=lambda x: x.get("episode") or 0)
             g["ovas"].sort(key=lambda x: x.get("episode") or 0)

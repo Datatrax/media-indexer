@@ -104,9 +104,7 @@ def parse_caption(caption: str) -> Dict[str, str]:
 
 
 def classify(filename: str, mime: str, size: int, caption: str, parsed: Dict) -> str:
-    fname = (filename or "").lower()
-    cap = (caption or "").lower()
-    tipo = parsed.get('tipo', '')
+    tipo = (parsed.get('tipo') or "").lower()
 
     if 'película' in tipo or 'pelicula' in tipo or 'movie' in tipo or 'film' in tipo:
         return 'movies'
@@ -115,15 +113,9 @@ def classify(filename: str, mime: str, size: int, caption: str, parsed: Dict) ->
     if 'música' in tipo or 'musica' in tipo or 'music' in tipo or 'álbum' in tipo or 'album' in tipo:
         return 'music'
 
+    fname = (filename or "").lower()
     if any(fname.endswith(ext) for ext in ['.mp3', '.flac', '.m4a', '.wav', '.ogg']) or (mime and mime.startswith('audio/')):
         return 'music'
-
-    if mime.startswith('image/') and (parsed.get('album') or parsed.get('artista')):
-        return 'music'
-
-    if re.search(r's\d{1,2}e\d{1,3}|temporada\s*\d+|season\s*\d+', fname + " " + cap, re.I):
-        return 'series'
-
     if any(x in fname for x in ['.mkv', '.mp4', '.avi']):
         return 'series'
     return 'other'
@@ -300,7 +292,7 @@ def build_groups():
             if item.get("date") and item["date"] > (g["latest_date"] or ""):
                 g["latest_date"] = item["date"]
 
-            # Forzar categoría por Tipo si existe
+            # Forzar categoría por Tipo
             tipo = (item.get("tipo") or "").lower()
             if 'película' in tipo or 'pelicula' in tipo or 'movie' in tipo:
                 g["final_category"] = "movies"

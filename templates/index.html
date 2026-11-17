@@ -381,6 +381,18 @@
                             {% endfor %}
                         {% endif %}
 
+                        {% if series.parts %}
+                        <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 mb-3">
+                            {% for ep in series.parts %}
+                            <a href="{{ ep.link }}" target="_blank"
+                               class="flex items-center justify-between px-3 py-2 bg-black/30 hover:bg-black/50 rounded-lg text-sm">
+                                <span>{{ ep.title or 'Archivo' }}</span>
+                                <span class="text-xs text-gray-500">{{ ep.size_mb }} MB</span>
+                            </a>
+                            {% endfor %}
+                        </div>
+                        {% endif %}
+
                         {% if series.ovas %}
                         <details class="mb-3">
                             <summary class="cursor-pointer text-sm font-medium text-gray-300 hover:text-white mb-2">
@@ -396,18 +408,6 @@
                                 {% endfor %}
                             </div>
                         </details>
-                        {% endif %}
-
-                        {% if series.parts %}
-                        <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
-                            {% for ep in series.parts %}
-                            <a href="{{ ep.link }}" target="_blank"
-                               class="flex items-center justify-between px-3 py-2 bg-black/30 hover:bg-black/50 rounded-lg text-sm">
-                                <span>{{ ep.title or 'Archivo' }}</span>
-                                <span class="text-xs text-gray-500">{{ ep.size_mb }} MB</span>
-                            </a>
-                            {% endfor %}
-                        </div>
                         {% endif %}
 
                         {% if not series.seasons and not series.ovas and not series.parts %}

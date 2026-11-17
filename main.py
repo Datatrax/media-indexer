@@ -268,7 +268,6 @@ def build_groups():
                         key = f"music::{normalize_title(item.get('title', ''))}"
                         display = item.get("title")
                 else:
-                    # Prioriza Nombre del caption
                     nombre = clean_text(item.get("album") or "")
                     if nombre:
                         key = normalize_title(nombre)
@@ -304,6 +303,9 @@ def build_groups():
                 elif item.get("season") is not None:
                     g["seasons"][item["season"]].append(item)
                 elif item.get("episode") is not None:
+                    g["parts"].append(item)
+                else:
+                    # Si no tiene season ni episode, igual lo agregamos como parte
                     g["parts"].append(item)
 
     result = []

@@ -207,7 +207,6 @@ def extract_info(msg) -> Optional[Dict[str, Any]]:
                     info["episode"] = int(num_match.group(1))
                     info["title"] = f"Cap {info['episode']}"
 
-    # Mejor detección de OVA con número
     ova_match = re.search(r'(\d{1,2})\s*ova|ova[\s\._-]*(\d{1,2})', filename + " " + caption, re.I)
     if ova_match:
         info["is_ova"] = True
@@ -296,18 +295,22 @@ def build_groups():
             g = groups[key]
             g["normalized"] = key
 
+            # Las fotos no se agregan como episodios, pero sí aportan metadata
             if not item.get("is_photo") or cat == "music":
                 g["episodes"].append(item)
 
             if not g["title"]:
                 g["title"] = display or item.get("title")
 
+            # Priorizar metadata de la portada (foto)
             for field in ["year", "genero", "estudio", "artista", "album", "label", "productor", "precuela", "secuela", "sinopsis"]:
-                if item.get(field) and not g.get(field):
-                    g[field] = item[field]
+                if item.get(field):
+                    if item.get("is_photo") or not g.get(field):
+                        g[field] = item[field]
 
-            if item.get("thumbnail") and not g["thumbnail"]:
-                g["thumbnail"] = item["thumbnail"]
+            if item.get("thumbnail"):
+                if item.get("is_photo") or not g["thumbnail"]:
+                    g["thumbnail"] = item["thumbnail"]
 
             if item.get("date") and item["date"] > (g["latest_date"] or ""):
                 g["latest_date"] = item["date"]

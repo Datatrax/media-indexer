@@ -24,10 +24,8 @@
         body { background-color: var(--bg); }
         .card { background-color: var(--card); border: 1px solid var(--border); }
 
-
         details > summary { list-style: none; }
         details > summary::-webkit-details-marker { display: none; }
-
 
         .season-arrow {
             display: inline-block;
@@ -37,7 +35,6 @@
         details[open] > summary .season-arrow {
             transform: rotate(90deg);
         }
-
 
         .lightbox {
             display: none;
@@ -57,7 +54,6 @@
             border-radius: 8px;
         }
 
-
         #player-bar {
             position: fixed;
             bottom: 0;
@@ -70,7 +66,6 @@
             display: none;
         }
         body.has-player { padding-bottom: 85px; }
-
 
         .progress-bar {
             -webkit-appearance: none;
@@ -90,12 +85,10 @@
             cursor: pointer;
         }
 
-
         .track-playing {
             background-color: rgba(29, 185, 84, 0.18) !important;
             border: 1px solid rgba(29, 185, 84, 0.45);
         }
-
 
         .poster {
             width: 100%;
@@ -115,14 +108,11 @@
     {{ 'section-music' if section == 'music' else '' }}
     {{ 'section-movies' if section == 'movies' else '' }}">
 
-
 <div class="container mx-auto px-4 py-6 max-w-5xl">
-
 
     <!-- Header -->
     <div class="mb-8">
         <h1 class="text-3xl md:text-4xl font-bold mb-5">Biblioteca de Prozac</h1>
-
 
         <div class="flex flex-wrap gap-3 mb-5">
             <a href="?section=series&sort={{ sort }}"
@@ -142,7 +132,6 @@
             </a>
         </div>
 
-
         <p class="text-gray-400 text-sm">
             Total: <span class="text-white">{{ total }}</span> · 
             Series: {{ counts.series }} · 
@@ -151,12 +140,10 @@
         </p>
     </div>
 
-
     <!-- Búsqueda -->
     <form method="get" class="mb-6">
         <input type="hidden" name="section" value="{{ section }}">
         <input type="hidden" name="sort" value="{{ sort }}">
-
 
         <div class="relative mb-3">
             <input type="text" name="q" value="{{ q }}" placeholder="Buscar..."
@@ -164,13 +151,11 @@
             <span class="absolute left-4 top-3.5 text-gray-500">🔍</span>
         </div>
 
-
         <details class="bg-black/30 rounded-xl overflow-hidden" {% if year or genero or estudio or artista %}open{% endif %}>
             <summary class="cursor-pointer px-4 py-3 text-sm font-medium" style="color: var(--accent)">
                 ⚙️ Búsqueda avanzada
             </summary>
             <div class="px-4 pb-4 pt-2 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 border-t border-gray-800">
-
 
                 {% if section == 'music' %}
                     <div>
@@ -239,7 +224,6 @@
                     </div>
                 {% endif %}
 
-
                 <div class="sm:col-span-2 lg:col-span-4 flex gap-3">
                     <button type="submit" class="px-5 py-2 rounded-lg text-sm font-medium text-black" style="background: var(--accent)">
                         Aplicar filtros
@@ -251,7 +235,6 @@
             </div>
         </details>
     </form>
-
 
     <!-- LISTADO -->
     <div class="space-y-8">
@@ -268,11 +251,9 @@
                 {% endif %}
             </div>
 
-
             <!-- INFORMACIÓN ABAJO -->
             <div class="p-5">
                 <h2 class="text-xl md:text-2xl font-bold mb-1">{{ series.title }}</h2>
-
 
                 <div class="text-sm text-gray-400 mb-3 flex flex-wrap gap-x-3 gap-y-1">
                     {% if series.year %}<span>{{ series.year }}</span>{% endif %}
@@ -280,7 +261,6 @@
                     {% if series.label %}<span>{{ series.label }}</span>{% endif %}
                     {% if series.estudio %}<span>{{ series.estudio }}</span>{% endif %}
                 </div>
-
 
                 {% if series.genero %}
                 <p class="text-sm mb-4">
@@ -293,7 +273,6 @@
                     {% endfor %}
                 </p>
                 {% endif %}
-
 
                 <details class="mb-5">
                     <summary class="cursor-pointer text-sm text-gray-400 hover:text-white">▼ Ver ficha completa</summary>
@@ -325,7 +304,6 @@
                         </p>
                         {% endif %}
 
-
                         {% if series.sinopsis %}
                         <div class="mt-3 pt-3 border-t border-gray-700">
                             <p class="text-gray-500 mb-1">Descripción:</p>
@@ -334,7 +312,6 @@
                         {% endif %}
                     </div>
                 </details>
-
 
                 <div class="border-t border-gray-800 pt-4">
                     {% if series.final_category == 'music' %}
@@ -349,7 +326,6 @@
                             </a>
                             {% endif %}
                         </div>
-
 
                         <div class="space-y-2" id="album-{{ loop.index }}">
                             {% for ep in series.episodes %}
@@ -379,13 +355,11 @@
                             {% endfor %}
                         </div>
 
-
                     {% else %}
                         <h3 class="text-sm font-semibold text-gray-300 mb-3">
                             {% if series.final_category == 'movies' %}Películas{% else %}Contenido{% endif %}
                             ({{ series.episodes|length }})
                         </h3>
-
 
                         {% if series.seasons %}
                             {% for season_num, eps in series.seasons.items() %}
@@ -398,7 +372,7 @@
                                     {% for ep in eps %}
                                     <a href="{{ ep.link }}" target="_blank"
                                        class="flex items-center justify-between px-3 py-2 bg-black/30 hover:bg-black/50 rounded-lg text-sm">
-                                        <span>Ep {{ ep.episode or '?' }}</span>
+                                        <span>{{ ep.title or 'Ep ' ~ (ep.episode or '?') }}</span>
                                         <span class="text-xs text-gray-500">{{ ep.size_mb }} MB</span>
                                     </a>
                                     {% endfor %}
@@ -406,7 +380,6 @@
                             </details>
                             {% endfor %}
                         {% endif %}
-
 
                         {% if series.ovas %}
                         <details class="mb-3">
@@ -417,7 +390,7 @@
                                 {% for ep in series.ovas %}
                                 <a href="{{ ep.link }}" target="_blank"
                                    class="flex items-center justify-between px-3 py-2 bg-black/30 hover:bg-black/50 rounded-lg text-sm">
-                                    <span>{{ ep.special_type or 'OVA' }} {{ ep.episode or '' }}</span>
+                                    <span>{{ ep.title or 'OVA' }}</span>
                                     <span class="text-xs text-gray-500">{{ ep.size_mb }} MB</span>
                                 </a>
                                 {% endfor %}
@@ -425,26 +398,24 @@
                         </details>
                         {% endif %}
 
-
                         {% if series.parts %}
                         <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
                             {% for ep in series.parts %}
                             <a href="{{ ep.link }}" target="_blank"
                                class="flex items-center justify-between px-3 py-2 bg-black/30 hover:bg-black/50 rounded-lg text-sm">
-                                <span>Parte {{ ep.episode or '' }}</span>
+                                <span>{{ ep.title or 'Archivo' }}</span>
                                 <span class="text-xs text-gray-500">{{ ep.size_mb }} MB</span>
                             </a>
                             {% endfor %}
                         </div>
                         {% endif %}
 
-
                         {% if not series.seasons and not series.ovas and not series.parts %}
                         <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
                             {% for ep in series.episodes %}
                             <a href="{{ ep.link }}" target="_blank"
                                class="flex items-center justify-between px-3 py-2 bg-black/30 hover:bg-black/50 rounded-lg text-sm">
-                                <span>{% if ep.episode %}Ep {{ ep.episode }}{% else %}Archivo{% endif %}</span>
+                                <span>{{ ep.title or 'Archivo' }}</span>
                                 <span class="text-xs text-gray-500">{{ ep.size_mb }} MB</span>
                             </a>
                             {% endfor %}
@@ -460,12 +431,10 @@
     </div>
 </div>
 
-
 <!-- Lightbox -->
 <div id="lightbox" class="lightbox" onclick="closeLightbox()">
     <img id="lightbox-img" src="" alt="">
 </div>
-
 
 <!-- REPRODUCTOR MINI -->
 <div id="player-bar">
@@ -480,7 +449,6 @@
                 <span id="total-time" class="text-xs text-gray-400 w-9 text-right">0:00</span>
             </div>
         </div>
-
 
         <div class="flex items-center gap-3">
             <button onclick="prevTrack()" class="text-gray-400 hover:text-white text-xl">⏮</button>
@@ -497,9 +465,7 @@
     </div>
 </div>
 
-
 <audio id="audio" preload="metadata"></audio>
-
 
 <script>
     const audio = document.getElementById('audio');
@@ -509,13 +475,11 @@
     let currentPlaylist = [];
     let currentIndex = -1;
 
-
     function playTrackFromElement(el) {
         const id = el.dataset.id;
         const title = el.dataset.title;
         const artist = el.dataset.artist;
         const cover = el.dataset.cover;
-
 
         const album = el.closest('[id^="album-"]');
         if (album) {
@@ -532,10 +496,8 @@
             currentIndex = 0;
         }
 
-
         playTrack(id, title, artist, cover);
     }
-
 
     function playTrack(id, title, artist, cover) {
         audio.src = `/stream/${id}`;
@@ -549,14 +511,12 @@
         highlightCurrent();
     }
 
-
     function highlightCurrent() {
         document.querySelectorAll('.track-row').forEach(row => row.classList.remove('track-playing'));
         if (currentIndex >= 0 && currentPlaylist[currentIndex]) {
             currentPlaylist[currentIndex].element.classList.add('track-playing');
         }
     }
-
 
     function nextTrack() {
         if (currentPlaylist.length === 0) return;
@@ -565,14 +525,12 @@
         playTrack(t.id, t.title, t.artist, t.cover);
     }
 
-
     function prevTrack() {
         if (currentPlaylist.length === 0) return;
         currentIndex = (currentIndex - 1 + currentPlaylist.length) % currentPlaylist.length;
         const t = currentPlaylist[currentIndex];
         playTrack(t.id, t.title, t.artist, t.cover);
     }
-
 
     function togglePlay() {
         if (audio.paused) {
@@ -584,11 +542,9 @@
         }
     }
 
-
     function updateButtons(playing) {
         document.getElementById('btn-play').textContent = playing ? '⏸' : '▶';
     }
-
 
     progress.addEventListener('pointerdown', () => isSeeking = true);
     progress.addEventListener('pointerup', () => {
@@ -602,14 +558,12 @@
         document.getElementById('current-time').textContent = formatTime((progress.value / 1000) * audio.duration);
     });
 
-
     function formatTime(s) {
         if (!s || isNaN(s)) return "0:00";
         const m = Math.floor(s / 60);
         const sec = Math.floor(s % 60);
         return `${m}:${sec.toString().padStart(2,'0')}`;
     }
-
 
     audio.addEventListener('timeupdate', () => {
         if (isSeeking || !audio.duration) return;
@@ -619,9 +573,7 @@
         document.getElementById('total-time').textContent = formatTime(audio.duration);
     });
 
-
     audio.addEventListener('ended', () => nextTrack());
-
 
     function openLightbox(e, src) {
         e.preventDefault();

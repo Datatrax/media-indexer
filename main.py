@@ -108,7 +108,8 @@ def classify(filename: str, mime: str, size: int, caption: str, parsed: Dict) ->
     cap = (caption or "").lower()
     tipo = parsed.get('tipo', '')
 
-    if any(x in tipo for x in ['película', 'pelicula', 'movie']):
+    # Prioridad alta al campo Tipo
+    if any(x in tipo for x in ['película', 'pelicula', 'movie', 'film']):
         return 'movies'
     if any(x in tipo for x in ['serie', 'series', 'anime']):
         return 'series'
@@ -121,11 +122,17 @@ def classify(filename: str, mime: str, size: int, caption: str, parsed: Dict) ->
     if mime.startswith('image/') and (parsed.get('album') or parsed.get('artista')):
         return 'music'
 
+    # Series por patrón de episodio
     if re.search(r's\d{1,2}e\d{1,3}|temporada\s*\d+|season\s*\d+', fname + " " + cap, re.I):
         return 'series'
 
+    # Movies solo si es claramente película (evitar mezclar)
+    if any(x in fname for x in ['.mkv', '.mp4', '.avi']) and not re.search(r'ep|cap|capítulo|s\d', fname, re.I):
+        if 'película' in cap or 'pelicula' in cap or 'movie' in cap:
+            return 'movies'
+
     if any(x in fname for x in ['.mkv', '.mp4', '.avi']):
-        return 'movies'
+        return 'series'  # Por defecto series si es video
     return 'other'
 
 
@@ -196,6 +203,10 @@ def extract_info(msg) -> Optional[Dict[str, Any]]:
         if ep_only:
             info["episode"] = int(ep_only.group(1))
             info["title"] = f"Ep {info['episode']}"
+        else:
+            # Si no se detecta episodio, usar un título genérico pero no "Parte"
+            if category in ["series", "movies"]:
+                info["title"] = "Archivo"
 
     if re.search(r'\b(ova|ona|special)\b', filename + " " + caption, re.I):
         info["is_ova"] = True
@@ -302,10 +313,7 @@ def build_groups():
                     g["ovas"].append(item)
                 elif item.get("season") is not None:
                     g["seasons"][item["season"]].append(item)
-                elif item.get("episode") is not None:
-                    g["parts"].append(item)
                 else:
-                    # Si no tiene season ni episode, igual lo agregamos como parte
                     g["parts"].append(item)
 
     result = []

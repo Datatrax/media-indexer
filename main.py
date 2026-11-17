@@ -186,7 +186,6 @@ def extract_info(msg) -> Optional[Dict[str, Any]]:
         **parsed
     }
 
-    # Detección de episodio / parte
     part_match = re.search(r'part[\s\._-]*(\d+)', filename + " " + caption, re.I)
     if part_match and category == "movies":
         info["episode"] = int(part_match.group(1))
@@ -208,9 +207,11 @@ def extract_info(msg) -> Optional[Dict[str, Any]]:
                     info["episode"] = int(num_match.group(1))
                     info["title"] = f"Cap {info['episode']}"
 
-    if re.search(r'\b(ova|ona|special)\b', filename + " " + caption, re.I):
+    ova_match = re.search(r'\b(ova|ona|special)[\s\._-]*(\d+)?\b', filename + " " + caption, re.I)
+    if ova_match:
         info["is_ova"] = True
-        info["title"] = "OVA"
+        num = ova_match.group(2)
+        info["title"] = f"OVA {num}" if num else "OVA"
 
     return info
 

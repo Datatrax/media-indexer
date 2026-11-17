@@ -262,6 +262,7 @@ def build_groups():
         "sinopsis": None,
         "thumbnail": None,
         "latest_date": "",
+        "total_size": 0,
     })
 
     for cat in ["movies", "series", "music", "other"]:
@@ -297,6 +298,7 @@ def build_groups():
 
             if not item.get("is_photo") or cat == "music":
                 g["episodes"].append(item)
+                g["total_size"] += item.get("size_mb", 0)
 
             if not g["title"]:
                 g["title"] = display or item.get("title")
@@ -424,7 +426,6 @@ async def index(
     groups = build_groups()
 
     if q:
-        # Si hay búsqueda, buscar en todas las secciones
         ql = q.lower()
         items = [g for g in groups if ql in (g.get("title") or "").lower() or ql in (g.get("artista") or "").lower() or ql in (g.get("album") or "").lower()]
     else:
@@ -448,6 +449,8 @@ async def index(
         items.sort(key=lambda x: int(x["year"]) if x.get("year") and str(x["year"]).isdigit() else 0, reverse=True)
     elif sort == "date":
         items.sort(key=lambda x: x.get("latest_date") or "", reverse=True)
+    elif sort == "size":
+        items.sort(key=lambda x: x.get("total_size", 0), reverse=True)
     else:
         items.sort(key=lambda x: (x.get("title") or "").lower())
 
@@ -547,6 +550,30 @@ async def download_album(ids: str = Query(...), username: str = Depends(verify_c
                     zf.writestr(filename, data)
         buffer.seek(0)
         return StreamingResponse(buffer, media_type="application/zip", headers={"Content-Disposition": "attachment; filename=album.zip"})
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@app.get("/download-season")
+async def download_season(ids: str = Query(...), username: str = Depends(verify_credentials)):
+    try:
+        id_list = [int(x) for x in ids.split(",") if x.strip().isdigit()]
+        buffer = BytesIO()
+        with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+            for mid in id_list:
+                msg = await client.get_messages(CHANNEL_ID, ids=mid)
+                if not msg or not msg.media:
+                    continue
+                filename = f"{mid}.bin"
+                for attr in getattr(msg.media.document, 'attributes', []):
+                    if hasattr(attr, 'file_name') and attr.file_name:
+                        filename = attr.file_name
+                        break
+                data = await client.download_media(msg, file=bytes)
+                if data:
+                    zf.writestr(filename, data)
+        buffer.seek(0)
+        return StreamingResponse(buffer, media_type="application/zip", headers={"Content-Disposition": "attachment; filename=temporada.zip"})
     except Exception as e:
         raise HTTPException(500, str(e))
 

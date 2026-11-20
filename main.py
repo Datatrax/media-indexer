@@ -7,11 +7,9 @@ from io import BytesIO
 from typing import Dict, Any, List, Optional
 from collections import defaultdict
 
-
 from telethon import TelegramClient
 from telethon.sessions import StringSession
 from telethon.tl.types import MessageMediaDocument, MessageMediaPhoto
-
 
 from fastapi import FastAPI, Request, Depends, HTTPException, status, Query
 from fastapi.responses import HTMLResponse, StreamingResponse
@@ -20,9 +18,7 @@ from fastapi.security import HTTPBasic, HTTPBasicCredentials
 import uvicorn
 from dotenv import load_dotenv
 
-
 load_dotenv()
-
 
 API_ID = int(os.getenv("API_ID"))
 API_HASH = os.getenv("API_HASH")
@@ -32,16 +28,12 @@ ADMIN_USER = os.getenv("ADMIN_USER", "admin")
 ADMIN_PASS = os.getenv("ADMIN_PASS", "cambia_esta_password")
 ITEMS_PER_PAGE = 12
 
-
 app = FastAPI(title="Biblioteca de Prozac")
 templates = Jinja2Templates(directory="templates")
 security = HTTPBasic()
 
-
 catalog = {"movies": [], "series": [], "music": [], "other": []}
 client = TelegramClient(StringSession(SESSION_STRING), API_ID, API_HASH)
-
-
 
 
 def verify_credentials(credentials: HTTPBasicCredentials = Depends(security)):
@@ -56,14 +48,10 @@ def verify_credentials(credentials: HTTPBasicCredentials = Depends(security)):
     return credentials.username
 
 
-
-
 def clean_text(text: str) -> str:
     if not text:
         return ""
     return re.sub(r'\s+', ' ', str(text)).strip()
-
-
 
 
 def parse_caption(caption: str) -> Dict[str, str]:
@@ -71,10 +59,8 @@ def parse_caption(caption: str) -> Dict[str, str]:
     if not caption:
         return info
 
-
     lines = [line.strip() for line in caption.split('\n') if line.strip()]
     free_text = []
-
 
     for line in lines:
         if ':' in line and len(line.split(':', 1)[0].strip()) < 30:
@@ -107,26 +93,20 @@ def parse_caption(caption: str) -> Dict[str, str]:
         elif len(line) > 30:
             free_text.append(line)
 
-
     if 'sinopsis' not in info and free_text:
         info['sinopsis'] = "\n".join(free_text)
-
 
     year_match = re.search(r'\b(19|20)\d{2}\b', caption)
     if year_match and 'year' not in info:
         info['year'] = year_match.group(0)
 
-
     return info
-
-
 
 
 def classify(filename: str, mime: str, size: int, caption: str, parsed: Dict) -> str:
     fname = (filename or "").lower()
     cap = (caption or "").lower()
     tipo = parsed.get('tipo', '')
-
 
     if any(x in tipo for x in ['película', 'pelicula', 'movie']):
         return 'movies'
@@ -135,37 +115,29 @@ def classify(filename: str, mime: str, size: int, caption: str, parsed: Dict) ->
     if any(x in tipo for x in ['música', 'musica', 'music', 'álbum', 'album', 'artista', 'artist']):
         return 'music'
 
-
     if any(fname.endswith(ext) for ext in ['.mp3', '.flac', '.m4a', '.wav', '.ogg']) or (mime and mime.startswith('audio/')):
         return 'music'
-
 
     if mime.startswith('image/') and (parsed.get('album') or parsed.get('artista')):
         return 'music'
 
-
     if re.search(r's\d{1,2}e\d{1,3}|temporada\s*\d+|season\s*\d+', fname + " " + cap, re.I):
         return 'series'
-
 
     if any(x in fname for x in ['.mkv', '.mp4', '.avi', '.rar']):
         return 'movies'
     return 'other'
 
 
-
-
 def extract_info(msg) -> Optional[Dict[str, Any]]:
     if not msg.media:
         return None
-
 
     filename = ""
     mime = ""
     size = 0
     duration = 0
     is_photo = False
-
 
     if isinstance(msg.media, MessageMediaDocument):
         doc = msg.media.document
@@ -183,15 +155,12 @@ def extract_info(msg) -> Optional[Dict[str, Any]]:
     else:
         return None
 
-
     caption = msg.message or ""
     parsed = parse_caption(caption)
     category = classify(filename, mime, size, caption, parsed)
 
-
     title = re.sub(r'\.[a-z0-9]{2,5}$', '', filename, flags=re.I)
     title = clean_text(title)
-
 
     if '–' in title or ' - ' in title:
         parts = re.split(r'\s*[–-]\s*', title, maxsplit=1)
@@ -199,7 +168,6 @@ def extract_info(msg) -> Optional[Dict[str, Any]]:
             if not parsed.get('artista'):
                 parsed['artista'] = parts[0].strip()
             title = parts[1].strip()
-
 
     info = {
         "id": msg.id,
@@ -218,7 +186,6 @@ def extract_info(msg) -> Optional[Dict[str, Any]]:
         "is_artist": "artista" in (parsed.get("tipo") or "").lower(),
         **parsed
     }
-
 
     part_match = re.search(r'part[\s\._-]*(\d+)', filename + " " + caption, re.I)
     if part_match and category == "movies":
@@ -241,7 +208,6 @@ def extract_info(msg) -> Optional[Dict[str, Any]]:
                     info["episode"] = int(num_match.group(1))
                     info["title"] = f"Cap {info['episode']}"
 
-
     ova_match = re.search(r'(\d{1,2})\s*ova|ova[\s\._-]*(\d{1,2})', filename + " " + caption, re.I)
     if ova_match:
         info["is_ova"] = True
@@ -252,10 +218,7 @@ def extract_info(msg) -> Optional[Dict[str, Any]]:
         info["is_ova"] = True
         info["title"] = "OVA"
 
-
     return info
-
-
 
 
 def clean_series_title(raw: str) -> str:
@@ -269,8 +232,6 @@ def clean_series_title(raw: str) -> str:
     return t.strip(" -–_()[]")
 
 
-
-
 def normalize_title(title: str) -> str:
     if not title:
         return ""
@@ -279,8 +240,6 @@ def normalize_title(title: str) -> str:
     t = re.sub(r'[^\w\s]', ' ', t)
     t = re.sub(r'\s+', ' ', t).strip()
     return t
-
-
 
 
 def build_groups():
@@ -307,7 +266,6 @@ def build_groups():
         "total_size": 0,
         "is_artist": False,
     })
-
 
     for cat in ["movies", "series", "music", "other"]:
         for item in catalog[cat]:
@@ -344,10 +302,8 @@ def build_groups():
                         key = f"single::{item['id']}"
                         display = item.get("title") or item.get("filename")
 
-
             g = groups[key]
             g["normalized"] = key
-
 
             if item.get("is_artist"):
                 g["is_artist"] = True
@@ -357,33 +313,26 @@ def build_groups():
                         g[field] = item[field]
                 continue
 
-
             if not item.get("is_photo"):
                 g["episodes"].append(item)
                 g["total_size"] += item.get("size_mb", 0)
 
-
             if not g["title"]:
                 g["title"] = display or item.get("title")
-
 
             for field in ["year", "genero", "estudio", "artista", "album", "label", "productor", "precuela", "secuela", "sinopsis"]:
                 if item.get(field):
                     if item.get("is_photo") or not g.get(field):
                         g[field] = item[field]
 
-
             if item.get("thumbnail"):
                 if item.get("is_photo") or not g["thumbnail"]:
                     g["thumbnail"] = item["thumbnail"]
 
-
             if item.get("date") and item["date"] > (g["latest_date"] or ""):
                 g["latest_date"] = item["date"]
 
-
             g["final_category"] = cat if cat in ["music", "movies", "series"] else "other"
-
 
             if cat in ["series", "movies"] and not item.get("is_photo"):
                 if item.get("is_ova"):
@@ -392,7 +341,6 @@ def build_groups():
                     g["seasons"][item["season"]].append(item)
                 else:
                     g["parts"].append(item)
-
 
     result = []
     for g in groups.values():
@@ -412,16 +360,12 @@ def build_groups():
             g["parts"].sort(key=lambda x: x.get("episode") or 0)
         result.append(g)
 
-
     return result
-
-
 
 
 def get_filters_from_groups(groups: List[Dict], section: str):
     years, genres, studios, artists, labels = set(), set(), set(), set(), set()
     for g in groups:
-        # En música, ignorar el año de las fichas de artista
         if section == "music":
             if g.get("is_artist"):
                 continue
@@ -431,7 +375,6 @@ def get_filters_from_groups(groups: List[Dict], section: str):
             continue
         elif section == "series" and g["final_category"] != "series":
             continue
-
 
         if g.get("year"):
             years.add(str(g["year"]))
@@ -454,8 +397,6 @@ def get_filters_from_groups(groups: List[Dict], section: str):
     }
 
 
-
-
 async def process_message(msg):
     info = extract_info(msg)
     if not info:
@@ -469,8 +410,6 @@ async def process_message(msg):
         pass
     cat = info["category"]
     catalog[cat if cat in catalog else "other"].append(info)
-
-
 
 
 async def reindex():
@@ -489,14 +428,10 @@ async def reindex():
         print(f"❌ Error: {e}")
 
 
-
-
 @app.on_event("startup")
 async def startup_event():
     await client.start()
     await reindex()
-
-
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -508,6 +443,7 @@ async def index(
     genero: str = "",
     estudio: str = "",
     artista: str = "",
+    album: str = "",
     sort: str = "title",
     page: int = 1,
     view: str = "artists",
@@ -515,8 +451,9 @@ async def index(
 ):
     groups = build_groups()
 
-
-    if section == "music" and view == "artists" and not artista:
+    if section == "music" and album:
+        items = [g for g in groups if g["final_category"] == "music" and not g.get("is_artist") and album.lower() in (g.get("title") or "").lower()]
+    elif section == "music" and view == "artists" and not artista:
         items = [g for g in groups if g.get("is_artist")]
     elif section == "music":
         items = [g for g in groups if g["final_category"] == "music" and not g.get("is_artist")]
@@ -527,11 +464,9 @@ async def index(
     else:
         items = [g for g in groups if g["final_category"] == "series"]
 
-
-    if q:
+    if q and not album:
         ql = q.lower()
         items = [g for g in items if ql in (g.get("title") or "").lower() or ql in (g.get("artista") or "").lower() or ql in (g.get("album") or "").lower()]
-
 
     if year:
         items = [g for g in items if str(g.get("year")) == year]
@@ -539,7 +474,6 @@ async def index(
         items = [g for g in items if genero.lower() in (g.get("genero") or "").lower()]
     if estudio:
         items = [g for g in items if estudio.lower() in (g.get("estudio") or g.get("label") or "").lower()]
-
 
     if sort == "year":
         items.sort(key=lambda x: int(x["year"]) if x.get("year") and str(x["year"]).isdigit() else 0, reverse=True)
@@ -550,13 +484,11 @@ async def index(
     else:
         items.sort(key=lambda x: (x.get("title") or "").lower())
 
-
     filters = get_filters_from_groups(groups, section)
     total = len(items)
     start = (page - 1) * ITEMS_PER_PAGE
     page_items = items[start:start + ITEMS_PER_PAGE]
     total_pages = max(1, (total + ITEMS_PER_PAGE - 1) // ITEMS_PER_PAGE)
-
 
     counts = {
         "series": sum(1 for g in groups if g["final_category"] == "series"),
@@ -564,7 +496,6 @@ async def index(
         "music": sum(1 for g in groups if g["final_category"] == "music" and not g.get("is_artist")),
         "artists": sum(1 for g in groups if g.get("is_artist")),
     }
-
 
     return templates.TemplateResponse("index.html", {
         "request": request,
@@ -584,10 +515,9 @@ async def index(
         "genero": genero,
         "estudio": estudio,
         "artista": artista,
+        "album": album,
         "view": view,
     })
-
-
 
 
 @app.get("/stream/{msg_id}")
@@ -604,7 +534,6 @@ async def stream_file(msg_id: int, request: Request, username: str = Depends(ver
                 filename = attr.file_name
                 break
 
-
         range_header = request.headers.get("range")
         if range_header and file_size:
             m = re.search(r'bytes=(\d+)-(\d*)', range_header)
@@ -612,7 +541,6 @@ async def stream_file(msg_id: int, request: Request, username: str = Depends(ver
             end = int(m.group(2)) if m and m.group(2) else file_size - 1
             end = min(end, file_size - 1)
             length = end - start + 1
-
 
             async def ranged():
                 async for chunk in client.iter_download(msg.media, offset=start, limit=length):
@@ -622,7 +550,6 @@ async def stream_file(msg_id: int, request: Request, username: str = Depends(ver
                 "Accept-Ranges": "bytes",
                 "Content-Length": str(length),
             })
-
 
         async def full():
             async for chunk in client.iter_download(msg.media):
@@ -634,8 +561,6 @@ async def stream_file(msg_id: int, request: Request, username: str = Depends(ver
         })
     except Exception as e:
         raise HTTPException(500, str(e))
-
-
 
 
 @app.get("/download-album")
@@ -667,8 +592,6 @@ async def download_album(ids: str = Query(...), name: str = Query("Album"), user
         raise HTTPException(500, str(e))
 
 
-
-
 @app.get("/download-season")
 async def download_season(ids: str = Query(...), name: str = Query("Temporada"), username: str = Depends(verify_credentials)):
     try:
@@ -698,13 +621,9 @@ async def download_season(ids: str = Query(...), name: str = Query("Temporada"),
         raise HTTPException(500, str(e))
 
 
-
-
 @app.get("/health")
 async def health():
     return {"status": "ok", "total_files": sum(len(v) for v in catalog.values())}
-
-
 
 
 if __name__ == "__main__":

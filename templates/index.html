@@ -1,4 +1,272 @@
-    {% elif section == 'music' and album %}
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+    <title>Biblioteca de Prozac</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        :root {
+            --accent: #a855f7;
+            --bg: #0c0a14;
+            --card: #16131f;
+            --border: #2e2a3d;
+        }
+        body.section-music {
+            --accent: #1db954;
+            --bg: #0a0a0a;
+            --card: #121212;
+            --border: #282828;
+        }
+        body.section-movies {
+            --accent: #f59e0b;
+        }
+        body { background-color: var(--bg); }
+        .card { background-color: var(--card); border: 1px solid var(--border); }
+
+        details > summary { list-style: none; }
+        details > summary::-webkit-details-marker { display: none; }
+
+        .season-arrow {
+            display: inline-block;
+            transition: transform 0.15s ease;
+            font-size: 0.7em;
+        }
+        details[open] > summary .season-arrow {
+            transform: rotate(90deg);
+        }
+
+        .lightbox {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.93);
+            z-index: 9999;
+            justify-content: center;
+            align-items: center;
+            cursor: zoom-out;
+        }
+        .lightbox.active { display: flex; }
+        .lightbox img {
+            max-width: 92vw;
+            max-height: 85vh;
+            object-fit: contain;
+            border-radius: 8px;
+        }
+
+        #player-bar {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 72px;
+            background: #000;
+            border-top: 1px solid #222;
+            z-index: 1000;
+            display: none;
+        }
+        body.has-player { padding-bottom: 85px; }
+
+        .progress-bar {
+            -webkit-appearance: none;
+            appearance: none;
+            height: 4px;
+            background: #333;
+            border-radius: 2px;
+            outline: none;
+            cursor: pointer;
+        }
+        .progress-bar::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 12px;
+            height: 12px;
+            background: var(--accent);
+            border-radius: 50%;
+            cursor: pointer;
+        }
+
+        .track-playing {
+            background-color: rgba(29, 185, 84, 0.18) !important;
+            border: 1px solid rgba(29, 185, 84, 0.45);
+        }
+
+        .poster {
+            width: 100%;
+            height: 280px;
+            object-fit: cover;
+            object-position: center center;
+            display: block;
+        }
+        @media (min-width: 768px) {
+            .poster { height: 320px; }
+        }
+
+        .artist-hero {
+            height: 320px;
+            background-size: cover;
+            background-position: center;
+            position: relative;
+        }
+        .artist-hero::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(to bottom, rgba(0,0,0,0.2), rgba(0,0,0,0.85));
+        }
+        .artist-info {
+            position: absolute;
+            bottom: 24px;
+            left: 24px;
+            right: 24px;
+            z-index: 2;
+        }
+    </style>
+</head>
+<body class="text-white min-h-screen 
+    {{ 'section-music' if section == 'music' else '' }}
+    {{ 'section-movies' if section == 'movies' else '' }}">
+
+<div class="container mx-auto px-4 py-6 max-w-5xl">
+
+    <!-- Header -->
+    <div class="mb-8">
+        <h1 class="text-3xl md:text-4xl font-bold mb-5">Biblioteca de Prozac</h1>
+
+        <div class="flex flex-wrap gap-3 mb-5">
+            <a href="?section=series&sort={{ sort }}"
+               class="px-5 py-2.5 rounded-full text-sm font-semibold transition
+               {{ 'bg-purple-600 text-white' if section == 'series' else 'bg-gray-800 text-gray-300 hover:bg-gray-700' }}">
+                Series
+            </a>
+            <a href="?section=movies&sort={{ sort }}"
+               class="px-5 py-2.5 rounded-full text-sm font-semibold transition
+               {{ 'bg-amber-500 text-black' if section == 'movies' else 'bg-gray-800 text-gray-300 hover:bg-gray-700' }}">
+                Películas
+            </a>
+            <a href="?section=music&sort={{ sort }}&view=artists"
+               class="px-5 py-2.5 rounded-full text-sm font-semibold transition
+               {{ 'bg-green-500 text-black' if section == 'music' else 'bg-gray-800 text-gray-300 hover:bg-gray-700' }}">
+                Música
+            </a>
+        </div>
+
+        <p class="text-gray-400 text-sm">
+            Total: <span class="text-white">{{ total }}</span> · 
+            Series: {{ counts.series }} · 
+            Películas: {{ counts.movies }} · 
+            Música: {{ counts.music }}
+            {% if counts.artists %} · Artistas: {{ counts.artists }}{% endif %}
+        </p>
+    </div>
+
+    <!-- Búsqueda + Orden -->
+    <form method="get" class="mb-6">
+        <input type="hidden" name="section" value="{{ section }}">
+        <input type="hidden" name="view" value="{{ view }}">
+        {% if artista %}<input type="hidden" name="artista" value="{{ artista }}">{% endif %}
+        {% if album %}<input type="hidden" name="album" value="{{ album }}">{% endif %}
+
+        <div class="flex gap-3 mb-3">
+            <div class="relative flex-1">
+                <input type="text" name="q" value="{{ q }}" placeholder="Buscar..."
+                       class="w-full px-4 py-3.5 rounded-xl bg-black/40 border border-gray-700 text-sm focus:outline-none pl-12">
+                <span class="absolute left-4 top-3.5 text-gray-500">🔍</span>
+            </div>
+            <select name="sort" onchange="this.form.submit()" class="px-4 py-3 rounded-xl bg-gray-900 border border-gray-700 text-sm">
+                <option value="title" {{ 'selected' if sort == 'title' else '' }}>Título</option>
+                <option value="date" {{ 'selected' if sort == 'date' else '' }}>Fecha de subida</option>
+                <option value="size" {{ 'selected' if sort == 'size' else '' }}>Tamaño</option>
+                <option value="year" {{ 'selected' if sort == 'year' else '' }}>Año</option>
+            </select>
+        </div>
+
+        <details class="bg-black/30 rounded-xl overflow-hidden" {% if year or genero or estudio or artista %}open{% endif %}>
+            <summary class="cursor-pointer px-4 py-3 text-sm font-medium" style="color: var(--accent)">
+                ⚙️ Búsqueda avanzada
+            </summary>
+            <div class="px-4 pb-4 pt-2 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 border-t border-gray-800">
+
+                {% if section == 'music' %}
+                    <div>
+                        <label class="block text-xs text-gray-400 mb-1">Artista</label>
+                        <select name="artista" class="w-full px-3 py-2 rounded-lg bg-gray-900 border border-gray-700 text-sm">
+                            <option value="">Todos los artistas</option>
+                            {% for a in all_artists %}
+                            <option value="{{ a }}" {{ 'selected' if artista == a else '' }}>{{ a }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs text-gray-400 mb-1">Año</label>
+                        <select name="year" class="w-full px-3 py-2 rounded-lg bg-gray-900 border border-gray-700 text-sm">
+                            <option value="">Todos los años</option>
+                            {% for y in all_years %}
+                            <option value="{{ y }}" {{ 'selected' if year == y|string else '' }}>{{ y }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs text-gray-400 mb-1">Género musical</label>
+                        <select name="genero" class="w-full px-3 py-2 rounded-lg bg-gray-900 border border-gray-700 text-sm">
+                            <option value="">Todos los géneros</option>
+                            {% for g in all_genres %}
+                            <option value="{{ g }}" {{ 'selected' if genero == g else '' }}>{{ g }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs text-gray-400 mb-1">Sello / Label</label>
+                        <select name="estudio" class="w-full px-3 py-2 rounded-lg bg-gray-900 border border-gray-700 text-sm">
+                            <option value="">Todos</option>
+                            {% for s in all_studios %}
+                            <option value="{{ s }}" {{ 'selected' if estudio == s else '' }}>{{ s }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                {% else %}
+                    <div>
+                        <label class="block text-xs text-gray-400 mb-1">Año</label>
+                        <select name="year" class="w-full px-3 py-2 rounded-lg bg-gray-900 border border-gray-700 text-sm">
+                            <option value="">Todos los años</option>
+                            {% for y in all_years %}
+                            <option value="{{ y }}" {{ 'selected' if year == y|string else '' }}>{{ y }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs text-gray-400 mb-1">Género</label>
+                        <select name="genero" class="w-full px-3 py-2 rounded-lg bg-gray-900 border border-gray-700 text-sm">
+                            <option value="">Todos los géneros</option>
+                            {% for g in all_genres %}
+                            <option value="{{ g }}" {{ 'selected' if genero == g else '' }}>{{ g }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs text-gray-400 mb-1">Estudio</label>
+                        <select name="estudio" class="w-full px-3 py-2 rounded-lg bg-gray-900 border border-gray-700 text-sm">
+                            <option value="">Todos</option>
+                            {% for s in all_studios %}
+                            <option value="{{ s }}" {{ 'selected' if estudio == s else '' }}>{{ s }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                {% endif %}
+
+                <div class="sm:col-span-2 lg:col-span-4 flex gap-3">
+                    <button type="submit" class="px-5 py-2 rounded-lg text-sm font-medium text-black" style="background: var(--accent)">
+                        Aplicar filtros
+                    </button>
+                    <a href="?section={{ section }}&sort={{ sort }}&view={{ view }}" class="px-5 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-sm">
+                        Limpiar
+                    </a>
+                </div>
+            </div>
+        </details>
+    </form>
+
+    <!-- LISTADO -->
+    {% if section == 'music' and album %}
     <!-- VISTA DE ÁLBUM INDIVIDUAL -->
     {% for series in items %}
     <div class="mb-8">
@@ -18,7 +286,6 @@
                 </button>
             </div>
         </div>
-
 
         <div class="space-y-2" id="album-detail">
             {% for ep in series.episodes %}
@@ -40,3 +307,323 @@
         </div>
     </div>
     {% endfor %}
+
+    {% elif section == 'music' and artista %}
+    <!-- VISTA DE ARTISTA -->
+    {% set artist_profile = namespace(data=none) %}
+    {% for g in items %}
+        {% if g.is_artist and g.title|lower == artista|lower %}
+            {% set artist_profile.data = g %}
+        {% endif %}
+    {% endfor %}
+
+    <div class="mb-8">
+        {% if artist_profile.data and artist_profile.data.thumbnail %}
+        <div class="artist-hero rounded-2xl overflow-hidden mb-6" 
+             style="background-image: url('{{ artist_profile.data.thumbnail }}')">
+            <div class="artist-info">
+                <h2 class="text-4xl md:text-5xl font-bold">{{ artista }}</h2>
+                {% if artist_profile.data.year %}
+                <p class="text-gray-300 mt-1">Desde {{ artist_profile.data.year }}</p>
+                {% endif %}
+            </div>
+        </div>
+        {% else %}
+        <div class="mb-6">
+            <h2 class="text-4xl font-bold">{{ artista }}</h2>
+        </div>
+        {% endif %}
+
+        {% if artist_profile.data and artist_profile.data.sinopsis %}
+        <div class="mb-8 text-gray-300 text-sm max-w-3xl">
+            {{ artist_profile.data.sinopsis }}
+        </div>
+        {% endif %}
+
+        <!-- Más escuchadas -->
+        <div class="mb-10">
+            <h3 class="text-xl font-bold mb-4">Más escuchadas</h3>
+            <div id="most-played" class="space-y-2">
+                <p class="text-gray-500 text-sm">Reproduce algunas pistas para ver las más escuchadas aquí.</p>
+            </div>
+        </div>
+
+        <!-- Álbumes -->
+        <div class="mb-10">
+            <h3 class="text-xl font-bold mb-4">Álbumes</h3>
+            <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+                {% for series in items %}
+                {% if not series.is_artist and series.episodes|length > 3 %}
+                <div class="group relative">
+                    <a href="?section=music&album={{ series.title|urlencode }}&artista={{ artista|urlencode }}">
+                        <div class="aspect-square bg-gray-800 rounded-lg overflow-hidden mb-2 relative">
+                            {% if series.thumbnail %}
+                            <img src="{{ series.thumbnail }}" class="w-full h-full object-cover group-hover:scale-105 transition">
+                            {% else %}
+                            <div class="w-full h-full flex items-center justify-center text-gray-600">♪</div>
+                            {% endif %}
+                        </div>
+                    </a>
+                    <button onclick="playAlbum({{ series.episodes|tojson }}, '{{ series.artista or artista|e }}', '{{ series.thumbnail or '' }}')"
+                            class="absolute bottom-16 right-2 w-12 h-12 rounded-full bg-green-500 text-black flex items-center justify-center opacity-0 group-hover:opacity-100 transition shadow-lg">
+                        ▶
+                    </button>
+                    <p class="font-medium text-sm truncate">{{ series.title }}</p>
+                    <p class="text-xs text-gray-400">{{ series.year or 'Álbum' }}</p>
+                </div>
+                {% endif %}
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- Sencillos y EP -->
+        <div class="mb-10">
+            <h3 class="text-xl font-bold mb-4">Sencillos y EP</h3>
+            <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+                {% for series in items %}
+                {% if not series.is_artist and series.episodes|length <= 3 %}
+                <div class="group relative">
+                    <a href="?section=music&album={{ series.title|urlencode }}&artista={{ artista|urlencode }}">
+                        <div class="aspect-square bg-gray-800 rounded-lg overflow-hidden mb-2 relative">
+                            {% if series.thumbnail %}
+                            <img src="{{ series.thumbnail }}" class="w-full h-full object-cover group-hover:scale-105 transition">
+                            {% else %}
+                            <div class="w-full h-full flex items-center justify-center text-gray-600">♪</div>
+                            {% endif %}
+                        </div>
+                    </a>
+                    <button onclick="playAlbum({{ series.episodes|tojson }}, '{{ series.artista or artista|e }}', '{{ series.thumbnail or '' }}')"
+                            class="absolute bottom-16 right-2 w-12 h-12 rounded-full bg-green-500 text-black flex items-center justify-center opacity-0 group-hover:opacity-100 transition shadow-lg">
+                        ▶
+                    </button>
+                    <p class="font-medium text-sm truncate">{{ series.title }}</p>
+                    <p class="text-xs text-gray-400">Sencillo / EP</p>
+                </div>
+                {% endif %}
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    {% else %}
+    <!-- VISTA NORMAL -->
+    <div class="space-y-8">
+        {% for series in items %}
+        <div class="card rounded-2xl overflow-hidden" data-group="{{ series.title|e }}">
+            
+            {% if series.is_artist %}
+            <a href="?section=music&artista={{ series.title|urlencode }}&view=artists" class="block">
+                <div class="cursor-pointer bg-black relative">
+                    {% if series.thumbnail %}
+                    <img src="{{ series.thumbnail }}" class="poster" alt="{{ series.title }}">
+                    {% else %}
+                    <div class="poster flex items-center justify-center text-gray-600 bg-gray-900">Sin imagen</div>
+                    {% endif %}
+                </div>
+                <div class="p-5">
+                    <h2 class="text-xl md:text-2xl font-bold mb-1">{{ series.title }}</h2>
+                    <div class="text-sm text-gray-400 mb-2">
+                        {% if series.year %}<span>{{ series.year }}</span>{% endif %}
+                    </div>
+                    {% if series.genero %}
+                    <p class="text-sm text-green-400">{{ series.genero }}</p>
+                    {% endif %}
+                    {% if series.sinopsis %}
+                    <p class="text-sm text-gray-400 mt-2 line-clamp-2">{{ series.sinopsis }}</p>
+                    {% endif %}
+                    <p class="text-sm mt-3 text-green-500">Ver música →</p>
+                </div>
+            </a>
+            {% else %}
+            <div class="cursor-pointer bg-black relative"
+                 {% if series.thumbnail %}onclick="openLightbox(event, '{{ series.thumbnail }}')"{% endif %}>
+                {% if series.thumbnail %}
+                <img src="{{ series.thumbnail }}" class="poster" alt="{{ series.title }}">
+                {% else %}
+                <div class="poster flex items-center justify-center text-gray-600 bg-gray-900">Sin imagen</div>
+                {% endif %}
+            </div>
+            <div class="p-5">
+                <h2 class="text-xl md:text-2xl font-bold mb-1">{{ series.title }}</h2>
+                <div class="text-sm text-gray-400 mb-3">
+                    {% if series.year %}<span>{{ series.year }}</span>{% endif %}
+                    {% if series.artista %}<span class="text-green-400">{{ series.artista }}</span>{% endif %}
+                </div>
+                <p class="text-sm text-gray-500">Contenido disponible</p>
+            </div>
+            {% endif %}
+        </div>
+        {% else %}
+        <div class="text-center py-20 text-gray-500">No se encontraron resultados</div>
+        {% endfor %}
+    </div>
+    {% endif %}
+</div>
+
+<div id="lightbox" class="lightbox" onclick="closeLightbox()">
+    <img id="lightbox-img" src="" alt="">
+</div>
+
+<div id="player-bar">
+    <div class="h-full px-4 flex items-center gap-3">
+        <img id="cover-mini" class="w-12 h-12 rounded object-cover bg-gray-800 flex-shrink-0">
+        <div class="flex-1 min-w-0">
+            <p id="title-mini" class="text-sm font-medium truncate">—</p>
+            <div class="flex items-center gap-2 mt-1">
+                <span id="current-time" class="text-xs text-gray-400 w-9">0:00</span>
+                <input type="range" id="progress" class="progress-bar flex-1" value="0" min="0" max="1000">
+                <span id="total-time" class="text-xs text-gray-400 w-9 text-right">0:00</span>
+            </div>
+        </div>
+        <div class="flex items-center gap-3">
+            <button onclick="prevTrack()" class="text-gray-400 hover:text-white text-xl">⏮</button>
+            <button onclick="togglePlay()" id="btn-play" class="w-10 h-10 rounded-full flex items-center justify-center text-black text-lg" style="background: var(--accent)">▶</button>
+            <button onclick="nextTrack()" class="text-gray-400 hover:text-white text-xl">⏭</button>
+        </div>
+    </div>
+</div>
+
+<audio id="audio" preload="metadata"></audio>
+
+<script>
+    const audio = document.getElementById('audio');
+    const playerBar = document.getElementById('player-bar');
+    const progress = document.getElementById('progress');
+    let isSeeking = false;
+    let currentPlaylist = [];
+    let currentIndex = -1;
+
+    function getPlayCounts() {
+        return JSON.parse(localStorage.getItem('playCounts') || '{}');
+    }
+    function savePlayCounts(counts) {
+        localStorage.setItem('playCounts', JSON.stringify(counts));
+    }
+
+    function playAlbum(episodes, artist, cover) {
+        if (!episodes || episodes.length === 0) return;
+        currentPlaylist = episodes.map(ep => ({
+            id: ep.id,
+            title: ep.title,
+            artist: artist,
+            cover: ep.thumbnail || cover || '',
+            element: null
+        }));
+        currentIndex = 0;
+        const t = currentPlaylist[0];
+        playTrack(t.id, t.title, t.artist, t.cover);
+    }
+
+    function playTrackFromElement(el) {
+        const id = el.dataset.id;
+        const title = el.dataset.title;
+        const artist = el.dataset.artist;
+        const cover = el.dataset.cover;
+
+        const album = el.closest('[id^="album-"]');
+        if (album) {
+            currentPlaylist = Array.from(album.querySelectorAll('.track-row')).map(row => ({
+                id: row.dataset.id,
+                title: row.dataset.title,
+                artist: row.dataset.artist,
+                cover: row.dataset.cover,
+                element: row
+            }));
+            currentIndex = currentPlaylist.findIndex(t => t.id === id);
+        } else {
+            currentPlaylist = [{ id, title, artist, cover, element: el }];
+            currentIndex = 0;
+        }
+
+        const counts = getPlayCounts();
+        counts[id] = (counts[id] || 0) + 1;
+        savePlayCounts(counts);
+
+        playTrack(id, title, artist, cover);
+        updateMostPlayed();
+    }
+
+    function playTrack(id, title, artist, cover) {
+        audio.src = `/stream/${id}`;
+        document.getElementById('title-mini').textContent = title;
+        document.getElementById('cover-mini').src = cover || '';
+        playerBar.style.display = 'block';
+        document.body.classList.add('has-player');
+        audio.play();
+        document.getElementById('btn-play').textContent = '⏸';
+    }
+
+    function updateMostPlayed() {
+        const container = document.getElementById('most-played');
+        if (!container) return;
+        const counts = getPlayCounts();
+        const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 5);
+        if (sorted.length === 0) return;
+
+        container.innerHTML = sorted.map(([id, count]) => `
+            <div class="flex items-center gap-3 bg-black/30 rounded-xl px-3 py-2">
+                <span class="text-gray-400 w-6">${count}×</span>
+                <span class="text-sm">Pista ID ${id}</span>
+            </div>
+        `).join('');
+    }
+
+    function nextTrack() {
+        if (currentPlaylist.length === 0) return;
+        currentIndex = (currentIndex + 1) % currentPlaylist.length;
+        const t = currentPlaylist[currentIndex];
+        playTrack(t.id, t.title, t.artist, t.cover);
+    }
+
+    function prevTrack() {
+        if (currentPlaylist.length === 0) return;
+        currentIndex = (currentIndex - 1 + currentPlaylist.length) % currentPlaylist.length;
+        const t = currentPlaylist[currentIndex];
+        playTrack(t.id, t.title, t.artist, t.cover);
+    }
+
+    function togglePlay() {
+        if (audio.paused) {
+            audio.play();
+            document.getElementById('btn-play').textContent = '⏸';
+        } else {
+            audio.pause();
+            document.getElementById('btn-play').textContent = '▶';
+        }
+    }
+
+    progress.addEventListener('pointerdown', () => isSeeking = true);
+    progress.addEventListener('pointerup', () => {
+        if (audio.duration) audio.currentTime = (progress.value / 1000) * audio.duration;
+        isSeeking = false;
+    });
+
+    function formatTime(s) {
+        if (!s || isNaN(s)) return "0:00";
+        const m = Math.floor(s / 60);
+        const sec = Math.floor(s % 60);
+        return `${m}:${sec.toString().padStart(2,'0')}`;
+    }
+
+    audio.addEventListener('timeupdate', () => {
+        if (isSeeking || !audio.duration) return;
+        progress.value = (audio.currentTime / audio.duration) * 1000;
+        document.getElementById('current-time').textContent = formatTime(audio.currentTime);
+        document.getElementById('total-time').textContent = formatTime(audio.duration);
+    });
+
+    audio.addEventListener('ended', () => nextTrack());
+
+    function openLightbox(e, src) {
+        e.preventDefault();
+        document.getElementById('lightbox-img').src = src;
+        document.getElementById('lightbox').classList.add('active');
+    }
+    function closeLightbox() {
+        document.getElementById('lightbox').classList.remove('active');
+    }
+
+    document.addEventListener('DOMContentLoaded', updateMostPlayed);
+</script>
+</body>
+</html>

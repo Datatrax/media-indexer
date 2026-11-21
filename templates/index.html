@@ -287,7 +287,7 @@
         <a href="?section=music&album={{ series.title|urlencode }}&artista={{ (series.artista or artista)|urlencode }}">
             <div class="aspect-square bg-gray-800 rounded-lg overflow-hidden mb-2 relative">
                 {% if series.thumbnail %}
-                <img src="{{ series.thumbnail }}" class="w-full h-full object-cover group-hover:scale-105 transition" alt="">
+                <img src="{{ series.thumbnail }}" loading="lazy" decoding="async" class="w-full h-full object-cover group-hover:scale-105 transition" alt="">
                 {% else %}
                 <div class="w-full h-full flex items-center justify-center text-gray-600 text-3xl">♪</div>
                 {% endif %}
@@ -314,7 +314,7 @@
 
         <div class="flex flex-col md:flex-row gap-6 mb-8">
             {% if series.thumbnail %}
-            <img src="{{ series.thumbnail }}" class="album-cover w-48 h-48 rounded-lg object-cover flex-shrink-0 cursor-zoom-in"
+            <img src="{{ series.thumbnail }}" loading="lazy" decoding="async" class="album-cover w-48 h-48 rounded-lg object-cover flex-shrink-0 cursor-zoom-in"
                  onclick="openLightbox(event, this.src)" alt="">
             {% endif %}
             <div class="min-w-0">
@@ -433,7 +433,7 @@
             <a href="?section=music&artista={{ series.title|urlencode }}&view=artists" class="block">
                 <div class="cursor-pointer bg-black relative">
                     {% if series.thumbnail %}
-                    <img src="{{ series.thumbnail }}" class="poster" alt="{{ series.title }}">
+                    <img src="{{ series.thumbnail }}" loading="lazy" decoding="async" class="poster" alt="{{ series.title }}">
                     {% else %}
                     <div class="poster flex items-center justify-center text-gray-600 bg-gray-900">Sin imagen</div>
                     {% endif %}
@@ -452,7 +452,7 @@
             <div class="bg-black relative {{ 'cursor-zoom-in' if series.thumbnail else '' }}"
                  {% if series.thumbnail %}onclick="openLightbox(event, this.querySelector('img').src)"{% endif %}>
                 {% if series.thumbnail %}
-                <img src="{{ series.thumbnail }}" class="poster" alt="{{ series.title }}">
+                <img src="{{ series.thumbnail }}" loading="lazy" decoding="async" class="poster" alt="{{ series.title }}">
                 {% else %}
                 <div class="poster flex items-center justify-center text-gray-600 bg-gray-900">Sin imagen</div>
                 {% endif %}

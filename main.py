@@ -6,8 +6,9 @@ import zipfile
 from io import BytesIO
 from typing import Dict, Any, List, Optional
 from collections import defaultdict
+from urllib.parse import urlencode
 
-from telethon import TelegramClient
+from telethon import TelegramClient, events
 from telethon.sessions import StringSession
 from telethon.tl.types import MessageMediaDocument, MessageMediaPhoto
 
@@ -27,6 +28,7 @@ SESSION_STRING = os.getenv("SESSION_STRING")
 ADMIN_USER = os.getenv("ADMIN_USER", "admin")
 ADMIN_PASS = os.getenv("ADMIN_PASS", "cambia_esta_password")
 ITEMS_PER_PAGE = 12
+STREAM_CHUNK = 512 * 1024  # múltiplo de 4096 y divisor de 1 MB (requisito de Telegram)
 
 app = FastAPI(title="Biblioteca de Prozac")
 templates = Jinja2Templates(directory="templates")
@@ -54,51 +56,82 @@ def clean_text(text: str) -> str:
     return re.sub(r'\s+', ' ', str(text)).strip()
 
 
+FIELD_MAP = {
+    "tipo": "tipo", "type": "tipo",
+    "artista": "artista", "artist": "artista", "banda": "artista", "band": "artista",
+    "intérprete": "artista", "interprete": "artista",
+    "álbum": "album", "album": "album", "disco": "album", "nombre del álbum": "album", "nombre del album": "album",
+    "nombre": "nombre", "title": "nombre", "título": "nombre", "titulo": "nombre",
+    "año": "year", "ano": "year", "year": "year", "fecha": "year", "lanzamiento": "year",
+    "release": "year", "fecha de lanzamiento": "year", "año de lanzamiento": "year", "desde": "year",
+    "género": "genero", "genero": "genero", "genre": "genero", "géneros": "genero", "generos": "genero",
+    "genres": "genero", "estilo": "genero",
+    "estudio": "estudio", "studio": "estudio",
+    "sello": "label", "label": "label", "discográfica": "label", "discografica": "label", "disquera": "label",
+    "productor": "productor", "producer": "productor",
+    "precuela": "precuela", "prequel": "precuela",
+    "secuela": "secuela", "sequel": "secuela",
+}
+BIO_KEYS = {"sinopsis", "descripción", "descripcion", "biografía", "biografia", "bio", "biography",
+            "about", "reseña", "resena", "description"}
+
+
+def norm_key(k: str) -> str:
+    k = re.sub(r"[*_`~]", "", k.strip().lower())
+    k = re.sub(r"^[^\w]+", "", k)   # emojis, viñetas, ">" de las citas de Telegram
+    return re.sub(r"[^\w]+$", "", k)
+
+
 def parse_caption(caption: str) -> Dict[str, str]:
-    info = {}
+    info: Dict[str, str] = {}
     if not caption:
         return info
 
-    lines = [line.strip() for line in caption.split('\n') if line.strip()]
-    free_text = []
+    bio: List[str] = []
+    free: List[str] = []
+    capturing = False
 
-    for line in lines:
-        if ':' in line and len(line.split(':', 1)[0].strip()) < 30:
-            key, val = [x.strip() for x in line.split(':', 1)]
-            key = key.lower()
-            if not val:
-                continue
-            if key in ['tipo', 'type']:
-                info['tipo'] = val.lower()
-            elif key in ['artista', 'artist']:
-                info['artista'] = val
-            elif key in ['álbum', 'album', 'disco', 'nombre']:
-                info['album'] = val
-            elif key in ['año', 'year', 'fecha']:
-                info['year'] = val
-            elif key in ['género', 'genero', 'genre', 'géneros', 'generos']:
-                info['genero'] = val
-            elif key in ['estudio', 'studio']:
-                info['estudio'] = val
-            elif key in ['sello', 'label']:
-                info['label'] = val
-            elif key in ['productor', 'producer']:
-                info['productor'] = val
-            elif key in ['precuela', 'prequel']:
-                info['precuela'] = val
-            elif key in ['secuela', 'sequel']:
-                info['secuela'] = val
-            elif key in ['sinopsis', 'descripción', 'descripcion']:
-                info['sinopsis'] = val
-        elif len(line) > 30:
-            free_text.append(line)
+    for raw in caption.replace("\r", "").split("\n"):
+        line = re.sub(r"[*_`~]", "", raw).strip()
+        if not line:
+            continue
 
-    if 'sinopsis' not in info and free_text:
-        info['sinopsis'] = "\n".join(free_text)
+        key = None
+        val = ""
+        if ":" in line:
+            k, v = line.split(":", 1)
+            k = norm_key(k)
+            if len(k) < 30 and (k in FIELD_MAP or k in BIO_KEYS):
+                key, val = k, v.strip()
 
-    year_match = re.search(r'\b(19|20)\d{2}\b', caption)
-    if year_match and 'year' not in info:
-        info['year'] = year_match.group(0)
+        if key:
+            if key in BIO_KEYS:
+                bio = [val] if val else []
+                capturing = True
+            else:
+                capturing = False
+                field = FIELD_MAP[key]
+                if field == "year":
+                    m = re.search(r"(?:19|20)\d{2}", val)
+                    val = m.group(0) if m else val
+                if val and field not in info:
+                    info[field] = val.lower() if field == "tipo" else val
+            continue
+
+        text = re.sub(r"^[>\s]+", "", line)
+        if capturing:
+            bio.append(text)
+        elif len(text) > 30:
+            free.append(text)
+
+    text = "\n".join(bio) if bio else "\n".join(free)
+    if text:
+        info["sinopsis"] = text
+
+    if "year" not in info:
+        m = re.search(r"\b(19|20)\d{2}\b", caption)
+        if m:
+            info["year"] = m.group(0)
 
     return info
 
@@ -118,7 +151,7 @@ def classify(filename: str, mime: str, size: int, caption: str, parsed: Dict) ->
     if any(fname.endswith(ext) for ext in ['.mp3', '.flac', '.m4a', '.wav', '.ogg']) or (mime and mime.startswith('audio/')):
         return 'music'
 
-    if mime.startswith('image/') and (parsed.get('album') or parsed.get('artista')):
+    if mime.startswith('image/') and (parsed.get('album') or parsed.get('nombre') or parsed.get('artista')):
         return 'music'
 
     if re.search(r's\d{1,2}e\d{1,3}|temporada\s*\d+|season\s*\d+', fname + " " + cap, re.I):
@@ -159,15 +192,38 @@ def extract_info(msg) -> Optional[Dict[str, Any]]:
     parsed = parse_caption(caption)
     category = classify(filename, mime, size, caption, parsed)
 
+    is_artist = "artista" in (parsed.get("tipo") or "")
+    nombre = parsed.pop("nombre", None)
+
     title = re.sub(r'\.[a-z0-9]{2,5}$', '', filename, flags=re.I)
     title = clean_text(title)
 
-    if '–' in title or ' - ' in title:
-        parts = re.split(r'\s*[–-]\s*', title, maxsplit=1)
-        if len(parts) == 2:
-            if not parsed.get('artista'):
-                parsed['artista'] = parts[0].strip()
-            title = parts[1].strip()
+    if category == "music":
+        if is_artist:
+            if nombre and not parsed.get("artista"):
+                parsed["artista"] = nombre
+        elif is_photo:
+            if nombre and not parsed.get("album"):
+                parsed["album"] = nombre
+        else:
+            # pista de audio: "01 - Artista - Álbum - 02 - Canción", "Artista - Canción", "01. Canción"...
+            parts = [p.strip() for p in re.split(r'\s+[–-]\s+', title) if p.strip()]
+            parts = [re.sub(r'^\d{1,3}\s*[.)_-]\s*', '', p).strip() or p for p in parts]
+            parts = [p for p in parts if not re.fullmatch(r'\d{1,3}', p)]
+            if len(parts) >= 3:
+                parsed.setdefault('artista', parts[0])
+                parsed.setdefault('album', parts[1])
+                title = parts[-1]
+            elif len(parts) == 2:
+                parsed.setdefault('artista', parts[0])
+                title = parts[1]
+            elif parts:
+                title = parts[0]
+            if nombre:
+                title = nombre
+    else:
+        if nombre and not parsed.get("album"):
+            parsed["album"] = nombre   # las series/películas se agrupan por "Nombre"
 
     info = {
         "id": msg.id,
@@ -183,9 +239,12 @@ def extract_info(msg) -> Optional[Dict[str, Any]]:
         "duration_str": f"{duration // 60}:{duration % 60:02d}" if duration else "",
         "caption": caption,
         "is_photo": is_photo,
-        "is_artist": "artista" in (parsed.get("tipo") or "").lower(),
+        "is_artist": is_artist,
         **parsed
     }
+
+    if category == "music":
+        return info
 
     part_match = re.search(r'part[\s\._-]*(\d+)', filename + " " + caption, re.I)
     if part_match and category == "movies":
@@ -242,7 +301,70 @@ def normalize_title(title: str) -> str:
     return t
 
 
+def slug(text: str) -> str:
+    t = (text or "").lower()
+    t = re.sub(r"[\(\[\{].*?[\)\]\}]", "", t)
+    t = re.sub(r"[^\w\s]", " ", t)
+    return re.sub(r"\s+", " ", t).strip()
+
+
+def same_artist(a: str, b: str) -> bool:
+    if not a or not b:
+        return True
+    na, nb = slug(a), slug(b)
+    return na == nb or na in nb or nb in na
+
+
+MUSIC_INHERIT = ["artista", "year", "genero", "label", "productor", "sinopsis"]
+
+
+def link_music() -> None:
+    """Enlaza pistas sueltas con su álbum: usa la portada (foto con Álbum/Artista)
+    publicada justo antes y, si no hay, el único álbum de ese artista."""
+    items = [i for cat in catalog.values() for i in cat]
+    ordered = sorted(items, key=lambda x: x["id"])
+    covers = [i for i in ordered if i.get("is_photo") and i["category"] == "music"
+              and not i.get("is_artist") and i.get("album")]
+
+    def inherit(track, cover):
+        track["album"] = cover["album"]
+        track["_cover"] = cover["id"]
+        for f in MUSIC_INHERIT:
+            if not track.get(f) and cover.get(f):
+                track[f] = cover[f]
+
+    ctx = None
+    for it in ordered:
+        if it.get("is_photo"):
+            ctx = it if (it["category"] == "music" and not it.get("is_artist") and it.get("album")) else None
+            continue
+        if it["category"] != "music":
+            ctx = None
+            continue
+        if it.get("album"):
+            continue
+        if ctx and same_artist(it.get("artista"), ctx.get("artista")):
+            inherit(it, ctx)
+
+    for it in ordered:
+        if it.get("is_photo") or it["category"] != "music" or it.get("album") or not it.get("artista"):
+            continue
+        matches = {slug(c["album"]): c for c in covers
+                   if c.get("artista") and same_artist(it["artista"], c["artista"])}
+        if len(matches) == 1:
+            inherit(it, next(iter(matches.values())))
+
+    # portada sin artista -> toma el de sus pistas
+    for c in covers:
+        if not c.get("artista"):
+            for it in ordered:
+                if it.get("_cover") == c["id"] and it.get("artista"):
+                    c["artista"] = it["artista"]
+                    break
+
+
 def build_groups():
+    link_music()
     groups = defaultdict(lambda: {
         "title": "",
         "normalized": "",
@@ -251,6 +373,7 @@ def build_groups():
         "seasons": defaultdict(list),
         "ovas": [],
         "parts": [],
+        "playlist": [],
         "year": None,
         "genero": None,
         "estudio": None,
@@ -270,37 +393,33 @@ def build_groups():
     for cat in ["movies", "series", "music", "other"]:
         for item in catalog[cat]:
             if item.get("is_artist"):
-                artist = clean_text(item.get("artista") or "").lower()
-                if artist:
-                    key = f"artist::{artist}"
-                    display = item.get("artista")
-                else:
+                artist = clean_text(item.get("artista") or "")
+                if not artist:
                     continue
-            elif cat == "music" and item.get("is_photo"):
-                artist = clean_text(item.get("artista") or "").lower()
-                album = clean_text(item.get("album") or "").lower()
-                if artist and album:
-                    key = f"music::{artist}::{album}"
-                else:
+                key = f"artist::{slug(artist)}"
+                display = artist
+            elif cat == "music":
+                album = clean_text(item.get("album") or "")
+                artist = clean_text(item.get("artista") or "")
+                if album:
+                    key = f"music::{slug(album)}"
+                    display = album
+                elif item.get("is_photo"):
                     continue
+                elif artist:
+                    key = f"music::{slug(artist)}::sencillos"
+                    display = "Sencillos"
+                else:
+                    key = f"music::{slug(item.get('title', ''))}"
+                    display = item.get("title")
             else:
-                if cat == "music":
-                    artist = clean_text(item.get("artista") or "").lower()
-                    album = clean_text(item.get("album") or "").lower()
-                    if artist and album:
-                        key = f"music::{artist}::{album}"
-                        display = item.get("album") or item.get("title")
-                    else:
-                        key = f"music::{normalize_title(item.get('title', ''))}"
-                        display = item.get("title")
+                nombre = clean_text(item.get("album") or "")
+                if nombre:
+                    key = normalize_title(nombre)
+                    display = nombre
                 else:
-                    nombre = clean_text(item.get("album") or "")
-                    if nombre:
-                        key = normalize_title(nombre)
-                        display = nombre
-                    else:
-                        key = f"single::{item['id']}"
-                        display = item.get("title") or item.get("filename")
+                    key = f"single::{item['id']}"
+                    display = item.get("title") or item.get("filename")
 
             g = groups[key]
             g["normalized"] = key
@@ -351,16 +470,43 @@ def build_groups():
             continue
         if g["final_category"] == "music":
             g["episodes"].sort(key=lambda x: x.get("id", 0))
+            # lista compacta para el reproductor (sin miniaturas base64)
+            g["playlist"] = [{"id": e["id"], "title": e["title"],
+                              "artist": e.get("artista") or g.get("artista") or ""} for e in g["episodes"]]
         else:
             sorted_seasons = dict(sorted(g["seasons"].items()))
             g["seasons"] = sorted_seasons
-            for s in g["seasons"]:
-                g["seasons"][s].sort(key=lambda x: x.get("episode") or 0)
+            for sn in g["seasons"]:
+                g["seasons"][sn].sort(key=lambda x: x.get("episode") or 0)
             g["ovas"].sort(key=lambda x: x.get("episode") or 0)
             g["parts"].sort(key=lambda x: x.get("episode") or 0)
+            g["episodes"].sort(key=lambda x: (x.get("season") or 0, x.get("episode") or 0, x.get("id", 0)))
         result.append(g)
 
     return result
+
+
+def add_synthetic_artists(groups: List[Dict]) -> List[Dict]:
+    """Artistas que tienen álbumes pero no tienen mensaje de perfil: se crean al vuelo."""
+    existing = {slug(g["title"]) for g in groups if g.get("is_artist")}
+    extra: Dict[str, Dict] = {}
+    for g in groups:
+        if g.get("is_artist") or g["final_category"] != "music":
+            continue
+        name = clean_text(g.get("artista") or "")
+        if not name or slug(name) in existing:
+            continue
+        e = extra.setdefault(slug(name), {
+            "title": name, "is_artist": True, "synthetic": True, "final_category": "",
+            "thumbnail": g.get("thumbnail"), "year": None, "genero": g.get("genero"),
+            "sinopsis": None, "latest_date": g.get("latest_date") or "", "total_size": 0,
+            "episodes": [], "playlist": [],
+        })
+        if not e["thumbnail"] and g.get("thumbnail"):
+            e["thumbnail"] = g["thumbnail"]
+        if (g.get("latest_date") or "") > e["latest_date"]:
+            e["latest_date"] = g["latest_date"]
+    return groups + list(extra.values())
 
 
 def get_filters_from_groups(groups: List[Dict], section: str):
@@ -433,6 +579,10 @@ async def startup_event():
     await client.start()
     await reindex()
 
+    @client.on(events.NewMessage(chats=CHANNEL_ID))
+    async def handler(event):
+        await process_message(event.message)
+
 
 @app.get("/", response_class=HTMLResponse)
 async def index(
@@ -449,16 +599,25 @@ async def index(
     view: str = "artists",
     username: str = Depends(verify_credentials)
 ):
-    groups = build_groups()
+    groups = add_synthetic_artists(build_groups())
+    music_albums = [g for g in groups if g["final_category"] == "music" and not g.get("is_artist")]
+    artist_profile = None
 
     if section == "music" and album:
-        items = [g for g in groups if g["final_category"] == "music" and not g.get("is_artist") and album.lower() in (g.get("title") or "").lower()]
+        items = [g for g in music_albums if slug(g.get("title")) == slug(album)]
+        if not items:
+            items = [g for g in music_albums if album.lower() in (g.get("title") or "").lower()]
+        if artista:
+            narrowed = [g for g in items if same_artist(g.get("artista"), artista)]
+            items = narrowed or items
     elif section == "music" and view == "artists" and not artista:
         items = [g for g in groups if g.get("is_artist")]
     elif section == "music":
-        items = [g for g in groups if g["final_category"] == "music" and not g.get("is_artist")]
+        items = music_albums
         if artista:
-            items = [g for g in items if artista.lower() in (g.get("artista") or "").lower()]
+            exact = [g for g in items if slug(g.get("artista")) == slug(artista)]
+            items = exact or [g for g in items if artista.lower() in (g.get("artista") or "").lower()]
+            artist_profile = next((g for g in groups if g.get("is_artist") and slug(g["title"]) == slug(artista)), None)
     elif section == "movies":
         items = [g for g in groups if g["final_category"] == "movies"]
     else:
@@ -486,26 +645,46 @@ async def index(
 
     filters = get_filters_from_groups(groups, section)
     total = len(items)
-    start = (page - 1) * ITEMS_PER_PAGE
-    page_items = items[start:start + ITEMS_PER_PAGE]
-    total_pages = max(1, (total + ITEMS_PER_PAGE - 1) // ITEMS_PER_PAGE)
+
+    # En la vista de artista / álbum se muestra todo junto (sin paginar)
+    paginate = not (section == "music" and (artista or album))
+    page = max(1, page)
+    if paginate:
+        start = (page - 1) * ITEMS_PER_PAGE
+        page_items = items[start:start + ITEMS_PER_PAGE]
+    else:
+        page_items = items
+    total_pages = max(1, (total + ITEMS_PER_PAGE - 1) // ITEMS_PER_PAGE) if paginate else 1
+
+    albums_list, eps_list = [], []
+    if section == "music" and artista and not album:
+        albums_list = [g for g in page_items if len(g["episodes"]) > 3]
+        eps_list = [g for g in page_items if len(g["episodes"]) <= 3]
 
     counts = {
         "series": sum(1 for g in groups if g["final_category"] == "series"),
         "movies": sum(1 for g in groups if g["final_category"] == "movies"),
-        "music": sum(1 for g in groups if g["final_category"] == "music" and not g.get("is_artist")),
+        "music": len(music_albums),
         "artists": sum(1 for g in groups if g.get("is_artist")),
     }
+
+    qs = urlencode({k: v for k, v in {
+        "section": section, "view": view, "q": q, "sort": sort, "year": year,
+        "genero": genero, "estudio": estudio, "artista": artista}.items() if v})
 
     return templates.TemplateResponse("index.html", {
         "request": request,
         "items": page_items,
+        "albums_list": albums_list,
+        "eps_list": eps_list,
+        "artist_profile": artist_profile,
         "total": sum(len(v) for v in catalog.values()),
         "counts": counts,
         "section": section,
         "q": q,
         "page": page,
         "total_pages": total_pages,
+        "qs": qs,
         "all_years": filters["years"],
         "all_genres": filters["genres"],
         "all_studios": filters["labels"] if section == "music" else filters["studios"],
@@ -520,47 +699,70 @@ async def index(
     })
 
 
+def parse_range(header: str, size: int):
+    m = re.match(r"bytes=(\d*)-(\d*)\s*$", header or "")
+    if not m or (m.group(1) == "" and m.group(2) == ""):
+        return None
+    s_, e_ = m.groups()
+    if s_ == "":
+        start = max(0, size - int(e_))
+        end = size - 1
+    else:
+        start = int(s_)
+        end = int(e_) if e_ else size - 1
+    end = min(end, size - 1)
+    if start >= size or start > end:
+        raise HTTPException(status_code=416, detail="Rango inválido",
+                            headers={"Content-Range": f"bytes */{size}"})
+    return start, end
+
+
 @app.get("/stream/{msg_id}")
 async def stream_file(msg_id: int, request: Request, username: str = Depends(verify_credentials)):
-    try:
-        msg = await client.get_messages(CHANNEL_ID, ids=msg_id)
-        if not msg or not msg.media:
-            raise HTTPException(404)
-        file_size = getattr(msg.media.document, 'size', 0) if hasattr(msg.media, 'document') else 0
-        mime = getattr(msg.media.document, 'mime_type', 'application/octet-stream') if hasattr(msg.media, 'document') else "application/octet-stream"
-        filename = "file"
-        for attr in getattr(msg.media.document, 'attributes', []):
-            if hasattr(attr, 'file_name') and attr.file_name:
-                filename = attr.file_name
+    msg = await client.get_messages(CHANNEL_ID, ids=msg_id)
+    if not msg or not getattr(msg, "document", None):
+        raise HTTPException(status_code=404, detail="Archivo no encontrado")
+
+    doc = msg.document
+    size = doc.size or 0
+    mime = doc.mime_type or "application/octet-stream"
+    filename = "file"
+    for attr in doc.attributes:
+        if hasattr(attr, "file_name") and attr.file_name:
+            filename = attr.file_name
+            break
+
+    start, end, code = 0, max(size - 1, 0), 200
+    rng = parse_range(request.headers.get("range"), size) if size else None
+    if rng:
+        start, end = rng
+        code = 206
+    length = end - start + 1 if size else 0
+
+    async def body():
+        remaining = length
+        aligned = start - (start % STREAM_CHUNK)
+        skip = start - aligned
+        async for chunk in client.iter_download(msg.media, offset=aligned, request_size=STREAM_CHUNK):
+            if skip:
+                chunk = chunk[skip:]
+                skip = 0
+            if len(chunk) > remaining:
+                chunk = chunk[:remaining]
+            remaining -= len(chunk)
+            if chunk:
+                yield chunk
+            if remaining <= 0:
                 break
 
-        range_header = request.headers.get("range")
-        if range_header and file_size:
-            m = re.search(r'bytes=(\d+)-(\d*)', range_header)
-            start = int(m.group(1)) if m else 0
-            end = int(m.group(2)) if m and m.group(2) else file_size - 1
-            end = min(end, file_size - 1)
-            length = end - start + 1
-
-            async def ranged():
-                async for chunk in client.iter_download(msg.media, offset=start, limit=length):
-                    yield chunk
-            return StreamingResponse(ranged(), status_code=206, media_type=mime, headers={
-                "Content-Range": f"bytes {start}-{end}/{file_size}",
-                "Accept-Ranges": "bytes",
-                "Content-Length": str(length),
-            })
-
-        async def full():
-            async for chunk in client.iter_download(msg.media):
-                yield chunk
-        return StreamingResponse(full(), media_type=mime, headers={
-            "Content-Disposition": f'inline; filename="{filename}"',
-            "Accept-Ranges": "bytes",
-            "Content-Length": str(file_size) if file_size else "0",
-        })
-    except Exception as e:
-        raise HTTPException(500, str(e))
+    headers = {
+        "Accept-Ranges": "bytes",
+        "Content-Length": str(length),
+        "Content-Disposition": f'inline; filename="{filename}"',
+    }
+    if code == 206:
+        headers["Content-Range"] = f"bytes {start}-{end}/{size}"
+    return StreamingResponse(body(), status_code=code, media_type=mime, headers=headers)
 
 
 @app.get("/download-album")

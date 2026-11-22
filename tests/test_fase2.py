@@ -176,6 +176,35 @@ def test_templates_render_every_view():
         assert "JSZip" in read.render(item={"id": 1, "title": "One Piece"}, ext="cbz", key="")
 
 
+
+def test_similar_albums():
+    from groups import similar_albums
+    def alb(key, title, artist, genres, year):
+        return {"key": key, "title": title, "artista": artist, "genero": genres, "year": year}
+    oshin = alb("m::oshin", "Oshin", "DIIV", "dream pop, shoegaze", "2012")
+    albums = [oshin,
+              alb("m::deceiver", "Deceiver", "DIIV", "indie rock", "2019"),
+              alb("m::boiled", "Boiled Alive", "DIIV", "", "2022"),
+              alb("m::souvlaki", "Souvlaki", "Slowdive", "shoegaze, dream pop", "1993"),
+              alb("m::depression", "Depression Cherry", "Beach House", "dream pop", "2015"),
+              alb("m::wall", "The Wall", "Pink Floyd", "progressive rock", "1979"),
+              alb("m::master", "Master of Puppets", "Metallica", "thrash metal", "1986"),
+              alb("m::loveless", "Loveless", "My Bloody Valentine", "noise pop", "1991"),
+              alb("m::pet", "Pet Sounds", "The Beach Boys", "pop", "1966")]
+    same, other = similar_albums(oshin, albums, {"slowdive": "shoegaze"})
+    assert [a["title"] for a in same] == ["Boiled Alive", "Deceiver"]          # mismo artista, más nuevo primero
+    titles = [a["title"] for a in other]
+    assert titles[:2] == ["Souvlaki", "Depression Cherry"]                     # mismos géneros primero
+    assert "Master of Puppets" not in titles and "The Wall" not in titles and "Oshin" not in titles
+    assert "Pet Sounds" not in titles                                          # una palabra suelta ("pop") no basta
+
+
+def test_playlist_has_album_name():
+    with tempfile.TemporaryDirectory() as tmp:
+        g = by_title(lib_with(tmp))
+        assert g["Oshin"]["playlist"][0]["album"] == "Oshin"
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):

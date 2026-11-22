@@ -5,6 +5,7 @@ from typing import Dict, List
 from urllib.parse import quote_plus
 
 from captions import clean_text, CATEGORIES, parse_caption, podcast_fields
+from search import fold
 
 
 def clean_series_title(raw: str) -> str:
@@ -265,7 +266,7 @@ def build_groups(items: List[Dict]) -> List[Dict]:
         if fc in ("music", "podcasts", "photos"):
             g["episodes"].sort(key=lambda x: (x.get("episode") if fc == "podcasts" and x.get("episode") is not None else 10 ** 6, x.get("id", 0)) if fc == "podcasts" else x.get("id", 0))
             if fc != "photos":   # lista compacta para el reproductor
-                g["playlist"] = [{"id": e["id"], "title": e["title"],
+                g["playlist"] = [{"id": e["id"], "title": e["title"], "album": g.get("title") or "",
                                   "artist": e.get("artista") or e.get("autor") or g.get("artista") or g.get("autor") or ""}
                                  for e in g["episodes"]]
         elif fc in ("books", "comics"):
@@ -365,3 +366,65 @@ def continue_list(by_key: Dict[str, Dict], seen: Dict[int, tuple], limit: int = 
         if len(out) >= limit:
             break
     return out
+
+
+# ---------------------------------------------------------------- álbumes parecidos
+def _genre_set(value) -> set:
+    return {fold(x) for x in re.split(r"[,;/]", value or "") if fold(x)}
+
+
+def similar_albums(target: Dict, albums: List[Dict], artist_genres: Dict[str, str] = None, limit: int = 8):
+    """Mini algoritmo de recomendación para la página de un álbum.
+    Devuelve (mismo_artista, parecidos). Puntúa por: mismo artista, géneros en común, géneros que suelen
+    aparecer juntos en tu biblioteca (p. ej. 'dream pop' y 'shoegaze'), palabras en común entre géneros
+    ('indie pop' ~ 'synth pop') y cercanía de año. Si un álbum no tiene géneros usa los de su artista."""
+    artist_genres = artist_genres or {}
+
+    def genres_of(a: Dict) -> set:
+        return _genre_set(a.get("genero")) or _genre_set(artist_genres.get(slug(a.get("artista") or "")))
+
+    co: Dict[tuple, int] = defaultdict(int)
+    count: Dict[str, int] = defaultdict(int)
+    for a in albums:
+        s = genres_of(a)
+        for x in s:
+            count[x] += 1
+            for y in s:
+                if x < y:
+                    co[(x, y)] += 1
+
+    def related(x: str, y: str) -> float:
+        c = co.get((x, y) if x < y else (y, x), 0)
+        return c / min(count[x], count[y]) if c else 0.0
+
+    def year(a):
+        try:
+            return int(str(a.get("year"))[:4])
+        except (TypeError, ValueError):
+            return None
+
+    target_genres = genres_of(target)
+    target_artist = slug(target.get("artista") or "")
+    same, others = [], []
+    for a in albums:
+        if a.get("key") == target.get("key"):
+            continue
+        if target_artist and slug(a.get("artista") or "") == target_artist:
+            same.append(a)
+            continue
+        ag = genres_of(a)
+        score = 3.0 * len(target_genres & ag)
+        extra_t, extra_a = target_genres - ag, ag - target_genres
+        for x in extra_t:
+            score += 1.5 * max((related(x, y) for y in extra_a), default=0.0)
+            score += 1.0 * max((len(set(x.split()) & set(y.split())) / max(len(x.split()), len(y.split()))
+                                for y in extra_a), default=0.0)
+        ty, ay = year(target), year(a)
+        if score > 0 and ty and ay and abs(ty - ay) <= 3:
+            score += 0.5
+        if score >= 1.0:
+            others.append((score, a))
+
+    same.sort(key=lambda a: (year(a) or 0), reverse=True)
+    others.sort(key=lambda t: (-t[0], (t[1].get("title") or "").lower()))
+    return same[:limit], [a for _, a in others[:limit]]

@@ -18,7 +18,7 @@ import tg
 from config import (ADMIN_USER, ADMIN_PASS, AUTO_META, CHANNEL_ID, DB_PATH, FULL_SYNC, TMDB_API_KEY,
                     ITEMS_PER_PAGE, THUMB_DIR)
 from db import Database
-from groups import slug, same_artist, get_filters_from_groups, continue_list
+from groups import slug, same_artist, get_filters_from_groups, continue_list, similar_albums
 from library import Library
 from meta import enrich_pending
 from search import search as fuzzy_search
@@ -171,6 +171,11 @@ async def index(
     page_items = items[(page - 1) * ITEMS_PER_PAGE:page * ITEMS_PER_PAGE] if paginate else items
     total_pages = max(1, (total + ITEMS_PER_PAGE - 1) // ITEMS_PER_PAGE) if paginate else 1
 
+    similar_same, similar_other = [], []
+    if section == "music" and album and len(items) == 1:
+        artist_genres = {slug(x["title"]): x.get("genero") for x in groups if x.get("is_artist") and x.get("genero")}
+        similar_same, similar_other = similar_albums(items[0], music_albums, artist_genres)
+
     albums_list, eps_list = [], []
     if section == "music" and artista and not album:
         albums_list = [g for g in page_items if len(g["episodes"]) > 3]
@@ -185,6 +190,8 @@ async def index(
         "items": page_items,
         "albums_list": albums_list,
         "eps_list": eps_list,
+        "similar_same": similar_same,
+        "similar_other": similar_other,
         "artist_profile": artist_profile,
         "total": library.total,
         "found": total,

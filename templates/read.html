@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ item.title }} · Lector</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    {% if ext == 'epub' %}<script src="https://cdnjs.cloudflare.com/ajax/libs/epub.js/0.3.93/epub.min.js"></script>{% endif %}
+    <style>
+        * { box-sizing: border-box; }
+        html, body { height: 100%; margin: 0; background: #111; color: #eee; font-family: system-ui, sans-serif; }
+        #bar { height: 48px; display: flex; align-items: center; gap: 12px; padding: 0 12px; background: #000; border-bottom: 1px solid #222; }
+        #bar .title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; }
+        button { background: #222; color: #eee; border: 0; border-radius: 8px; padding: 8px 14px; font-size: 14px; cursor: pointer; }
+        button:hover { background: #333; }
+        #status { font-size: 12px; color: #999; }
+        #viewer { height: calc(100% - 48px); overflow: auto; background: #fff; }
+        #comic { height: calc(100% - 48px); overflow: auto; text-align: center; background: #111; }
+        #comic img { max-width: 100%; height: auto; display: block; margin: 0 auto; }
+    </style>
+</head>
+<body>
+<div id="bar">
+    <button onclick="history.length > 1 ? history.back() : window.close()">← Volver</button>
+    <div class="title">{{ item.title }}</div>
+    <span id="status">Cargando…</span>
+    <button id="prev">◀</button>
+    <button id="next">▶</button>
+</div>
+{% if ext == 'epub' %}<div id="viewer"></div>{% else %}<div id="comic"><img id="page" alt=""></div>{% endif %}
+
+<script>
+    const ID = {{ item.id }};
+    const KEY = {{ key|tojson }};
+    const status = document.getElementById('status');
+    if (KEY) fetch('/api/seen', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: ID, key: KEY }), keepalive: true }).catch(() => {});
+
+    {% if ext == 'epub' %}
+    const book = ePub('/stream/' + ID, { openAs: 'epub' });
+    const rendition = book.renderTo('viewer', { width: '100%', height: '100%', flow: 'paginated', spread: 'auto' });
+    rendition.display().then(() => { status.textContent = ''; }).catch(() => { status.textContent = 'No se pudo abrir este EPUB'; });
+    document.getElementById('prev').onclick = () => rendition.prev();
+    document.getElementById('next').onclick = () => rendition.next();
+    document.addEventListener('keydown', (e) => { if (e.key === 'ArrowLeft') rendition.prev(); if (e.key === 'ArrowRight') rendition.next(); });
+    {% else %}
+    // CBZ = zip de imágenes: se descarga completo en el navegador y se muestra página por página
+    let pages = [], current = 0;
+    const img = document.getElementById('page'), box = document.getElementById('comic');
+    async function load() {
+        const resp = await fetch('/stream/' + ID);
+        const total = Number(resp.headers.get('Content-Length')) || 0;
+        const reader = resp.body.getReader();
+        const chunks = []; let got = 0;
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            chunks.push(value); got += value.length;
+            if (total) status.textContent = 'Descargando ' + Math.round(got * 100 / total) + '%';
+        }
+        const zip = await JSZip.loadAsync(new Blob(chunks));
+        pages = Object.keys(zip.files).filter(n => /\.(jpe?g|png|webp|gif)$/i.test(n) && !zip.files[n].dir)
+            .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+        if (!pages.length) { status.textContent = 'No hay imágenes en este archivo'; return; }
+        window.zip = zip;
+        show(0);
+    }
+    async function show(i) {
+        if (i < 0 || i >= pages.length) return;
+        current = i;
+        const blob = await window.zip.files[pages[i]].async('blob');
+        if (img.dataset.url) URL.revokeObjectURL(img.dataset.url);
+        img.dataset.url = URL.createObjectURL(blob);
+        img.src = img.dataset.url;
+        box.scrollTop = 0;
+        status.textContent = (i + 1) + ' / ' + pages.length;
+    }
+    document.getElementById('prev').onclick = () => show(current - 1);
+    document.getElementById('next').onclick = () => show(current + 1);
+    document.addEventListener('keydown', (e) => { if (e.key === 'ArrowLeft') show(current - 1); if (e.key === 'ArrowRight' || e.key === ' ') show(current + 1); });
+    box.addEventListener('click', (e) => { (e.clientX < window.innerWidth / 2) ? show(current - 1) : show(current + 1); });
+    load().catch(() => { status.textContent = 'No se pudo abrir este archivo'; });
+    {% endif %}
+</script>
+</body>
+</html>

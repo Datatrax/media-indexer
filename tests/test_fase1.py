@@ -87,3 +87,19 @@ if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):
             fn(); print("ok", name)
+
+
+def test_series_without_season_goes_to_season_1():
+    with tempfile.TemporaryDirectory() as tmp:
+        lib = Library(Database(Path(tmp) / "c.db"), Path(tmp) / "t")
+        for i in (1, 2, 3):
+            lib.upsert(raw(i, f"High School DxD - 0{i}.mkv", "Nombre: High School DxD\nTipo: Serie", "video/x-matroska"), commit=False)
+        lib.upsert(raw(4, "Extra suelto.mkv", "Nombre: High School DxD\nTipo: Serie", "video/x-matroska"), commit=False)
+        g = next(x for x in lib.groups() if x["title"] == "High School DxD")
+        assert list(g["seasons"]) == [1] and len(g["seasons"][1]) == 3
+        assert len(g["parts"]) == 1   # sin número de capítulo: "Otros archivos"
+
+
+def test_season_from_caption():
+    info = extract_info(raw(9, "Show - 05.mkv", "Nombre: Show\nTipo: Serie\nTemporada: 2", "video/x-matroska"))
+    assert info["season"] == 2 and info["episode"] == 5

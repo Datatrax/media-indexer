@@ -2,181 +2,359 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Biblioteca de Prozac</title>
+    <script>try { if (localStorage.getItem('theme') === 'light') document.documentElement.classList.add('light'); } catch (e) {}</script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600..800&display=swap" rel="stylesheet">
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         :root {
-            --accent: #a855f7;
-            --bg: #0c0a14;
-            --card: #16131f;
-            --border: #2e2a3d;
+            --accent: #a855f7; --on-accent: #16081f;
+            --bg: #0c0a14; --card: #16131f; --border: #2e2a3d;
+            --text: #f3f0fa; --dim: #a39cba; --faint: #756f8b;
+            --panel: rgba(255,255,255,.05); --panel-hover: rgba(255,255,255,.10);
+            --input: #100d19; --glow: rgba(168,85,247,.16);
         }
-        body.section-music {
-            --accent: #1db954;
-            --bg: #0a0a0a;
-            --card: #121212;
-            --border: #282828;
+        html.light {
+            --bg: #f5f3fa; --card: #ffffff; --border: #e3dcf0;
+            --text: #1c1630; --dim: #5b5373; --faint: #8b84a1;
+            --panel: rgba(90,70,160,.07); --panel-hover: rgba(90,70,160,.14);
+            --input: #ffffff; --glow: rgba(168,85,247,.10);
         }
-        body.section-movies {
-            --accent: #f59e0b;
+        body.sec-movies   { --accent: #f59e0b; --glow: rgba(245,158,11,.14); }
+        body.sec-docs     { --accent: #14b8a6; --glow: rgba(20,184,166,.14); }
+        body.sec-music    { --accent: #22c55e; --glow: rgba(34,197,94,.15); }
+        body.sec-podcasts { --accent: #f43f5e; --glow: rgba(244,63,94,.14); }
+        body.sec-books    { --accent: #38bdf8; --glow: rgba(56,189,248,.14); }
+        body.sec-comics   { --accent: #fb923c; --glow: rgba(251,146,60,.14); }
+        body.sec-photos   { --accent: #ec4899; --glow: rgba(236,72,153,.14); }
+        body.sec-favs     { --accent: #eab308; --glow: rgba(234,179,8,.14); }
+
+        body {
+            background-color: var(--bg);
+            background-image: radial-gradient(900px 480px at 8% -8%, var(--glow), transparent 62%);
+            background-attachment: fixed; background-repeat: no-repeat;
+            color: var(--text); min-height: 100vh;
         }
-        body { background-color: var(--bg); }
+        .dim { color: var(--dim); } .faint { color: var(--faint); }
+        .panel { background: var(--panel); } .panel-h:hover { background: var(--panel-hover); }
+        .input { background: var(--input); border: 1px solid var(--border); color: var(--text); }
+        .hline { border-color: var(--border); }
         .card { background-color: var(--card); border: 1px solid var(--border); }
 
-        details > summary { list-style: none; }
+        .pill { background: var(--panel); color: var(--dim); transition: background .15s; white-space: nowrap; }
+        .pill:hover { background: var(--panel-hover); }
+        .pill.active { background: var(--accent); color: var(--on-accent); font-weight: 600; }
+        .btn-accent { background: var(--accent); color: var(--on-accent); }
+        .chip { background: rgba(168,85,247,.16); background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--accent); }
+
+        .brand {
+            font-family: 'Fraunces', Georgia, 'Times New Roman', serif; font-weight: 700;
+            letter-spacing: .01em; line-height: 1.1;
+            background: linear-gradient(90deg, var(--accent), #f472b6);
+            -webkit-background-clip: text; background-clip: text; color: transparent;
+        }
+
+        details > summary { list-style: none; cursor: pointer; }
         details > summary::-webkit-details-marker { display: none; }
+        .season-arrow { display: inline-block; transition: transform .15s ease; font-size: .7em; font-family: "Segoe UI Symbol", "Noto Sans Symbols", sans-serif; }
+        details[open] > summary .season-arrow { transform: rotate(90deg); }
 
-        .season-arrow {
-            display: inline-block;
-            transition: transform 0.15s ease;
-            font-size: 0.7em;
-        }
-        details[open] > summary .season-arrow {
-            transform: rotate(90deg);
-        }
+        .fav-btn { font-size: 1.5rem; line-height: 1; color: var(--faint); padding: .25rem .4rem; }
+        .fav-btn:hover { color: #facc15; }
+        .fav-btn.on { color: #facc15; }
+        .seen { opacity: .55; }
+        .seen-mark { display: none; color: var(--accent); }
+        .seen .seen-mark { display: inline; }
 
-        .lightbox {
-            display: none;
-            position: fixed;
-            inset: 0;
-            background: rgba(0,0,0,0.93);
-            z-index: 9999;
-            justify-content: center;
-            align-items: center;
-            cursor: zoom-out;
-        }
+        .poster { width: 100%; height: 280px; object-fit: cover; display: block; }
+        @media (min-width: 768px) { .poster { height: 320px; } }
+        .hrow { display: flex; gap: 1rem; overflow-x: auto; padding-bottom: .5rem; scroll-snap-type: x proximity; }
+        .hrow > * { scroll-snap-align: start; }
+        .photo-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: .5rem; }
+        .photo { aspect-ratio: 1; object-fit: cover; width: 100%; border-radius: .5rem; cursor: zoom-in; }
+
+        .artist-hero { height: 320px; background-size: cover; background-position: center; position: relative; }
+        .artist-hero::after { content: ''; position: absolute; inset: 0; background: linear-gradient(to bottom, rgba(0,0,0,.2), rgba(0,0,0,.85)); }
+        .artist-info { position: absolute; bottom: 24px; left: 24px; right: 24px; z-index: 2; color: #fff; }
+
+        .lightbox { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.93); z-index: 9999; justify-content: center; align-items: center; cursor: zoom-out; }
         .lightbox.active { display: flex; }
-        .lightbox img {
-            max-width: 92vw;
-            max-height: 85vh;
-            object-fit: contain;
-            border-radius: 8px;
-        }
+        .lightbox img { max-width: 94vw; max-height: 88vh; object-fit: contain; border-radius: 8px; }
 
-        #player-bar {
-            position: fixed;
-            bottom: 0;
-            left: 0;
-            right: 0;
-            height: 84px;
-            background: #000;
-            border-top: 1px solid #222;
-            z-index: 1000;
-            display: none;
-        }
+        #player-bar { position: fixed; bottom: 0; left: 0; right: 0; height: 84px; background: #000; color: #fff; border-top: 1px solid #222; z-index: 1000; display: none; }
         body.has-player { padding-bottom: 100px; }
+        .progress-bar { -webkit-appearance: none; appearance: none; height: 4px; background: #333; border-radius: 2px; outline: none; cursor: pointer; }
+        .progress-bar::-webkit-slider-thumb { -webkit-appearance: none; width: 12px; height: 12px; background: var(--accent); border-radius: 50%; cursor: pointer; }
+        .progress-bar::-moz-range-thumb { width: 12px; height: 12px; background: var(--accent); border: 0; border-radius: 50%; cursor: pointer; }
 
-        .progress-bar {
-            -webkit-appearance: none;
-            appearance: none;
-            height: 4px;
-            background: #333;
-            border-radius: 2px;
-            outline: none;
-            cursor: pointer;
-        }
-        .progress-bar::-webkit-slider-thumb {
-            -webkit-appearance: none;
-            width: 12px;
-            height: 12px;
-            background: var(--accent);
-            border-radius: 50%;
-            cursor: pointer;
-        }
-
-        .track-playing {
-            background-color: rgba(29, 185, 84, 0.18) !important;
-            outline: 1px solid rgba(29, 185, 84, 0.45);
-        }
+        .track-playing { background-color: rgba(34,197,94,.18) !important; outline: 1px solid rgba(34,197,94,.45); }
         .album-btn.is-on { opacity: 1 !important; }
-        .chip { background: rgba(168,85,247,.16); color: #d8b4fe; }
-        body.section-music .chip { background: rgba(29,185,84,.16); color: #86efac; }
-        body.section-movies .chip { background: rgba(245,158,11,.16); color: #fcd34d; }
-
-        .poster {
-            width: 100%;
-            height: 280px;
-            object-fit: cover;
-            object-position: center center;
-            display: block;
-        }
-        @media (min-width: 768px) {
-            .poster { height: 320px; }
-        }
-
-        .artist-hero {
-            height: 320px;
-            background-size: cover;
-            background-position: center;
-            position: relative;
-        }
-        .artist-hero::after {
-            content: '';
-            position: absolute;
-            inset: 0;
-            background: linear-gradient(to bottom, rgba(0,0,0,0.2), rgba(0,0,0,0.85));
-        }
-        .artist-info {
-            position: absolute;
-            bottom: 24px;
-            left: 24px;
-            right: 24px;
-            z-index: 2;
-        }
+        .nav-scroll { scrollbar-width: none; } .nav-scroll::-webkit-scrollbar { display: none; }
     </style>
 </head>
-<body class="text-white min-h-screen 
-    {{ 'section-music' if section == 'music' else '' }}
-    {{ 'section-movies' if section == 'movies' else '' }}">
+<body class="sec-{{ section }}">
+
+{# ============================== MACROS ============================== #}
+{% macro star(g, favs) %}
+<button type="button" class="fav-btn {{ 'on' if g.key in favs else '' }}" data-key="{{ g.key }}" aria-label="Favorito" title="Favorito">{{ '★' if g.key in favs else '☆' }}</button>
+{% endmacro %}
+
+{% macro chips(g) %}
+{% if g.genero %}
+<p class="mb-3">
+    {% for x in g.genero.replace(';', ',').split(',') %}{% if x.strip() %}
+    <a href="?section={{ g.final_category or 'music' }}&genero={{ x.strip()|urlencode }}" class="chip inline-block mr-2 mb-1 px-2.5 py-0.5 rounded-full text-xs">{{ x.strip() }}</a>
+    {% endif %}{% endfor %}
+</p>
+{% endif %}
+{% endmacro %}
+
+{% macro ep_link(ep, g, seen_ids, label=none) %}
+<a href="{{ ep.link }}" target="_blank" rel="noopener" data-seen-id="{{ ep.id }}" data-key="{{ g.key }}"
+   class="panel panel-h flex items-center justify-between px-3 py-2 rounded-lg text-sm {{ 'seen' if ep.id in seen_ids else '' }}">
+    <span class="truncate"><span class="seen-mark">✓ </span>{{ label or ep.title }}</span>
+    <span class="text-xs faint ml-2">{{ ep.size_mb }} MB</span>
+</a>
+{% endmacro %}
+
+{% macro ep_grid(eps, g, seen_ids) %}
+<div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 mt-2">
+    {% for ep in eps %}{{ ep_link(ep, g, seen_ids) }}{% endfor %}
+</div>
+{% endmacro %}
+
+{% macro file_row(ep, g, seen_ids) %}
+<div class="panel rounded-lg px-3 py-2 flex items-center gap-2 text-sm {{ 'seen' if ep.id in seen_ids else '' }}" data-seen-scope data-seen-id="{{ ep.id }}">
+    <span class="flex-1 min-w-0 truncate"><span class="seen-mark">✓ </span>{{ ep.title }} <span class="text-xs faint uppercase">{{ ep.ext }}</span></span>
+    <span class="text-xs faint hidden sm:inline">{{ ep.size_mb }} MB</span>
+    {% if ep.ext in ['pdf', 'epub', 'cbz'] %}
+    <a href="/read/{{ ep.id }}?key={{ g.key|urlencode }}" target="_blank" rel="noopener" data-seen-id="{{ ep.id }}" data-key="{{ g.key }}"
+       class="btn-accent px-3 py-1 rounded-lg text-xs font-semibold">Leer</a>
+    {% endif %}
+    <a href="{{ ep.link }}" target="_blank" rel="noopener" data-seen-id="{{ ep.id }}" data-key="{{ g.key }}" class="pill px-3 py-1 rounded-lg text-xs">Telegram</a>
+</div>
+{% endmacro %}
+
+{% macro mini(g, favs) %}
+<div class="relative flex-shrink-0 w-36 sm:w-40">
+    <a href="{{ g.href }}" class="block">
+        <div class="rounded-xl overflow-hidden panel mb-2" style="aspect-ratio: {{ '1 / 1' if (g.is_artist or g.final_category in ['music', 'podcasts', 'photos']) else '2 / 3' }}">
+            {% if g.thumbnail %}<img src="{{ g.thumbnail }}" loading="lazy" decoding="async" class="w-full h-full object-cover" alt="">
+            {% else %}<div class="w-full h-full flex items-center justify-center faint text-3xl">♪</div>{% endif %}
+        </div>
+        <p class="text-sm font-medium truncate">{{ g.title }}</p>
+        <p class="text-xs faint truncate">{{ g.autor or g.artista or g.year or '' }}</p>
+    </a>
+    <div class="absolute top-1 right-1 rounded-full" style="background: rgba(0,0,0,.45)">{{ star(g, favs) }}</div>
+</div>
+{% endmacro %}
+
+{% macro album_tile(series, artista, favs) %}
+<div class="group relative">
+    <a href="?section=music&album={{ series.title|urlencode }}&artista={{ (series.artista or artista)|urlencode }}">
+        <div class="aspect-square panel rounded-lg overflow-hidden mb-2 relative">
+            {% if series.thumbnail %}<img src="{{ series.thumbnail }}" loading="lazy" decoding="async" class="w-full h-full object-cover group-hover:scale-105 transition" alt="">
+            {% else %}<div class="w-full h-full flex items-center justify-center faint text-3xl">♪</div>{% endif %}
+        </div>
+    </a>
+    <button type="button" class="album-btn btn-accent absolute bottom-16 right-2 w-12 h-12 rounded-full flex items-center justify-center shadow-lg transition opacity-100 md:opacity-0 md:group-hover:opacity-100"
+            data-key="{{ series.normalized }}" data-playlist='{{ series.playlist|tojson }}'><span class="icon">▶&#xFE0E;</span></button>
+    <p class="font-medium text-sm truncate">{{ series.title }}</p>
+    <p class="text-xs dim">{{ series.year or ('Sencillo / EP' if series.episodes|length <= 3 else 'Álbum') }}</p>
+</div>
+{% endmacro %}
+
+{% macro track_rows(g, seen_ids, fallback_artist='') %}
+<div class="space-y-2" data-playlist-root data-key="{{ g.key }}" {% if g.final_category == 'podcasts' %}data-seen="1"{% endif %}>
+    {% for ep in g.episodes %}
+    <div class="track-row panel panel-h flex items-center gap-3 rounded-xl px-3 py-2.5 {{ 'seen' if ep.id in seen_ids else '' }}"
+         data-id="{{ ep.id }}" data-title="{{ ep.title }}" data-artist="{{ ep.artista or ep.autor or g.artista or g.autor or fallback_artist }}">
+        <span class="dim w-6 text-center text-sm">{{ loop.index }}</span>
+        <button type="button" data-id="{{ ep.id }}" class="track-btn btn-accent w-9 h-9 rounded-full flex items-center justify-center font-bold flex-shrink-0">▶&#xFE0E;</button>
+        <div class="flex-1 min-w-0">
+            <p class="font-medium text-sm truncate"><span class="seen-mark">✓ </span>{{ ep.title }}</p>
+            <p class="text-xs faint">{% if ep.duration_str %}{{ ep.duration_str }} · {% endif %}{{ ep.size_mb }} MB</p>
+        </div>
+        <a href="/stream/{{ ep.id }}" download class="pill text-xs px-3 py-1.5 rounded-lg">Descargar</a>
+    </div>
+    {% endfor %}
+</div>
+{% endmacro %}
+
+{# ---- tarjetas por tipo de contenido ---- #}
+{% macro card(g, favs, seen_ids) %}
+<div class="card rounded-2xl overflow-hidden">
+{% if g.is_artist %}
+    <div class="relative">
+        <a href="{{ g.href }}" class="block">
+            {% if g.thumbnail %}<img src="{{ g.thumbnail }}" loading="lazy" decoding="async" class="poster" alt="{{ g.title }}">
+            {% else %}<div class="poster flex items-center justify-center faint panel">Sin imagen</div>{% endif %}
+            <div class="p-5">
+                <h2 class="text-xl md:text-2xl font-bold mb-1">{{ g.title }}</h2>
+                <div class="text-sm dim mb-2">{% if g.year %}{{ g.year }}{% endif %}</div>
+                {% if g.genero %}<p class="text-sm" style="color: var(--accent)">{{ g.genero }}</p>{% endif %}
+                {% if g.sinopsis %}<p class="text-sm dim mt-2" style="display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">{{ g.sinopsis }}</p>{% endif %}
+                <p class="text-sm mt-3" style="color: var(--accent)">Ver música →</p>
+            </div>
+        </a>
+        <div class="absolute top-2 right-2 rounded-full" style="background: rgba(0,0,0,.45)">{{ star(g, favs) }}</div>
+    </div>
+
+{% elif g.final_category == 'photos' %}
+    {% set photos = g.episodes|selectattr('thumbnail')|list %}
+    <div class="p-5">
+        <div class="flex items-start justify-between gap-2 mb-3">
+            <div class="min-w-0">
+                <h2 class="text-xl font-bold truncate">{{ g.title }}</h2>
+                <p class="text-sm dim">{{ g.episodes|length }} fotos{% if g.year %} · {{ g.year }}{% endif %}</p>
+            </div>
+            {{ star(g, favs) }}
+        </div>
+        <div class="photo-grid">
+            {% for ph in photos[:8] %}<img src="{{ ph.thumbnail }}" loading="lazy" decoding="async" class="photo" onclick="openLightbox(event, this.src)" alt="">{% endfor %}
+        </div>
+        {% if photos|length > 8 %}
+        <details class="mt-3">
+            <summary class="text-sm dim hover:opacity-80"><span class="season-arrow">▶&#xFE0E;</span> Ver {{ photos|length - 8 }} más</summary>
+            <div class="photo-grid mt-3">
+                {% for ph in photos[8:] %}<img src="{{ ph.thumbnail }}" loading="lazy" decoding="async" class="photo" onclick="openLightbox(event, this.src)" alt="">{% endfor %}
+            </div>
+        </details>
+        {% endif %}
+    </div>
+
+{% elif g.final_category in ['podcasts', 'music'] or g.final_category in ['books', 'comics'] %}
+    <div class="flex">
+        <div class="w-28 sm:w-40 flex-shrink-0 panel">
+            {% if g.thumbnail %}<img src="{{ g.thumbnail }}" loading="lazy" decoding="async" class="cover-img w-full h-full object-cover" style="aspect-ratio: {{ '2 / 3' if g.final_category in ['books', 'comics'] else '1 / 1' }}; min-height: 100%" alt="" onclick="openLightbox(event, this.src)">
+            {% else %}<div class="w-full h-full flex items-center justify-center faint text-3xl" style="aspect-ratio: {{ '2 / 3' if g.final_category in ['books', 'comics'] else '1 / 1' }}">{{ '♪' if g.final_category in ['podcasts', 'music'] else '▤' }}</div>{% endif %}
+        </div>
+        <div class="flex-1 p-4 min-w-0">
+            <div class="flex items-start justify-between gap-2">
+                <div class="min-w-0">
+                    <h2 class="text-lg sm:text-xl font-bold">{{ g.title }}</h2>
+                    <p class="text-sm dim mb-2">{{ g.autor or g.artista or '' }}{% if (g.autor or g.artista) and g.year %} · {% endif %}{{ g.year or '' }}{% if g.auto_meta %} <span class="text-xs faint">· datos automáticos</span>{% endif %}</p>
+                </div>
+                {{ star(g, favs) }}
+            </div>
+            {{ chips(g) }}
+            {% if g.sinopsis %}
+            <details class="mb-3">
+                <summary class="text-sm dim hover:opacity-80"><span class="season-arrow">▶&#xFE0E;</span> Ver ficha completa</summary>
+                <div class="panel mt-2 text-sm p-3 rounded-xl whitespace-pre-line">{{ g.sinopsis }}</div>
+            </details>
+            {% endif %}
+
+            {% if g.final_category == 'music' %}
+                <div class="flex gap-2 items-center">
+                    <a href="{{ g.href }}" class="btn-accent px-4 py-2 rounded-full text-sm font-semibold">Abrir álbum</a>
+                    <button type="button" class="album-btn btn-accent px-4 py-2 rounded-full text-sm font-semibold flex items-center gap-2" data-key="{{ g.normalized }}" data-playlist='{{ g.playlist|tojson }}'><span class="icon">▶&#xFE0E;</span><span class="label">Reproducir</span></button>
+                </div>
+            {% elif g.final_category == 'podcasts' %}
+                <button type="button" class="album-btn btn-accent px-4 py-2 rounded-full text-sm font-semibold flex items-center gap-2 mb-3" data-key="{{ g.key }}" data-seen="1" data-playlist='{{ g.playlist|tojson }}'><span class="icon">▶&#xFE0E;</span><span class="label">Reproducir</span></button>
+                <details {% if g.episodes|length <= 3 %}open{% endif %}>
+                    <summary class="text-sm font-semibold dim"><span class="season-arrow">▶&#xFE0E;</span> Episodios ({{ g.episodes|length }})</summary>
+                    <div class="mt-2 max-h-96 overflow-y-auto">{{ track_rows(g, seen_ids) }}</div>
+                </details>
+            {% else %}
+                <details {% if g.episodes|length <= 3 %}open{% endif %}>
+                    <summary class="text-sm font-semibold dim"><span class="season-arrow">▶&#xFE0E;</span> {{ 'Tomos y capítulos' if g.final_category == 'comics' else 'Archivos' }} ({{ g.episodes|length }})</summary>
+                    <div class="mt-2 space-y-2 max-h-96 overflow-y-auto">
+                        {% for ep in g.episodes %}{{ file_row(ep, g, seen_ids) }}{% endfor %}
+                    </div>
+                </details>
+            {% endif %}
+        </div>
+    </div>
+
+{% else %}
+    <div class="relative {{ 'cursor-zoom-in' if g.thumbnail else '' }}" {% if g.thumbnail %}onclick="openLightbox(event, this.querySelector('img').src)"{% endif %}>
+        {% if g.thumbnail %}<img src="{{ g.thumbnail }}" loading="lazy" decoding="async" class="poster" alt="{{ g.title }}">
+        {% else %}<div class="poster flex items-center justify-center faint panel">Sin imagen</div>{% endif %}
+    </div>
+    <div class="p-5">
+        <div class="flex items-start justify-between gap-2">
+            <h2 class="text-xl md:text-2xl font-bold mb-1">{{ g.title }}</h2>
+            {{ star(g, favs) }}
+        </div>
+        <div class="text-sm dim mb-3 flex flex-wrap gap-x-3">
+            {% if g.year %}<span>{{ g.year }}</span>{% endif %}
+            {% if g.estudio %}<span>{{ g.estudio }}</span>{% endif %}
+            {% if g.auto_meta %}<span class="faint">· datos automáticos</span>{% endif %}
+        </div>
+        {{ chips(g) }}
+        {% if g.sinopsis %}
+        <details class="mb-4">
+            <summary class="text-sm dim hover:opacity-80"><span class="season-arrow">▶&#xFE0E;</span> Ver ficha completa</summary>
+            <div class="panel mt-3 text-sm p-4 rounded-xl whitespace-pre-line">{{ g.sinopsis }}</div>
+        </details>
+        {% endif %}
+
+        <div class="border-t hline pt-4">
+            {% if g.final_category in ['series', 'docs'] %}
+                {% set n_sections = g.seasons|length + (1 if g.ovas else 0) + (1 if g.parts else 0) %}
+                {% for s, eps in g.seasons.items() %}
+                <details class="mb-2" {% if n_sections == 1 %}open{% endif %}>
+                    <summary class="text-sm font-semibold dim"><span class="season-arrow">▶&#xFE0E;</span> Temporada {{ s }} ({{ eps|length }})</summary>
+                    {{ ep_grid(eps, g, seen_ids) }}
+                </details>
+                {% endfor %}
+                {% if g.ovas %}
+                <details class="mb-2" {% if n_sections == 1 %}open{% endif %}>
+                    <summary class="text-sm font-semibold dim"><span class="season-arrow">▶&#xFE0E;</span> OVAs / Especiales ({{ g.ovas|length }})</summary>
+                    {{ ep_grid(g.ovas, g, seen_ids) }}
+                </details>
+                {% endif %}
+                {% if g.parts %}
+                <details class="mb-2" {% if n_sections == 1 %}open{% endif %}>
+                    <summary class="text-sm font-semibold dim"><span class="season-arrow">▶&#xFE0E;</span> Otros archivos ({{ g.parts|length }})</summary>
+                    {{ ep_grid(g.parts, g, seen_ids) }}
+                </details>
+                {% endif %}
+            {% else %}
+                <h3 class="text-sm font-semibold dim">Archivos ({{ g.episodes|length }})</h3>
+                {{ ep_grid(g.episodes, g, seen_ids) }}
+            {% endif %}
+        </div>
+    </div>
+{% endif %}
+</div>
+{% endmacro %}
+
+{# ============================== PÁGINA ============================== #}
+<button id="theme-btn" type="button" class="fixed top-3 right-3 z-50 w-10 h-10 rounded-full pill text-lg flex items-center justify-center" aria-label="Cambiar tema" title="Cambiar tema">☾&#xFE0E;</button>
 
 <div class="container mx-auto px-4 py-6 max-w-5xl">
 
-    <!-- Header -->
-    <div class="mb-8">
-        <h1 class="text-3xl md:text-4xl font-bold mb-5">Biblioteca de Prozac</h1>
-
-        <div class="flex flex-wrap gap-3 mb-5">
-            <a href="?section=series&sort={{ sort }}"
-               class="px-5 py-2.5 rounded-full text-sm font-semibold transition
-               {{ 'bg-purple-600 text-white' if section == 'series' else 'bg-gray-800 text-gray-300 hover:bg-gray-700' }}">
-                Series
+    <div class="mb-6 text-center">
+        <h1 class="brand text-4xl md:text-6xl mb-6"><a href="?section=home">Biblioteca de Prozac</a></h1>
+        <nav class="nav-scroll flex gap-2 overflow-x-auto md:flex-wrap md:justify-center pb-2 -mx-4 px-4 md:mx-0 md:px-0">
+            {% for n in nav %}
+            <a href="?section={{ n.key }}{% if n.key == 'music' %}&view=artists{% endif %}"
+               class="pill {{ 'active' if section == n.key else '' }} px-4 py-2 rounded-full text-sm">
+                {{ n.label }}{% if n.count %} <span class="opacity-60 text-xs">{{ n.count }}</span>{% endif %}
             </a>
-            <a href="?section=movies&sort={{ sort }}"
-               class="px-5 py-2.5 rounded-full text-sm font-semibold transition
-               {{ 'bg-amber-500 text-black' if section == 'movies' else 'bg-gray-800 text-gray-300 hover:bg-gray-700' }}">
-                Películas
-            </a>
-            <a href="?section=music&sort={{ sort }}&view=artists"
-               class="px-5 py-2.5 rounded-full text-sm font-semibold transition
-               {{ 'bg-green-500 text-black' if section == 'music' else 'bg-gray-800 text-gray-300 hover:bg-gray-700' }}">
-                Música
-            </a>
-        </div>
-
-        <p class="text-gray-400 text-sm">
-            Total: <span class="text-white">{{ total }}</span> · 
-            Series: {{ counts.series }} · 
-            Películas: {{ counts.movies }} · 
-            Música: {{ counts.music }}
-            {% if counts.artists %} · Artistas: {{ counts.artists }}{% endif %}
-        </p>
+            {% endfor %}
+        </nav>
     </div>
 
-    <!-- Búsqueda + Orden -->
+    {% if section != 'home' %}
+    <!-- Búsqueda + orden -->
     <form method="get" class="mb-6">
         <input type="hidden" name="section" value="{{ section }}">
         <input type="hidden" name="view" value="{{ view }}">
         {% if artista and section != 'music' %}<input type="hidden" name="artista" value="{{ artista }}">{% endif %}
         {% if album %}<input type="hidden" name="album" value="{{ album }}">{% endif %}
-
         <div class="flex gap-3 mb-3">
             <div class="relative flex-1">
-                <input type="text" name="q" value="{{ q }}" placeholder="Buscar..."
-                       class="w-full px-4 py-3.5 rounded-xl bg-black/40 border border-gray-700 text-sm focus:outline-none pl-12">
-                <span class="absolute left-4 top-3.5 text-gray-500">🔍</span>
+                <input type="search" name="q" value="{{ q }}" placeholder="Buscar (sin acentos, aguanta errores)..."
+                       class="input w-full px-4 py-3.5 rounded-xl text-sm focus:outline-none pl-12">
+                <span class="absolute left-4 top-3.5 faint">🔍</span>
             </div>
-            <select name="sort" onchange="this.form.submit()" class="px-4 py-3 rounded-xl bg-gray-900 border border-gray-700 text-sm">
+            <select name="sort" onchange="this.form.submit()" class="input px-3 py-3 rounded-xl text-sm">
                 <option value="title" {{ 'selected' if sort == 'title' else '' }}>Título</option>
                 <option value="date" {{ 'selected' if sort == 'date' else '' }}>Fecha de subida</option>
                 <option value="size" {{ 'selected' if sort == 'size' else '' }}>Tamaño</option>
@@ -184,422 +362,280 @@
             </select>
         </div>
 
-        <details class="bg-black/30 rounded-xl overflow-hidden" {% if year or genero or estudio or artista %}open{% endif %}>
-            <summary class="cursor-pointer px-4 py-3 text-sm font-medium" style="color: var(--accent)">
-                ⚙️ Búsqueda avanzada
-            </summary>
-            <div class="px-4 pb-4 pt-2 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 border-t border-gray-800">
-
+        {% if section != 'favs' %}
+        <details class="panel rounded-xl overflow-hidden" {% if year or genero or estudio or artista %}open{% endif %}>
+            <summary class="px-4 py-3 text-sm font-medium" style="color: var(--accent)">⚙️ Búsqueda avanzada</summary>
+            <div class="px-4 pb-4 pt-2 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 border-t hline">
                 {% if section == 'music' %}
-                    <div>
-                        <label class="block text-xs text-gray-400 mb-1">Artista</label>
-                        <select name="artista" class="w-full px-3 py-2 rounded-lg bg-gray-900 border border-gray-700 text-sm">
-                            <option value="">Todos los artistas</option>
-                            {% for a in all_artists %}
-                            <option value="{{ a }}" {{ 'selected' if artista == a else '' }}>{{ a }}</option>
-                            {% endfor %}
-                        </select>
-                    </div>
-                    <div>
-                        <label class="block text-xs text-gray-400 mb-1">Año</label>
-                        <select name="year" class="w-full px-3 py-2 rounded-lg bg-gray-900 border border-gray-700 text-sm">
-                            <option value="">Todos los años</option>
-                            {% for y in all_years %}
-                            <option value="{{ y }}" {{ 'selected' if year == y|string else '' }}>{{ y }}</option>
-                            {% endfor %}
-                        </select>
-                    </div>
-                    <div>
-                        <label class="block text-xs text-gray-400 mb-1">Género musical</label>
-                        <select name="genero" class="w-full px-3 py-2 rounded-lg bg-gray-900 border border-gray-700 text-sm">
-                            <option value="">Todos los géneros</option>
-                            {% for g in all_genres %}
-                            <option value="{{ g }}" {{ 'selected' if genero == g else '' }}>{{ g }}</option>
-                            {% endfor %}
-                        </select>
-                    </div>
-                    <div>
-                        <label class="block text-xs text-gray-400 mb-1">Sello / Label</label>
-                        <select name="estudio" class="w-full px-3 py-2 rounded-lg bg-gray-900 border border-gray-700 text-sm">
-                            <option value="">Todos</option>
-                            {% for s in all_studios %}
-                            <option value="{{ s }}" {{ 'selected' if estudio == s else '' }}>{{ s }}</option>
-                            {% endfor %}
-                        </select>
-                    </div>
-                {% else %}
-                    <div>
-                        <label class="block text-xs text-gray-400 mb-1">Año</label>
-                        <select name="year" class="w-full px-3 py-2 rounded-lg bg-gray-900 border border-gray-700 text-sm">
-                            <option value="">Todos los años</option>
-                            {% for y in all_years %}
-                            <option value="{{ y }}" {{ 'selected' if year == y|string else '' }}>{{ y }}</option>
-                            {% endfor %}
-                        </select>
-                    </div>
-                    <div>
-                        <label class="block text-xs text-gray-400 mb-1">Género</label>
-                        <select name="genero" class="w-full px-3 py-2 rounded-lg bg-gray-900 border border-gray-700 text-sm">
-                            <option value="">Todos los géneros</option>
-                            {% for g in all_genres %}
-                            <option value="{{ g }}" {{ 'selected' if genero == g else '' }}>{{ g }}</option>
-                            {% endfor %}
-                        </select>
-                    </div>
-                    <div>
-                        <label class="block text-xs text-gray-400 mb-1">Estudio</label>
-                        <select name="estudio" class="w-full px-3 py-2 rounded-lg bg-gray-900 border border-gray-700 text-sm">
-                            <option value="">Todos</option>
-                            {% for s in all_studios %}
-                            <option value="{{ s }}" {{ 'selected' if estudio == s else '' }}>{{ s }}</option>
-                            {% endfor %}
-                        </select>
-                    </div>
+                <div>
+                    <label class="block text-xs dim mb-1">Artista</label>
+                    <select name="artista" class="input w-full px-3 py-2 rounded-lg text-sm">
+                        <option value="">Todos los artistas</option>
+                        {% for a in all_artists %}<option value="{{ a }}" {{ 'selected' if artista == a else '' }}>{{ a }}</option>{% endfor %}
+                    </select>
+                </div>
                 {% endif %}
-
+                <div>
+                    <label class="block text-xs dim mb-1">Año</label>
+                    <select name="year" class="input w-full px-3 py-2 rounded-lg text-sm">
+                        <option value="">Todos los años</option>
+                        {% for y in all_years %}<option value="{{ y }}" {{ 'selected' if year == y|string else '' }}>{{ y }}</option>{% endfor %}
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs dim mb-1">Género</label>
+                    <select name="genero" class="input w-full px-3 py-2 rounded-lg text-sm">
+                        <option value="">Todos los géneros</option>
+                        {% for g in all_genres %}<option value="{{ g }}" {{ 'selected' if genero|lower == g|lower else '' }}>{{ g }}</option>{% endfor %}
+                    </select>
+                </div>
+                {% if section in ['music', 'series', 'movies', 'docs'] %}
+                <div>
+                    <label class="block text-xs dim mb-1">{{ 'Sello' if section == 'music' else 'Estudio' }}</label>
+                    <select name="estudio" class="input w-full px-3 py-2 rounded-lg text-sm">
+                        <option value="">Todos</option>
+                        {% for s in all_studios %}<option value="{{ s }}" {{ 'selected' if estudio == s else '' }}>{{ s }}</option>{% endfor %}
+                    </select>
+                </div>
+                {% endif %}
                 <div class="sm:col-span-2 lg:col-span-4 flex gap-3">
-                    <button type="submit" class="px-5 py-2 rounded-lg text-sm font-medium text-black" style="background: var(--accent)">
-                        Aplicar filtros
-                    </button>
-                    <a href="?section={{ section }}&sort={{ sort }}&view={{ view }}" class="px-5 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-sm">
-                        Limpiar
-                    </a>
+                    <button class="btn-accent px-4 py-2 rounded-lg text-sm font-semibold" type="submit">Aplicar</button>
+                    <a href="?section={{ section }}{% if section == 'music' %}&view=artists{% endif %}" class="pill px-4 py-2 rounded-lg text-sm">Limpiar</a>
                 </div>
             </div>
         </details>
+        {% endif %}
     </form>
+    {% endif %}
 
-    <!-- LISTADO -->
-    {% macro ep_grid(eps) %}
-    <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 mt-2">
-        {% for ep in eps %}
-        <a href="{{ ep.link }}" target="_blank"
-           class="flex items-center justify-between px-3 py-2 bg-black/30 hover:bg-black/50 rounded-lg text-sm">
-            <span class="truncate">{{ ep.title }}</span>
-            <span class="text-xs text-gray-500 ml-2">{{ ep.size_mb }} MB</span>
-        </a>
+    {# ================= INICIO ================= #}
+    {% if section == 'home' %}
+        {% if cont %}
+        <section class="mb-10">
+            <h2 class="text-xl font-bold mb-3">Continuar</h2>
+            <div class="hrow">
+                {% for c in cont %}
+                {% set g = c.group %}{% set ep = c.ep %}
+                <div class="card rounded-xl p-3 flex gap-3 flex-shrink-0 w-72">
+                    <a href="{{ g.href }}" class="w-14 flex-shrink-0 rounded-lg overflow-hidden panel" style="aspect-ratio: 2 / 3">
+                        {% if g.thumbnail %}<img src="{{ g.thumbnail }}" loading="lazy" decoding="async" class="w-full h-full object-cover" alt="">{% endif %}
+                    </a>
+                    <div class="min-w-0 flex-1">
+                        <p class="font-semibold text-sm truncate">{{ g.title }}</p>
+                        <p class="text-xs dim truncate">Siguiente: {{ ep.title }}{% if ep.season and g.final_category in ['series', 'docs'] and g.seasons|length > 1 %} · T{{ ep.season }}{% endif %}</p>
+                        <a href="{% if ep.ext in ['pdf', 'epub', 'cbz'] %}/read/{{ ep.id }}?key={{ g.key|urlencode }}{% else %}{{ ep.link }}{% endif %}" target="_blank" rel="noopener"
+                           data-seen-id="{{ ep.id }}" data-key="{{ g.key }}"
+                           class="btn-accent inline-block mt-2 px-3 py-1 rounded-lg text-xs font-semibold">Seguir</a>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </section>
+        {% endif %}
+
+        {% if fav_groups %}
+        <section class="mb-10">
+            <div class="flex items-baseline justify-between mb-3">
+                <h2 class="text-xl font-bold">Favoritos</h2>
+                <a href="?section=favs" class="text-sm" style="color: var(--accent)">Ver todos →</a>
+            </div>
+            <div class="hrow">{% for g in fav_groups %}{{ mini(g, favs) }}{% endfor %}</div>
+        </section>
+        {% endif %}
+
+        {% for r in recent %}
+        <section class="mb-10">
+            <div class="flex items-baseline justify-between mb-3">
+                <h2 class="text-xl font-bold">{{ r.label }} · agregado recientemente</h2>
+                <a href="?section={{ r.key }}{% if r.key == 'music' %}&view=artists{% endif %}" class="text-sm" style="color: var(--accent)">Ver todo →</a>
+            </div>
+            <div class="hrow">{% for g in r.groups %}{{ mini(g, favs) }}{% endfor %}</div>
+        </section>
+        {% else %}
+        <div class="text-center py-20 faint">Todavía no hay contenido. Si acabas de arrancar el servidor, espera a que termine de sincronizar con Telegram.</div>
         {% endfor %}
-    </div>
-    {% endmacro %}
 
-    {% macro album_tile(series, artista) %}
-    <div class="group relative">
-        <a href="?section=music&album={{ series.title|urlencode }}&artista={{ (series.artista or artista)|urlencode }}">
-            <div class="aspect-square bg-gray-800 rounded-lg overflow-hidden mb-2 relative">
+    {# ================= ÁLBUM ================= #}
+    {% elif section == 'music' and album %}
+        {% for series in items %}
+        {% set back = artista or series.artista %}
+        <div class="album-block mb-10">
+            <a href="{% if back %}?section=music&artista={{ back|urlencode }}&view=artists{% else %}?section=music&view=artists{% endif %}" class="text-sm dim hover:opacity-80 mb-4 inline-block">← Volver{% if back %} a {{ back }}{% endif %}</a>
+            <div class="flex flex-col md:flex-row gap-6 mb-8">
                 {% if series.thumbnail %}
-                <img src="{{ series.thumbnail }}" loading="lazy" decoding="async" class="w-full h-full object-cover group-hover:scale-105 transition" alt="">
-                {% else %}
-                <div class="w-full h-full flex items-center justify-center text-gray-600 text-3xl">♪</div>
+                <img src="{{ series.thumbnail }}" class="album-cover w-48 h-48 rounded-lg object-cover flex-shrink-0 cursor-zoom-in" onclick="openLightbox(event, this.src)" alt="">
                 {% endif %}
+                <div class="min-w-0">
+                    <p class="text-sm dim">Álbum</p>
+                    <div class="flex items-center gap-2"><h2 class="text-3xl md:text-4xl font-bold">{{ series.title }}</h2>{{ star(series, favs) }}</div>
+                    <p class="mt-1">{{ series.artista or artista }}{% if series.year %} · {{ series.year }}{% endif %} · {{ series.episodes|length }} pistas</p>
+                    {% if series.genero or series.label %}<p class="text-sm dim mt-1">{{ series.genero or '' }}{% if series.genero and series.label %} · {% endif %}{{ series.label or '' }}</p>{% endif %}
+                    {% if series.sinopsis %}<p class="text-sm dim mt-3 max-w-2xl whitespace-pre-line">{{ series.sinopsis }}</p>{% endif %}
+                    <button type="button" class="album-btn btn-accent mt-4 px-6 py-3 rounded-full font-bold flex items-center gap-2" data-key="{{ series.normalized }}" data-playlist='{{ series.playlist|tojson }}'>
+                        <span class="icon">▶&#xFE0E;</span><span class="label">Reproducir</span>
+                    </button>
+                </div>
             </div>
-        </a>
-        <button type="button"
-                class="album-btn absolute bottom-16 right-2 w-12 h-12 rounded-full bg-green-500 text-black flex items-center justify-center shadow-lg transition opacity-100 md:opacity-0 md:group-hover:opacity-100"
-                data-key="{{ series.normalized }}"
-                data-playlist='{{ series.playlist|tojson }}'>
-            <span class="icon">▶</span>
-        </button>
-        <p class="font-medium text-sm truncate">{{ series.title }}</p>
-        <p class="text-xs text-gray-400">{{ series.year or ('Sencillo / EP' if series.episodes|length <= 3 else 'Álbum') }}</p>
-    </div>
-    {% endmacro %}
+            {{ track_rows(series, seen_ids, artista) }}
+        </div>
+        {% else %}
+        <div class="text-center py-20 faint">Álbum no encontrado</div>
+        {% endfor %}
 
-    {% if section == 'music' and album %}
-    <!-- ================= VISTA DE ÁLBUM ================= -->
-    {% for series in items %}
-    {% set back = artista or series.artista %}
-    <div class="album-block mb-10">
-        <a href="{% if back %}?section=music&artista={{ back|urlencode }}&view=artists{% else %}?section=music&view=artists{% endif %}"
-           class="text-sm text-gray-400 hover:text-white mb-4 inline-block">← Volver{% if back %} a {{ back }}{% endif %}</a>
-
-        <div class="flex flex-col md:flex-row gap-6 mb-8">
-            {% if series.thumbnail %}
-            <img src="{{ series.thumbnail }}" loading="lazy" decoding="async" class="album-cover w-48 h-48 rounded-lg object-cover flex-shrink-0 cursor-zoom-in"
-                 onclick="openLightbox(event, this.src)" alt="">
+    {# ================= ARTISTA ================= #}
+    {% elif section == 'music' and artista %}
+        <div class="mb-8">
+            <a href="?section=music&view=artists&sort={{ sort }}" class="text-sm dim hover:opacity-80 mb-4 inline-block">← Todos los artistas</a>
+            {% if artist_profile and artist_profile.thumbnail %}
+            <div class="artist-hero rounded-2xl overflow-hidden mb-6" style="background-image: url('{{ artist_profile.thumbnail }}')">
+                <div class="artist-info">
+                    <h2 class="text-4xl md:text-5xl font-bold">{{ artista }}</h2>
+                    {% if artist_profile.year %}<p class="mt-1" style="opacity:.8">Desde {{ artist_profile.year }}</p>{% endif %}
+                </div>
+            </div>
+            {% else %}
+            <div class="mb-6">
+                <h2 class="text-4xl font-bold">{{ artista }}</h2>
+                {% if artist_profile and artist_profile.year %}<p class="dim mt-1">Desde {{ artist_profile.year }}</p>{% endif %}
+            </div>
             {% endif %}
-            <div class="min-w-0">
-                <p class="text-sm text-gray-400">Álbum</p>
-                <h2 class="text-3xl md:text-4xl font-bold">{{ series.title }}</h2>
-                <p class="text-gray-300 mt-1">
-                    {{ series.artista or artista }}{% if series.year %} · {{ series.year }}{% endif %} · {{ series.episodes|length }} pistas
-                </p>
-                {% if series.genero or series.label %}
-                <p class="text-sm text-gray-400 mt-1">{{ series.genero or '' }}{% if series.genero and series.label %} · {% endif %}{{ series.label or '' }}</p>
-                {% endif %}
-                {% if series.sinopsis %}
-                <p class="text-sm text-gray-400 mt-3 max-w-2xl whitespace-pre-line">{{ series.sinopsis }}</p>
-                {% endif %}
-                <button type="button"
-                        class="album-btn mt-4 px-6 py-3 rounded-full bg-green-500 text-black font-bold flex items-center gap-2"
-                        data-key="{{ series.normalized }}"
-                        data-playlist='{{ series.playlist|tojson }}'>
-                    <span class="icon">▶</span><span class="label">Reproducir</span>
-                </button>
+            {% if artist_profile %}<div class="mb-3">{{ star(artist_profile, favs) }} <span class="text-sm dim">Favorito</span></div>{% endif %}
+            {% if artist_profile and artist_profile.genero %}
+            <p class="mb-4">{% for x in artist_profile.genero.replace(';', ',').split(',') %}{% if x.strip() %}<span class="chip inline-block mr-2 mb-1 px-2.5 py-0.5 rounded-full text-xs">{{ x.strip() }}</span>{% endif %}{% endfor %}</p>
+            {% endif %}
+            {% if artist_profile and artist_profile.sinopsis %}
+            <div class="mb-8 dim text-sm max-w-3xl leading-relaxed whitespace-pre-line">{{ artist_profile.sinopsis }}</div>
+            {% endif %}
+
+            <div class="mb-10">
+                <h3 class="text-xl font-bold mb-4">Más escuchadas</h3>
+                <div id="most-played" data-artist="{{ artista }}" class="space-y-2">
+                    <p class="faint text-sm">Reproduce algunas pistas para ver las más escuchadas aquí.</p>
+                </div>
             </div>
+
+            {% if albums_list %}
+            <div class="mb-10"><h3 class="text-xl font-bold mb-4">Álbumes</h3>
+                <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">{% for series in albums_list %}{{ album_tile(series, artista, favs) }}{% endfor %}</div>
+            </div>
+            {% endif %}
+            {% if eps_list %}
+            <div class="mb-10"><h3 class="text-xl font-bold mb-4">Sencillos y EP</h3>
+                <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">{% for series in eps_list %}{{ album_tile(series, artista, favs) }}{% endfor %}</div>
+            </div>
+            {% endif %}
+            {% if not albums_list and not eps_list %}<p class="faint">Este artista todavía no tiene música enlazada.</p>{% endif %}
         </div>
 
-        <div class="space-y-2" data-playlist-root data-key="{{ series.normalized }}">
-            {% for ep in series.episodes %}
-            <div class="track-row flex items-center gap-3 bg-black/30 hover:bg-black/50 rounded-xl px-3 py-2.5"
-                 data-id="{{ ep.id }}"
-                 data-title="{{ ep.title }}"
-                 data-artist="{{ ep.artista or series.artista or artista }}">
-                <span class="text-gray-400 w-6 text-center">{{ loop.index }}</span>
-                <button type="button" data-id="{{ ep.id }}"
-                        class="track-btn w-9 h-9 rounded-full flex items-center justify-center text-black font-bold flex-shrink-0"
-                        style="background: var(--accent)">▶</button>
-                <div class="flex-1 min-w-0">
-                    <p class="font-medium text-sm truncate">{{ ep.title }}</p>
-                    <p class="text-xs text-gray-500">{% if ep.duration_str %}{{ ep.duration_str }} · {% endif %}{{ ep.size_mb }} MB</p>
-                </div>
-                <a href="/stream/{{ ep.id }}" download class="text-xs px-3 py-1.5 bg-gray-800 hover:bg-gray-700 rounded-lg">Descargar</a>
+    {# ================= LISTADOS ================= #}
+    {% else %}
+        <p class="text-xs faint mb-4">{{ found }} resultado{{ '' if found == 1 else 's' }}</p>
+        <div class="space-y-6">
+            {% for g in items %}{{ card(g, favs, seen_ids) }}
+            {% else %}
+            <div class="text-center py-20 faint">
+                {% if section == 'favs' and not q %}Aún no tienes favoritos. Toca ☆ en cualquier tarjeta para guardarlo aquí.{% else %}No se encontraron resultados{% endif %}
             </div>
             {% endfor %}
         </div>
-    </div>
-    {% else %}
-    <div class="text-center py-20 text-gray-500">Álbum no encontrado</div>
-    {% endfor %}
 
-    {% elif section == 'music' and artista %}
-    <!-- ================= VISTA DE ARTISTA ================= -->
-    <div class="mb-8">
-        <a href="?section=music&view=artists&sort={{ sort }}" class="text-sm text-gray-400 hover:text-white mb-4 inline-block">← Todos los artistas</a>
-
-        {% if artist_profile and artist_profile.thumbnail %}
-        <div class="artist-hero rounded-2xl overflow-hidden mb-6"
-             style="background-image: url('{{ artist_profile.thumbnail }}')">
-            <div class="artist-info">
-                <h2 class="text-4xl md:text-5xl font-bold">{{ artista }}</h2>
-                {% if artist_profile.year %}<p class="text-gray-300 mt-1">Desde {{ artist_profile.year }}</p>{% endif %}
-            </div>
-        </div>
-        {% else %}
-        <div class="mb-6">
-            <h2 class="text-4xl font-bold">{{ artista }}</h2>
-            {% if artist_profile and artist_profile.year %}<p class="text-gray-400 mt-1">Desde {{ artist_profile.year }}</p>{% endif %}
+        {% if total_pages > 1 %}
+        <div class="flex items-center justify-center gap-3 mt-8 text-sm">
+            {% if page > 1 %}<a href="?{{ qs }}&page={{ page - 1 }}" class="pill px-4 py-2 rounded-full">← Anterior</a>{% endif %}
+            <span class="dim">Página {{ page }} de {{ total_pages }}</span>
+            {% if page < total_pages %}<a href="?{{ qs }}&page={{ page + 1 }}" class="pill px-4 py-2 rounded-full">Siguiente →</a>{% endif %}
         </div>
         {% endif %}
-
-        {% if artist_profile and artist_profile.genero %}
-        <p class="mb-4">
-            {% for g in artist_profile.genero.replace(';', ',').split(',') %}{% if g.strip() %}
-            <span class="chip inline-block mr-2 mb-1 px-2.5 py-0.5 rounded-full text-xs">{{ g.strip() }}</span>
-            {% endif %}{% endfor %}
-        </p>
-        {% endif %}
-
-        {% if artist_profile and artist_profile.sinopsis %}
-        <div class="mb-8 text-gray-300 text-sm max-w-3xl leading-relaxed whitespace-pre-line">{{ artist_profile.sinopsis }}</div>
-        {% endif %}
-
-        <div class="mb-10">
-            <h3 class="text-xl font-bold mb-4">Más escuchadas</h3>
-            <div id="most-played" data-artist="{{ artista }}" class="space-y-2">
-                <p class="text-gray-500 text-sm">Reproduce algunas pistas para ver las más escuchadas aquí.</p>
-            </div>
-        </div>
-
-        {% if albums_list %}
-        <div class="mb-10">
-            <h3 class="text-xl font-bold mb-4">Álbumes</h3>
-            <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
-                {% for series in albums_list %}{{ album_tile(series, artista) }}{% endfor %}
-            </div>
-        </div>
-        {% endif %}
-
-        {% if eps_list %}
-        <div class="mb-10">
-            <h3 class="text-xl font-bold mb-4">Sencillos y EP</h3>
-            <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
-                {% for series in eps_list %}{{ album_tile(series, artista) }}{% endfor %}
-            </div>
-        </div>
-        {% endif %}
-
-        {% if not albums_list and not eps_list %}
-        <p class="text-gray-500">Este artista todavía no tiene música enlazada.</p>
-        {% endif %}
-    </div>
-
-    {% else %}
-    <!-- ================= VISTA NORMAL ================= -->
-    <div class="space-y-8">
-        {% for series in items %}
-        <div class="card rounded-2xl overflow-hidden">
-
-            {% if series.is_artist %}
-            <a href="?section=music&artista={{ series.title|urlencode }}&view=artists" class="block">
-                <div class="cursor-pointer bg-black relative">
-                    {% if series.thumbnail %}
-                    <img src="{{ series.thumbnail }}" loading="lazy" decoding="async" class="poster" alt="{{ series.title }}">
-                    {% else %}
-                    <div class="poster flex items-center justify-center text-gray-600 bg-gray-900">Sin imagen</div>
-                    {% endif %}
-                </div>
-                <div class="p-5">
-                    <h2 class="text-xl md:text-2xl font-bold mb-1">{{ series.title }}</h2>
-                    <div class="text-sm text-gray-400 mb-2">
-                        {% if series.year %}<span>{{ series.year }}</span>{% endif %}
-                    </div>
-                    {% if series.genero %}<p class="text-sm text-green-400">{{ series.genero }}</p>{% endif %}
-                    {% if series.sinopsis %}<p class="text-sm text-gray-400 mt-2 line-clamp-2">{{ series.sinopsis }}</p>{% endif %}
-                    <p class="text-sm mt-3 text-green-500">Ver música →</p>
-                </div>
-            </a>
-            {% else %}
-            <div class="bg-black relative {{ 'cursor-zoom-in' if series.thumbnail else '' }}"
-                 {% if series.thumbnail %}onclick="openLightbox(event, this.querySelector('img').src)"{% endif %}>
-                {% if series.thumbnail %}
-                <img src="{{ series.thumbnail }}" loading="lazy" decoding="async" class="poster" alt="{{ series.title }}">
-                {% else %}
-                <div class="poster flex items-center justify-center text-gray-600 bg-gray-900">Sin imagen</div>
-                {% endif %}
-            </div>
-            <div class="p-5">
-                <h2 class="text-xl md:text-2xl font-bold mb-1">{{ series.title }}</h2>
-                <div class="text-sm text-gray-400 mb-3 flex flex-wrap gap-x-3">
-                    {% if series.year %}<span>{{ series.year }}</span>{% endif %}
-                    {% if series.estudio %}<span>{{ series.estudio }}</span>{% endif %}
-                    {% if series.artista %}<span class="text-green-400">{{ series.artista }}</span>{% endif %}
-                </div>
-
-                {% if series.genero %}
-                <p class="mb-3">
-                    {% for g in series.genero.replace(';', ',').split(',') %}{% if g.strip() %}
-                    <a href="?section={{ section }}&genero={{ g.strip()|urlencode }}&sort={{ sort }}"
-                       class="chip inline-block mr-2 mb-1 px-2.5 py-0.5 rounded-full text-xs">{{ g.strip() }}</a>
-                    {% endif %}{% endfor %}
-                </p>
-                {% endif %}
-
-                {% if series.sinopsis %}
-                <details class="mb-4">
-                    <summary class="cursor-pointer text-sm text-gray-400 hover:text-white"><span class="season-arrow">▶</span> Ver ficha completa</summary>
-                    <div class="mt-3 text-sm text-gray-300 space-y-1 bg-black/30 p-4 rounded-xl whitespace-pre-line">{{ series.sinopsis }}</div>
-                </details>
-                {% endif %}
-
-                <div class="border-t border-gray-800 pt-4">
-                    {% if series.final_category == 'series' %}
-                        {% for s, eps in series.seasons.items() %}
-                        <details class="mb-2">
-                            <summary class="cursor-pointer text-sm font-semibold text-gray-300"><span class="season-arrow">▶</span> Temporada {{ s }} ({{ eps|length }})</summary>
-                            {{ ep_grid(eps) }}
-                        </details>
-                        {% endfor %}
-                        {% if series.ovas %}
-                        <details class="mb-2">
-                            <summary class="cursor-pointer text-sm font-semibold text-gray-300"><span class="season-arrow">▶</span> OVAs / Especiales ({{ series.ovas|length }})</summary>
-                            {{ ep_grid(series.ovas) }}
-                        </details>
-                        {% endif %}
-                        {% if series.parts %}
-                        <details class="mb-2">
-                            <summary class="cursor-pointer text-sm font-semibold text-gray-300"><span class="season-arrow">▶</span> Otros archivos ({{ series.parts|length }})</summary>
-                            {{ ep_grid(series.parts) }}
-                        </details>
-                        {% endif %}
-                    {% else %}
-                        <h3 class="text-sm font-semibold text-gray-300">Archivos ({{ series.episodes|length }})</h3>
-                        {{ ep_grid(series.episodes) }}
-                    {% endif %}
-                </div>
-            </div>
-            {% endif %}
-        </div>
-        {% else %}
-        <div class="text-center py-20 text-gray-500">No se encontraron resultados</div>
-        {% endfor %}
-    </div>
-
-    {% if total_pages > 1 %}
-    <div class="flex items-center justify-center gap-3 mt-8 text-sm">
-        {% if page > 1 %}<a href="?{{ qs }}&page={{ page - 1 }}" class="px-4 py-2 rounded-full bg-gray-800 hover:bg-gray-700">← Anterior</a>{% endif %}
-        <span class="text-gray-400">Página {{ page }} de {{ total_pages }}</span>
-        {% if page < total_pages %}<a href="?{{ qs }}&page={{ page + 1 }}" class="px-4 py-2 rounded-full bg-gray-800 hover:bg-gray-700">Siguiente →</a>{% endif %}
-    </div>
-    {% endif %}
     {% endif %}
 </div>
 
-<div id="lightbox" class="lightbox" onclick="closeLightbox()">
-    <img id="lightbox-img" src="" alt="">
-</div>
+<footer class="text-center text-sm faint py-10">
+    <span class="brand text-lg">Biblioteca de Prozac</span>
+    <p class="mt-1">{{ total }} archivos</p>
+</footer>
+
+<div id="lightbox" class="lightbox" onclick="closeLightbox()"><img id="lightbox-img" src="" alt=""></div>
 
 <div id="player-bar">
-    <div class="h-full px-4 flex items-center gap-3">
-        <img id="cover-mini" class="w-12 h-12 rounded object-cover bg-gray-800 flex-shrink-0" alt="">
+    <div class="h-full px-3 sm:px-4 flex items-center gap-3">
+        <img id="cover-mini" class="w-12 h-12 rounded object-cover flex-shrink-0" style="background:#222" alt="">
         <div class="flex-1 min-w-0">
             <p id="title-mini" class="text-sm font-medium truncate">—</p>
-            <p id="artist-mini" class="text-xs text-gray-400 truncate"></p>
+            <p id="artist-mini" class="text-xs truncate" style="color:#a3a3a3"></p>
             <div class="flex items-center gap-2 mt-0.5">
-                <span id="current-time" class="text-xs text-gray-400 w-9">0:00</span>
+                <span id="current-time" class="text-xs w-9" style="color:#a3a3a3">0:00</span>
                 <input type="range" id="progress" class="progress-bar flex-1" value="0" min="0" max="1000">
-                <span id="total-time" class="text-xs text-gray-400 w-9 text-right">0:00</span>
+                <span id="total-time" class="text-xs w-9 text-right" style="color:#a3a3a3">0:00</span>
             </div>
         </div>
-        <div class="flex items-center gap-3">
-            <button onclick="prevTrack()" class="text-gray-400 hover:text-white text-xl">⏮</button>
-            <button onclick="togglePlay()" id="btn-play" class="w-10 h-10 rounded-full flex items-center justify-center text-black text-lg" style="background: var(--accent)">▶</button>
-            <button onclick="nextTrack(false)" class="text-gray-400 hover:text-white text-xl">⏭</button>
+        <div class="flex items-center gap-2 sm:gap-3 flex-shrink-0">
+            <button onclick="prevTrack()" class="text-xl p-1" style="color:#a3a3a3">⏮&#xFE0E;</button>
+            <button onclick="togglePlay()" id="btn-play" class="w-10 h-10 rounded-full flex items-center justify-center text-lg btn-accent">▶&#xFE0E;</button>
+            <button onclick="nextTrack(false)" class="text-xl p-1" style="color:#a3a3a3">⏭&#xFE0E;</button>
         </div>
     </div>
 </div>
-
 <audio id="audio" preload="metadata"></audio>
 
 <script>
     const audio = document.getElementById('audio');
-    const playerBar = document.getElementById('player-bar');
     const progress = document.getElementById('progress');
     const $ = (id) => document.getElementById(id);
 
-    let isSeeking = false;
-    let playlist = [];      // [{id, title, artist, cover}]
-    let idx = -1;
-    let currentKey = null;  // álbum (o "mostplayed") que está sonando
-    let currentId = null;   // id de la pista actual
+    let isSeeking = false, playlist = [], idx = -1, currentKey = null, currentId = null, seenKey = null;
 
-    // ---------- contador de "más escuchadas" ----------
-    function getCounts() {
-        try { return JSON.parse(localStorage.getItem('playCounts2') || '{}'); } catch (e) { return {}; }
+    // ---------- utilidades ----------
+    async function postJSON(url, body) {
+        try {
+            const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), keepalive: true });
+            return r.ok ? await r.json() : null;
+        } catch (e) { return null; }
     }
-    function saveCounts(c) {
-        try { localStorage.setItem('playCounts2', JSON.stringify(c)); } catch (e) {}
+    function markSeen(id, key, el) {
+        postJSON('/api/seen', { id: Number(id), key });
+        const scope = el ? (el.closest('[data-seen-scope]') || el) : null;
+        if (scope) scope.classList.add('seen');
     }
+
+    // ---------- tema claro / oscuro ----------
+    function updateThemeIcon() {
+        $('theme-btn').textContent = document.documentElement.classList.contains('light') ? '☾\uFE0E' : '☀\uFE0E';
+    }
+    $('theme-btn').addEventListener('click', () => {
+        const light = document.documentElement.classList.toggle('light');
+        try { localStorage.setItem('theme', light ? 'light' : 'dark'); } catch (e) {}
+        updateThemeIcon();
+    });
+    updateThemeIcon();
+
+    // ---------- "más escuchadas" (en este navegador) ----------
+    function getCounts() { try { return JSON.parse(localStorage.getItem('playCounts2') || '{}'); } catch (e) { return {}; } }
+    function saveCounts(c) { try { localStorage.setItem('playCounts2', JSON.stringify(c)); } catch (e) {} }
     function renderMostPlayed() {
         const box = $('most-played');
         if (!box) return;
         const artist = (box.dataset.artist || '').toLowerCase();
         const list = Object.entries(getCounts())
             .filter(([id, e]) => e.title && (e.artist || '').toLowerCase().includes(artist))
-            .sort((a, b) => b[1].n - a[1].n)
-            .slice(0, 5);
+            .sort((a, b) => b[1].n - a[1].n).slice(0, 5);
         if (!list.length) return;
         box.innerHTML = '';
-        list.forEach(([id, e], i) => {
+        list.forEach(([id, e]) => {
             const row = document.createElement('div');
-            row.className = 'mp-item flex items-center gap-3 bg-black/30 hover:bg-black/50 rounded-xl px-3 py-2 cursor-pointer';
+            row.className = 'mp-item panel panel-h flex items-center gap-3 rounded-xl px-3 py-2 cursor-pointer';
             row.dataset.id = id; row.dataset.title = e.title; row.dataset.artist = e.artist || '';
-            const n = document.createElement('span');
-            n.className = 'text-gray-400 w-10 text-sm'; n.textContent = e.n + '×';
-            const t = document.createElement('span');
-            t.className = 'text-sm truncate'; t.textContent = e.title;
-            row.append(n, t);
-            box.appendChild(row);
+            const n = document.createElement('span'); n.className = 'dim w-10 text-sm'; n.textContent = e.n + '×';
+            const t = document.createElement('span'); t.className = 'text-sm truncate'; t.textContent = e.title;
+            row.append(n, t); box.appendChild(row);
         });
     }
 
     // ---------- reproducción ----------
-    function startPlaylist(tracks, startIdx, key, cover) {
+    function startPlaylist(tracks, startIdx, key, cover, seenK) {
         playlist = tracks.map(t => ({ id: String(t.id), title: t.title, artist: t.artist || '', cover: cover || '' }));
-        idx = startIdx;
-        currentKey = key;
+        idx = startIdx; currentKey = key; seenKey = seenK || null;
         loadCurrent();
     }
-
     function loadCurrent() {
         const t = playlist[idx];
         if (!t) return;
@@ -609,54 +645,43 @@
         $('artist-mini').textContent = t.artist;
         const cv = $('cover-mini');
         if (t.cover) cv.src = t.cover; else cv.removeAttribute('src');
-        playerBar.style.display = 'block';
+        $('player-bar').style.display = 'block';
         document.body.classList.add('has-player');
         audio.play().catch(() => {});
 
         const c = getCounts();
-        const prev = c[t.id] ? c[t.id].n : 0;
-        c[t.id] = { n: prev + 1, title: t.title, artist: t.artist };
+        c[t.id] = { n: (c[t.id] ? c[t.id].n : 0) + 1, title: t.title, artist: t.artist };
         saveCounts(c);
         renderMostPlayed();
+        if (seenKey) markSeen(t.id, seenKey, document.querySelector(`.track-row[data-id="${t.id}"]`));
         syncButtons();
     }
-
-    function togglePlay() {
-        if (!audio.src) return;
-        if (audio.paused) audio.play().catch(() => {}); else audio.pause();
-    }
-
+    function togglePlay() { if (!audio.src) return; if (audio.paused) audio.play().catch(() => {}); else audio.pause(); }
     function nextTrack(auto) {
         if (!playlist.length) return;
         if (idx < playlist.length - 1) { idx++; loadCurrent(); }
         else if (!auto && playlist.length > 1) { idx = 0; loadCurrent(); }
         else { audio.pause(); syncButtons(); }
     }
-
     function prevTrack() {
         if (!playlist.length) return;
         if (audio.currentTime > 3) { audio.currentTime = 0; return; }
         idx = idx > 0 ? idx - 1 : playlist.length - 1;
         loadCurrent();
     }
-
-    // ---------- iconos ▶ / ⏸ sincronizados con el audio ----------
     function syncButtons() {
         const playing = !audio.paused && !audio.ended && !!audio.src;
-        $('btn-play').textContent = playing ? '⏸' : '▶';
-
+        $('btn-play').textContent = playing ? '⏸\uFE0E' : '▶\uFE0E';
         document.querySelectorAll('.track-btn').forEach(b => {
             const isCurrent = !!currentId && b.dataset.id === currentId;
-            b.textContent = (isCurrent && playing) ? '⏸' : '▶';
+            b.textContent = (isCurrent && playing) ? '⏸\uFE0E' : '▶\uFE0E';
             const row = b.closest('.track-row');
             if (row) row.classList.toggle('track-playing', isCurrent);
         });
-
         document.querySelectorAll('.album-btn').forEach(b => {
             const on = playing && !!currentKey && b.dataset.key === currentKey;
-            const icon = b.querySelector('.icon');
-            const label = b.querySelector('.label');
-            if (icon) icon.textContent = on ? '⏸' : '▶';
+            const icon = b.querySelector('.icon'), label = b.querySelector('.label');
+            if (icon) icon.textContent = on ? '⏸\uFE0E' : '▶\uFE0E';
             if (label) label.textContent = on ? 'Pausar' : 'Reproducir';
             b.classList.toggle('is-on', on);
         });
@@ -665,8 +690,21 @@
     audio.addEventListener('pause', syncButtons);
     audio.addEventListener('ended', () => { syncButtons(); nextTrack(true); });
 
-    // ---------- clics (delegados: sin onclick inline) ----------
-    document.addEventListener('click', (e) => {
+    // ---------- clics (delegados) ----------
+    function setFav(key, on) {
+        document.querySelectorAll('.fav-btn').forEach(b => {
+            if (b.dataset.key === key) { b.classList.toggle('on', on); b.textContent = on ? '★' : '☆'; }
+        });
+    }
+    document.addEventListener('click', async (e) => {
+        const fb = e.target.closest('.fav-btn');
+        if (fb) {
+            e.preventDefault(); e.stopPropagation();
+            const r = await postJSON('/api/fav', { key: fb.dataset.key });
+            if (r) setFav(fb.dataset.key, r.fav);
+            return;
+        }
+
         const tb = e.target.closest('.track-btn');
         if (tb) {
             if (tb.dataset.id === currentId) { togglePlay(); return; }
@@ -674,53 +712,51 @@
             const rows = root ? Array.from(root.querySelectorAll('.track-row')) : [tb.closest('.track-row')];
             const tracks = rows.map(r => ({ id: r.dataset.id, title: r.dataset.title, artist: r.dataset.artist }));
             const start = rows.findIndex(r => r.dataset.id === tb.dataset.id);
-            const coverEl = tb.closest('.album-block') ? tb.closest('.album-block').querySelector('.album-cover') : null;
-            startPlaylist(tracks, Math.max(0, start), root ? root.dataset.key : null, coverEl ? coverEl.src : '');
+            const holder = tb.closest('.album-block, .card');
+            const coverEl = holder ? holder.querySelector('.album-cover, .cover-img') : null;
+            startPlaylist(tracks, Math.max(0, start), root ? root.dataset.key : null, coverEl ? coverEl.src : '',
+                          root && root.dataset.seen === '1' ? root.dataset.key : null);
             return;
         }
 
         const ab = e.target.closest('.album-btn');
         if (ab) {
-            e.preventDefault();
-            e.stopPropagation();
+            e.preventDefault(); e.stopPropagation();
             if (currentKey && ab.dataset.key === currentKey && audio.src) { togglePlay(); return; }
             let tracks = [];
             try { tracks = JSON.parse(ab.dataset.playlist || '[]'); } catch (err) {}
             if (!tracks.length) return;
-            const holder = ab.closest('.group, .album-block');
+            const holder = ab.closest('.group, .album-block, .card');
             const img = holder ? holder.querySelector('img') : null;
-            startPlaylist(tracks, 0, ab.dataset.key, img ? img.src : '');
+            startPlaylist(tracks, 0, ab.dataset.key, img ? img.src : '', ab.dataset.seen === '1' ? ab.dataset.key : null);
             return;
         }
 
         const mp = e.target.closest('.mp-item');
         if (mp) {
             const rows = Array.from(document.querySelectorAll('.mp-item'));
-            const tracks = rows.map(r => ({ id: r.dataset.id, title: r.dataset.title, artist: r.dataset.artist }));
-            startPlaylist(tracks, rows.indexOf(mp), 'mostplayed', '');
+            startPlaylist(rows.map(r => ({ id: r.dataset.id, title: r.dataset.title, artist: r.dataset.artist })), rows.indexOf(mp), 'mostplayed', '');
+            return;
         }
+
+        // enlaces a Telegram / lector: se marcan como vistos al abrirlos
+        const seenEl = e.target.closest('[data-seen-id][data-key]');
+        if (seenEl) markSeen(seenEl.dataset.seenId, seenEl.dataset.key, seenEl);
     });
 
     // ---------- barra de progreso ----------
-    // 'input': vista previa mientras arrastras · 'change': salta de verdad al soltar / hacer clic
     progress.addEventListener('input', () => {
         isSeeking = true;
-        if (audio.duration) {
-            $('current-time').textContent = formatTime((progress.value / 1000) * audio.duration);
-        }
+        if (audio.duration) $('current-time').textContent = formatTime((progress.value / 1000) * audio.duration);
     });
     progress.addEventListener('change', () => {
         if (audio.duration) audio.currentTime = (progress.value / 1000) * audio.duration;
         isSeeking = false;
     });
-
     function formatTime(s) {
-        if (!s || isNaN(s)) return "0:00";
-        const m = Math.floor(s / 60);
-        const sec = Math.floor(s % 60);
-        return `${m}:${sec.toString().padStart(2, '0')}`;
+        if (!s || isNaN(s)) return '0:00';
+        return `${Math.floor(s / 60)}:${Math.floor(s % 60).toString().padStart(2, '0')}`;
     }
-
     audio.addEventListener('loadedmetadata', () => { $('total-time').textContent = formatTime(audio.duration); });
     audio.addEventListener('timeupdate', () => {
         if (isSeeking || !audio.duration) return;
@@ -730,12 +766,9 @@
     });
 
     // ---------- lightbox ----------
-    function openLightbox(e, src) {
-        e.preventDefault();
-        $('lightbox-img').src = src;
-        $('lightbox').classList.add('active');
-    }
+    function openLightbox(e, src) { e.preventDefault(); e.stopPropagation(); $('lightbox-img').src = src; $('lightbox').classList.add('active'); }
     function closeLightbox() { $('lightbox').classList.remove('active'); }
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeLightbox(); });
 
     document.addEventListener('DOMContentLoaded', renderMostPlayed);
 </script>

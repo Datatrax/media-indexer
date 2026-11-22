@@ -22,6 +22,8 @@ FIELD_MAP = {
     "estudio": "estudio", "studio": "estudio",
     "sello": "label", "label": "label", "discográfica": "label", "discografica": "label", "disquera": "label",
     "productor": "productor", "producer": "productor",
+    "temporada": "season", "season": "season",
+    "autor": "autor", "autora": "autor", "author": "autor", "escritor": "autor", "creador": "autor",
     "precuela": "precuela", "prequel": "precuela",
     "secuela": "secuela", "sequel": "secuela",
 }
@@ -89,19 +91,38 @@ def parse_caption(caption: str) -> Dict[str, str]:
     return info
 
 
+TIPO_RULES = [   # el orden importa: "audiolibro" antes que "libro", "álbum de fotos" antes que "álbum"...
+    ("photos",   ["foto", "photo", "imagen"]),
+    ("podcasts", ["podcast", "audiolibro", "audiobook", "audio libro"]),
+    ("docs",     ["documental", "documentary"]),
+    ("comics",   ["manga", "cómic", "comic", "historieta", "manhwa", "webtoon"]),
+    ("books",    ["libro", "book", "novela", "revista"]),
+    ("movies",   ["película", "pelicula", "movie", "film"]),
+    ("series",   ["serie", "anime", "ova", "dorama"]),
+    ("music",    ["música", "musica", "music", "álbum", "album", "artista", "artist", "sencillo", "single"]),
+]
+BOOK_EXT = {"pdf", "epub", "mobi", "azw", "azw3", "djvu", "fb2"}
+COMIC_EXT = {"cbz", "cbr", "cb7"}
+AUDIO_EXT = {"mp3", "flac", "m4a", "wav", "ogg", "aac", "opus"}
+CATEGORIES = ["series", "movies", "docs", "music", "podcasts", "books", "comics", "photos"]
+
+
 def classify(filename: str, mime: str, size: int, caption: str, parsed: Dict) -> str:
     fname = (filename or "").lower()
     cap = (caption or "").lower()
-    tipo = parsed.get('tipo', '')
+    tipo = (parsed.get('tipo') or '').lower()
+    m = re.search(r'\.([a-z0-9]{2,5})$', fname)
+    ext = m.group(1) if m else ""
 
-    if any(x in tipo for x in ['película', 'pelicula', 'movie']):
-        return 'movies'
-    if any(x in tipo for x in ['serie', 'series', 'anime']):
-        return 'series'
-    if any(x in tipo for x in ['música', 'musica', 'music', 'álbum', 'album', 'artista', 'artist']):
-        return 'music'
+    for category, words in TIPO_RULES:
+        if tipo and any(w in tipo for w in words):
+            return category
 
-    if any(fname.endswith(ext) for ext in ['.mp3', '.flac', '.m4a', '.wav', '.ogg']) or (mime and mime.startswith('audio/')):
+    if ext in COMIC_EXT:
+        return 'comics'
+    if ext in BOOK_EXT:
+        return 'books'
+    if ext in AUDIO_EXT or (mime and mime.startswith('audio/')):
         return 'music'
 
     if mime.startswith('image/') and (parsed.get('album') or parsed.get('nombre') or parsed.get('artista')):
@@ -113,6 +134,16 @@ def classify(filename: str, mime: str, size: int, caption: str, parsed: Dict) ->
     if any(x in fname for x in ['.mkv', '.mp4', '.avi', '.rar']):
         return 'movies'
     return 'other'
+
+
+def podcast_fields(filename: str):
+    """Título limpio y número de episodio a partir del nombre de archivo de un podcast."""
+    title = clean_text(re.sub(r'\.[a-z0-9]{2,5}$', '', filename or '', flags=re.I))
+    ep = (re.search(r'(?:ep(?:isodio|isode)?\.?|cap(?:ítulo|itulo)?\.?|#)\s*(\d{1,4})', title, re.I)
+          or re.match(r'\s*(\d{1,4})[\s._)-]', title))
+    episode = int(ep.group(1)) if ep else None
+    cleaned = re.sub(r'^\d{1,4}\s*[._)-]\s*', '', title).strip() or title
+    return cleaned, episode
 
 
 def extract_info(raw: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -132,9 +163,13 @@ def extract_info(raw: Dict[str, Any]) -> Optional[Dict[str, Any]]:
 
     is_artist = "artista" in (parsed.get("tipo") or "")
     nombre = parsed.pop("nombre", None)
+    season_hint = parsed.pop("season", None)   # "Temporada: 2" escrito en el caption
 
     title = re.sub(r'\.[a-z0-9]{2,5}$', '', filename, flags=re.I)
     title = clean_text(title)
+    m_ext = re.search(r'\.([A-Za-z0-9]{2,5})$', filename)
+    ext = m_ext.group(1).lower() if m_ext else ""
+    episode_hint = None
 
     if category == "music":
         if is_artist:
@@ -159,9 +194,31 @@ def extract_info(raw: Dict[str, Any]) -> Optional[Dict[str, Any]]:
                 title = parts[0]
             if nombre:
                 title = nombre
+    elif category in ("books", "comics"):
+        if nombre and not parsed.get("album"):
+            parsed["album"] = nombre
+        vol = re.search(r'[\s._-]*(?:vol(?:umen|ume)?\.?|tomo|tom\.?|#)\s*(\d{1,3})\b', title, re.I)
+        cap_n = None if vol else re.search(r'[\s._-]*cap(?:ítulo|itulo)?\.?\s*(\d{1,4})\b', title, re.I)
+        found = vol or cap_n
+        if found:
+            base = title[:found.start()].strip(" -_.")
+            if base and not parsed.get("album"):
+                parsed["album"] = base
+            episode_hint = int(found.group(1))
+            label = "Cap" if cap_n else ("Tomo" if category == "comics" else "Vol.")
+            title = f"{label} {episode_hint}"
+    elif category == "podcasts":
+        if nombre and not parsed.get("album"):
+            parsed["album"] = nombre
+        if not is_photo:
+            title, ep_n = podcast_fields(filename)
+            if ep_n is not None:
+                episode_hint = ep_n
+    elif category == "photos":
+        parsed["album"] = parsed.get("album") or nombre or "Fotos sin álbum"
     else:
         if nombre and not parsed.get("album"):
-            parsed["album"] = nombre   # las series/películas se agrupan por "Nombre"
+            parsed["album"] = nombre   # series, películas y documentales se agrupan por "Nombre"
 
     info = {
         "id": msg_id,
@@ -178,10 +235,13 @@ def extract_info(raw: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         "caption": caption,
         "is_photo": is_photo,
         "is_artist": is_artist,
+        "ext": ext,
         **parsed
     }
+    if episode_hint is not None:
+        info["episode"] = episode_hint
 
-    if category == "music":
+    if category in ("music", "books", "comics", "podcasts", "photos"):
         return info
 
     part_match = re.search(r'part[\s\._-]*(\d+)', filename + " " + caption, re.I)
@@ -201,9 +261,14 @@ def extract_info(raw: Dict[str, Any]) -> Optional[Dict[str, Any]]:
                 info["title"] = f"Cap {info['episode']}"
             else:
                 num_match = re.search(r'[\s\._-]+(\d{1,2})(?:[\s\._-]|$)', filename, re.I)
-                if num_match and category in ["series", "movies"]:
+                if num_match and category in ["series", "movies", "docs"]:
                     info["episode"] = int(num_match.group(1))
                     info["title"] = f"Cap {info['episode']}"
+
+    if info.get("season") is None and season_hint:
+        m = re.search(r"\d+", season_hint)
+        if m:
+            info["season"] = int(m.group())
 
     ova_match = re.search(r'(\d{1,2})\s*ova|ova[\s\._-]*(\d{1,2})', filename + " " + caption, re.I)
     if ova_match:

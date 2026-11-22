@@ -3,6 +3,7 @@
 import json
 import sqlite3
 import threading
+import time
 from typing import Dict, Iterable, List, Optional
 
 SCHEMA = """
@@ -14,6 +15,20 @@ CREATE TABLE IF NOT EXISTS items (
 CREATE TABLE IF NOT EXISTS meta (
     key   TEXT PRIMARY KEY,
     value TEXT
+);
+CREATE TABLE IF NOT EXISTS favorites (
+    key   TEXT PRIMARY KEY,
+    added INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS seen (
+    item_id INTEGER PRIMARY KEY,
+    key     TEXT NOT NULL,
+    at      INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS meta_cache (
+    key     TEXT PRIMARY KEY,
+    data    TEXT NOT NULL,
+    fetched INTEGER NOT NULL
 );
 """
 
@@ -62,4 +77,56 @@ class Database:
             self.conn.execute(
                 "INSERT INTO meta (key, value) VALUES (?, ?) "
                 "ON CONFLICT(key) DO UPDATE SET value=excluded.value", (key, str(value)))
+            self.conn.commit()
+
+    # ---- favoritos ----
+    def toggle_favorite(self, key: str) -> bool:
+        """Devuelve True si queda como favorito, False si se quitó."""
+        with self.lock:
+            row = self.conn.execute("SELECT 1 FROM favorites WHERE key = ?", (key,)).fetchone()
+            if row:
+                self.conn.execute("DELETE FROM favorites WHERE key = ?", (key,))
+                state = False
+            else:
+                self.conn.execute("INSERT INTO favorites (key, added) VALUES (?, ?)", (key, int(time.time())))
+                state = True
+            self.conn.commit()
+        return state
+
+    def favorites(self) -> Dict[str, int]:
+        with self.lock:
+            return dict(self.conn.execute("SELECT key, added FROM favorites").fetchall())
+
+    # ---- vistos / continuar ----
+    def mark_seen(self, item_id: int, key: str) -> None:
+        with self.lock:
+            self.conn.execute(
+                "INSERT INTO seen (item_id, key, at) VALUES (?, ?, ?) "
+                "ON CONFLICT(item_id) DO UPDATE SET key=excluded.key, at=excluded.at",
+                (int(item_id), key, int(time.time())))
+            self.conn.commit()
+
+    def unmark_seen(self, item_id: int) -> None:
+        with self.lock:
+            self.conn.execute("DELETE FROM seen WHERE item_id = ?", (int(item_id),))
+            self.conn.commit()
+
+    def seen_map(self) -> Dict[int, tuple]:
+        """{id de archivo: (clave del grupo, momento)}"""
+        with self.lock:
+            rows = self.conn.execute("SELECT item_id, key, at FROM seen").fetchall()
+        return {r[0]: (r[1], r[2]) for r in rows}
+
+    # ---- caché de metadatos automáticos ----
+    def load_meta_cache(self) -> Dict[str, Dict]:
+        with self.lock:
+            rows = self.conn.execute("SELECT key, data, fetched FROM meta_cache").fetchall()
+        return {k: {"data": json.loads(d), "fetched": f} for k, d, f in rows}
+
+    def set_meta_cache(self, key: str, data: Dict) -> None:
+        with self.lock:
+            self.conn.execute(
+                "INSERT INTO meta_cache (key, data, fetched) VALUES (?, ?, ?) "
+                "ON CONFLICT(key) DO UPDATE SET data=excluded.data, fetched=excluded.fetched",
+                (key, json.dumps(data, ensure_ascii=False), int(time.time())))
             self.conn.commit()

@@ -5,6 +5,7 @@ from typing import Dict, Iterable, List
 from captions import extract_info
 from db import Database
 from groups import build_groups, add_synthetic_artists
+from meta import apply_meta
 
 
 class Library:
@@ -13,6 +14,7 @@ class Library:
         self.thumb_dir = Path(thumb_dir)
         self.raws: Dict[int, Dict] = {}    # datos crudos por id de mensaje
         self.items: Dict[int, Dict] = {}   # fichas interpretadas
+        self.meta: Dict[str, Dict] = {}   # caché de metadatos automáticos
         self.version = 0
         self._groups: List[Dict] = []
         self._groups_version = -1
@@ -21,6 +23,7 @@ class Library:
     def load(self) -> int:
         for raw in self.db.load_all():
             self._set(raw)
+        self.meta = self.db.load_meta_cache()
         self.version += 1
         return len(self.items)
 
@@ -50,6 +53,12 @@ class Library:
         self.version += 1
         return len(ids)
 
+    def set_meta(self, key: str, data: Dict) -> None:
+        import time
+        self.db.set_meta_cache(key, data)
+        self.meta[key] = {"data": data, "fetched": int(time.time())}
+        self.version += 1
+
     def flush(self) -> None:
         self.db.commit()
 
@@ -65,6 +74,8 @@ class Library:
     def groups(self) -> List[Dict]:
         """Grupos (series, películas, álbumes, artistas). Se recalculan solo si el catálogo cambió."""
         if self._groups_version != self.version:
-            self._groups = add_synthetic_artists(build_groups(list(self.items.values())))
+            built = build_groups(list(self.items.values()))
+            apply_meta(built, self.meta)
+            self._groups = add_synthetic_artists(built)
             self._groups_version = self.version
         return self._groups

@@ -9,17 +9,19 @@ from typing import Dict, List
 from urllib.parse import urlencode
 
 from fastapi import FastAPI, Request, Depends, HTTPException, status, Query
-from fastapi.responses import HTMLResponse, StreamingResponse, FileResponse
+from fastapi.responses import HTMLResponse, StreamingResponse, FileResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 import uvicorn
 
 import tg
-from config import (ADMIN_USER, ADMIN_PASS, CHANNEL_ID, DB_PATH, FULL_SYNC,
+from config import (ADMIN_USER, ADMIN_PASS, AUTO_META, CHANNEL_ID, DB_PATH, FULL_SYNC, TMDB_API_KEY,
                     ITEMS_PER_PAGE, THUMB_DIR)
 from db import Database
-from groups import slug, same_artist, get_filters_from_groups
+from groups import slug, same_artist, get_filters_from_groups, continue_list
 from library import Library
+from meta import enrich_pending
+from search import search as fuzzy_search
 
 STREAM_CHUNK = 512 * 1024  # múltiplo de 4096 y divisor de 1 MB (requisito de Telegram)
 
@@ -53,6 +55,23 @@ def verify_credentials(request: Request, credentials: HTTPBasicCredentials = Dep
 
 
 # ---------------------------------------------------------------- arranque
+SECTION_LABELS = [("series", "Series"), ("movies", "Películas"), ("docs", "Documentales"), ("music", "Música"),
+                  ("podcasts", "Podcasts"), ("books", "Libros"), ("comics", "Cómics"), ("photos", "Fotos")]
+CATEGORY_KEYS = {k for k, _ in SECTION_LABELS}
+
+
+async def _meta_loop():
+    """Rellena sinopsis/portadas faltantes en segundo plano (solo con AUTO_META=1)."""
+    await asyncio.sleep(30)
+    while True:
+        n = 0
+        try:
+            n = await enrich_pending(library, TMDB_API_KEY)
+        except Exception as e:
+            print("Metadatos automáticos:", e)
+        await asyncio.sleep(60 if n else 900)
+
+
 @app.on_event("startup")
 async def startup_event():
     n = library.load()                      # la web ya funciona con lo guardado...
@@ -60,12 +79,14 @@ async def startup_event():
     await client.start()
     tg.register_handlers(library)
     asyncio.create_task(tg.sync(library, full=FULL_SYNC))   # ...mientras se pone al día en segundo plano
+    if AUTO_META:
+        asyncio.create_task(_meta_loop())
 
 
 @app.get("/", response_class=HTMLResponse)
 async def index(
     request: Request,
-    section: str = "series",
+    section: str = "home",
     q: str = "",
     year: str = "",
     genero: str = "",
@@ -77,33 +98,54 @@ async def index(
     view: str = "artists",
     username: str = Depends(verify_credentials)
 ):
+    if section not in CATEGORY_KEYS | {"home", "favs"}:
+        section = "home"
     groups = library.groups()
+    by_key = {g["key"]: g for g in groups if g.get("key")}
+    favs = library.db.favorites()
+    seen = library.db.seen_map()
     music_albums = [g for g in groups if g["final_category"] == "music" and not g.get("is_artist")]
     artist_profile = None
+    recent, cont, fav_groups = [], [], []
 
-    if section == "music" and album:
-        items = [g for g in music_albums if slug(g.get("title")) == slug(album)]
-        if not items:
-            items = [g for g in music_albums if album.lower() in (g.get("title") or "").lower()]
-        if artista:
-            narrowed = [g for g in items if same_artist(g.get("artista"), artista)]
-            items = narrowed or items
-    elif section == "music" and view == "artists" and not artista:
-        items = [g for g in groups if g.get("is_artist")]
+    counts = {cat: sum(1 for g in groups if g["final_category"] == cat and not g.get("is_artist")) for cat in CATEGORY_KEYS}
+    counts["artists"] = sum(1 for g in groups if g.get("is_artist"))
+    nav = ([{"key": "home", "label": "Inicio", "count": None}]
+           + [{"key": k, "label": l, "count": counts[k]} for k, l in SECTION_LABELS if counts[k]]
+           + [{"key": "favs", "label": "Favoritos", "count": len(favs)}])
+
+    if section == "home":
+        items = []
+        for cat, label in SECTION_LABELS:
+            lst = [g for g in groups if g["final_category"] == cat and not g.get("is_artist")]
+            if lst:
+                lst.sort(key=lambda x: x.get("latest_date") or "", reverse=True)
+                recent.append({"key": cat, "label": label, "groups": lst[:10]})
+        fav_groups = [by_key[k] for k in sorted(favs, key=lambda k: -favs[k]) if k in by_key][:12]
+        cont = continue_list(by_key, seen)
+    elif section == "favs":
+        items = [by_key[k] for k in sorted(favs, key=lambda k: -favs[k]) if k in by_key]
     elif section == "music":
-        items = music_albums
-        if artista:
-            exact = [g for g in items if slug(g.get("artista")) == slug(artista)]
-            items = exact or [g for g in items if artista.lower() in (g.get("artista") or "").lower()]
-            artist_profile = next((g for g in groups if g.get("is_artist") and slug(g["title"]) == slug(artista)), None)
-    elif section == "movies":
-        items = [g for g in groups if g["final_category"] == "movies"]
+        if album:
+            items = [g for g in music_albums if slug(g.get("title")) == slug(album)]
+            if not items:
+                items = [g for g in music_albums if album.lower() in (g.get("title") or "").lower()]
+            if artista:
+                narrowed = [g for g in items if same_artist(g.get("artista"), artista)]
+                items = narrowed or items
+        elif view == "artists" and not artista:
+            items = [g for g in groups if g.get("is_artist")]
+        else:
+            items = music_albums
+            if artista:
+                exact = [g for g in items if slug(g.get("artista")) == slug(artista)]
+                items = exact or [g for g in items if artista.lower() in (g.get("artista") or "").lower()]
+                artist_profile = next((g for g in groups if g.get("is_artist") and slug(g["title"]) == slug(artista)), None)
     else:
-        items = [g for g in groups if g["final_category"] == "series"]
+        items = [g for g in groups if g["final_category"] == section and not g.get("is_artist")]
 
     if q and not album:
-        ql = q.lower()
-        items = [g for g in items if ql in (g.get("title") or "").lower() or ql in (g.get("artista") or "").lower() or ql in (g.get("album") or "").lower()]
+        items = fuzzy_search(items, q)      # sin acentos, tolera errores, ordena por relevancia
 
     if year:
         items = [g for g in items if str(g.get("year")) == year]
@@ -118,33 +160,21 @@ async def index(
         items.sort(key=lambda x: x.get("latest_date") or "", reverse=True)
     elif sort == "size":
         items.sort(key=lambda x: x.get("total_size", 0), reverse=True)
-    else:
+    elif not q and section != "favs":
         items.sort(key=lambda x: (x.get("title") or "").lower())
 
     filters = get_filters_from_groups(groups, section)
     total = len(items)
 
-    # En la vista de artista / álbum se muestra todo junto (sin paginar)
-    paginate = not (section == "music" and (artista or album))
+    paginate = section != "home" and not (section == "music" and (artista or album))
     page = max(1, page)
-    if paginate:
-        start = (page - 1) * ITEMS_PER_PAGE
-        page_items = items[start:start + ITEMS_PER_PAGE]
-    else:
-        page_items = items
+    page_items = items[(page - 1) * ITEMS_PER_PAGE:page * ITEMS_PER_PAGE] if paginate else items
     total_pages = max(1, (total + ITEMS_PER_PAGE - 1) // ITEMS_PER_PAGE) if paginate else 1
 
     albums_list, eps_list = [], []
     if section == "music" and artista and not album:
         albums_list = [g for g in page_items if len(g["episodes"]) > 3]
         eps_list = [g for g in page_items if len(g["episodes"]) <= 3]
-
-    counts = {
-        "series": sum(1 for g in groups if g["final_category"] == "series"),
-        "movies": sum(1 for g in groups if g["final_category"] == "movies"),
-        "music": len(music_albums),
-        "artists": sum(1 for g in groups if g.get("is_artist")),
-    }
 
     qs = urlencode({k: v for k, v in {
         "section": section, "view": view, "q": q, "sort": sort, "year": year,
@@ -157,7 +187,14 @@ async def index(
         "eps_list": eps_list,
         "artist_profile": artist_profile,
         "total": library.total,
+        "found": total,
         "counts": counts,
+        "nav": nav,
+        "recent": recent,
+        "cont": cont,
+        "fav_groups": fav_groups,
+        "favs": set(favs),
+        "seen_ids": set(seen),
         "section": section,
         "q": q,
         "page": page,
@@ -175,6 +212,59 @@ async def index(
         "album": album,
         "view": view,
     })
+
+
+# ---------------------------------------------------------------- favoritos y "visto"
+async def _json_body(request: Request) -> dict:
+    # exigir JSON impide que otra web dispare estas acciones con un formulario (CSRF)
+    if not request.headers.get("content-type", "").startswith("application/json"):
+        raise HTTPException(status_code=415, detail="Se esperaba JSON")
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="JSON inválido")
+    if not isinstance(body, dict):
+        raise HTTPException(status_code=400, detail="JSON inválido")
+    return body
+
+
+@app.post("/api/fav")
+async def api_fav(request: Request, username: str = Depends(verify_credentials)):
+    key = str((await _json_body(request)).get("key", ""))[:300]
+    if not key:
+        raise HTTPException(status_code=400, detail="Falta key")
+    return {"fav": library.db.toggle_favorite(key)}
+
+
+@app.post("/api/seen")
+async def api_seen(request: Request, username: str = Depends(verify_credentials)):
+    body = await _json_body(request)
+    try:
+        item_id = int(body.get("id"))
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="id inválido")
+    key = str(body.get("key", ""))[:300]
+    if item_id not in library.items or not key:
+        raise HTTPException(status_code=404, detail="Archivo no encontrado")
+    if body.get("seen", True):
+        library.db.mark_seen(item_id, key)
+    else:
+        library.db.unmark_seen(item_id)
+    return {"ok": True}
+
+
+# ---------------------------------------------------------------- lector (PDF / EPUB / CBZ)
+@app.get("/read/{msg_id}", response_class=HTMLResponse)
+async def read_file(msg_id: int, request: Request, key: str = "", username: str = Depends(verify_credentials)):
+    item = library.items.get(msg_id)
+    if not item:
+        raise HTTPException(status_code=404, detail="Archivo no encontrado")
+    ext = item.get("ext")
+    if ext == "pdf":
+        return RedirectResponse(f"/stream/{msg_id}")     # el navegador ya sabe abrir PDF
+    if ext in ("epub", "cbz"):
+        return templates.TemplateResponse("read.html", {"request": request, "item": item, "ext": ext, "key": key})
+    return RedirectResponse(item.get("link") or "/")
 
 
 def parse_range(header: str, size: int):

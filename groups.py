@@ -2,8 +2,9 @@
 import re
 from collections import defaultdict
 from typing import Dict, List
+from urllib.parse import quote_plus
 
-from captions import clean_text
+from captions import clean_text, CATEGORIES, parse_caption, podcast_fields
 
 
 def clean_series_title(raw: str) -> str:
@@ -88,8 +89,55 @@ def link_music(items: List[Dict]) -> None:
                     break
 
 
+SIMPLE_CATS = ("podcasts", "books", "comics", "photos")   # se agrupan por nombre, sin temporadas
+VIDEO_CATS = ("series", "movies", "docs")
+COVER_INHERIT = ["autor", "year", "genero", "sinopsis"]
+
+
+def group_href(g: Dict) -> str:
+    """Enlace para abrir un grupo desde la portada, favoritos o 'continuar'."""
+    if g.get("is_artist"):
+        return f"?section=music&view=artists&artista={quote_plus(g['title'])}"
+    if g["final_category"] == "music":
+        return f"?section=music&album={quote_plus(g['title'])}&artista={quote_plus(g.get('artista') or '')}"
+    return f"?section={g['final_category']}&q={quote_plus(g['title'])}"
+
+
+def link_covers(items: List[Dict]) -> None:
+    """Podcasts, libros y cómics: los archivos sin 'Nombre' heredan el de la portada (foto) publicada justo antes."""
+    ctx = None
+    for it in sorted(items, key=lambda x: x["id"]):
+        cat = it["category"]
+        if it.get("is_photo"):
+            ctx = it if (cat in ("podcasts", "books", "comics") and it.get("album")) else None
+            continue
+        if ctx is None:
+            continue
+        same = cat == ctx["category"]
+        audio_after_podcast = ctx["category"] == "podcasts" and cat == "music" and not it.get("album")
+        if not (same or audio_after_podcast):
+            ctx = None
+            continue
+        if it.get("album"):
+            continue
+        it["album"] = ctx["album"]
+        it["_cover"] = ctx["id"]
+        if audio_after_podcast:
+            # el nombre "Ep 2 - La caída" se había leído como "artista - canción": se vuelve a interpretar como episodio
+            it["category"] = "podcasts"
+            if not parse_caption(it.get("caption")).get("artista"):
+                it["artista"] = None
+            it["title"], ep_n = podcast_fields(it.get("filename"))
+            if ep_n is not None:
+                it["episode"] = ep_n
+        for f in COVER_INHERIT:
+            if not it.get(f) and ctx.get(f):
+                it[f] = ctx[f]
+
+
 def build_groups(items: List[Dict]) -> List[Dict]:
     items = [dict(i) for i in items]   # copias: no se toca el catálogo original
+    link_covers(items)
     link_music(items)
     by_cat = defaultdict(list)
     for i in sorted(items, key=lambda x: x["id"], reverse=True):
@@ -107,6 +155,7 @@ def build_groups(items: List[Dict]) -> List[Dict]:
         "genero": None,
         "estudio": None,
         "artista": None,
+        "autor": None,
         "album": None,
         "label": None,
         "productor": None,
@@ -119,7 +168,7 @@ def build_groups(items: List[Dict]) -> List[Dict]:
         "is_artist": False,
     })
 
-    for cat in ["movies", "series", "music", "other"]:
+    for cat in CATEGORIES + ["other"]:
         for item in by_cat.get(cat, []):
             if item.get("is_artist"):
                 artist = clean_text(item.get("artista") or "")
@@ -141,6 +190,16 @@ def build_groups(items: List[Dict]) -> List[Dict]:
                 else:
                     key = f"music::{slug(item.get('title', ''))}"
                     display = item.get("title")
+            elif cat in SIMPLE_CATS:
+                album = clean_text(item.get("album") or "")
+                if album:
+                    key = f"{cat}::{slug(album)}"
+                    display = album
+                elif item.get("is_photo"):
+                    continue   # portada sin nombre: no se puede agrupar
+                else:
+                    key = f"{cat}::{slug(item.get('title') or item['filename'])}"
+                    display = item.get("title")
             else:
                 nombre = clean_text(item.get("album") or "")
                 if nombre:
@@ -152,23 +211,25 @@ def build_groups(items: List[Dict]) -> List[Dict]:
 
             g = groups[key]
             g["normalized"] = key
+            g["key"] = key if "::" in key else f"{cat}|{key}"
 
             if item.get("is_artist"):
                 g["is_artist"] = True
                 g["title"] = display
+                g["final_category"] = ""
                 for field in ["year", "genero", "sinopsis", "thumbnail"]:
                     if item.get(field):
                         g[field] = item[field]
                 continue
 
-            if not item.get("is_photo"):
+            if cat == "photos" or not item.get("is_photo"):
                 g["episodes"].append(item)
                 g["total_size"] += item.get("size_mb", 0)
 
             if not g["title"]:
                 g["title"] = display or item.get("title")
 
-            for field in ["year", "genero", "estudio", "artista", "album", "label", "productor", "precuela", "secuela", "sinopsis"]:
+            for field in ["year", "genero", "estudio", "artista", "autor", "album", "label", "productor", "precuela", "secuela", "sinopsis"]:
                 if item.get(field):
                     if item.get("is_photo") or not g.get(field):
                         g[field] = item[field]
@@ -180,28 +241,35 @@ def build_groups(items: List[Dict]) -> List[Dict]:
             if item.get("date") and item["date"] > (g["latest_date"] or ""):
                 g["latest_date"] = item["date"]
 
-            g["final_category"] = cat if cat in ["music", "movies", "series"] else "other"
+            g["final_category"] = cat if cat in CATEGORIES else "other"
 
-            if cat in ["series", "movies"] and not item.get("is_photo"):
+            if cat in VIDEO_CATS and not item.get("is_photo"):
                 if item.get("is_ova"):
                     g["ovas"].append(item)
                 elif item.get("season") is not None:
                     g["seasons"][item["season"]].append(item)
+                elif cat in ("series", "docs") and item.get("episode") is not None:
+                    g["seasons"][1].append(item)   # tiene número de capítulo pero no temporada: es la 1
                 else:
                     g["parts"].append(item)
 
     result = []
     for g in groups.values():
         if g.get("is_artist"):
+            g["href"] = group_href(g)
             result.append(g)
             continue
         if not g["episodes"]:
             continue
-        if g["final_category"] == "music":
-            g["episodes"].sort(key=lambda x: x.get("id", 0))
-            # lista compacta para el reproductor (sin miniaturas base64)
-            g["playlist"] = [{"id": e["id"], "title": e["title"],
-                              "artist": e.get("artista") or g.get("artista") or ""} for e in g["episodes"]]
+        fc = g["final_category"]
+        if fc in ("music", "podcasts", "photos"):
+            g["episodes"].sort(key=lambda x: (x.get("episode") if fc == "podcasts" and x.get("episode") is not None else 10 ** 6, x.get("id", 0)) if fc == "podcasts" else x.get("id", 0))
+            if fc != "photos":   # lista compacta para el reproductor
+                g["playlist"] = [{"id": e["id"], "title": e["title"],
+                                  "artist": e.get("artista") or e.get("autor") or g.get("artista") or g.get("autor") or ""}
+                                 for e in g["episodes"]]
+        elif fc in ("books", "comics"):
+            g["episodes"].sort(key=lambda x: (x.get("episode") if x.get("episode") is not None else 10 ** 6, x.get("id", 0)))
         else:
             sorted_seasons = dict(sorted(g["seasons"].items()))
             g["seasons"] = sorted_seasons
@@ -210,6 +278,7 @@ def build_groups(items: List[Dict]) -> List[Dict]:
             g["ovas"].sort(key=lambda x: x.get("episode") or 0)
             g["parts"].sort(key=lambda x: x.get("episode") or 0)
             g["episodes"].sort(key=lambda x: (x.get("season") or 0, x.get("episode") or 0, x.get("id", 0)))
+        g["href"] = group_href(g)
         result.append(g)
 
     return result
@@ -226,7 +295,8 @@ def add_synthetic_artists(groups: List[Dict]) -> List[Dict]:
         if not name or slug(name) in existing:
             continue
         e = extra.setdefault(slug(name), {
-            "title": name, "is_artist": True, "synthetic": True, "final_category": "",
+            "title": name, "is_artist": True, "synthetic": True, "final_category": "", "key": f"artist::{slug(name)}",
+            "href": f"?section=music&view=artists&artista={quote_plus(name)}",
             "thumbnail": g.get("thumbnail"), "year": None, "genero": g.get("genero"),
             "sinopsis": None, "latest_date": g.get("latest_date") or "", "total_size": 0,
             "episodes": [], "playlist": [],
@@ -246,9 +316,10 @@ def get_filters_from_groups(groups: List[Dict], section: str):
                 continue
             if g["final_category"] != "music":
                 continue
-        elif section == "movies" and g["final_category"] != "movies":
-            continue
-        elif section == "series" and g["final_category"] != "series":
+        elif section in CATEGORIES:
+            if g["final_category"] != section or g.get("is_artist"):
+                continue
+        else:
             continue
 
         if g.get("year"):
@@ -270,3 +341,27 @@ def get_filters_from_groups(groups: List[Dict], section: str):
         "artists": sorted(artists),
         "labels": sorted(labels),
     }
+
+
+def continue_list(by_key: Dict[str, Dict], seen: Dict[int, tuple], limit: int = 12) -> List[Dict]:
+    """'Continuar': por cada grupo con algo visto, el siguiente archivo sin ver."""
+    last_by_key: Dict[str, tuple] = {}
+    for item_id, (key, at) in seen.items():
+        cur = last_by_key.get(key)
+        if not cur or at > cur[1]:
+            last_by_key[key] = (item_id, at)
+    out = []
+    for key, (last_id, at) in sorted(last_by_key.items(), key=lambda kv: -kv[1][1]):
+        g = by_key.get(key)
+        if not g or g.get("final_category") in ("music", "photos", "") or not g.get("episodes"):
+            continue
+        eps = g["episodes"]
+        ids = [e["id"] for e in eps]
+        start = ids.index(last_id) + 1 if last_id in ids else 0
+        nxt = (next((e for e in eps[start:] if e["id"] not in seen), None)
+               or next((e for e in eps if e["id"] not in seen), None))
+        if nxt:
+            out.append({"group": g, "ep": nxt, "at": at})
+        if len(out) >= limit:
+            break
+    return out

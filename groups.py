@@ -90,6 +90,16 @@ def link_music(items: List[Dict]) -> None:
                     break
 
 
+def human_size(n: int) -> str:
+    """12345678 -> '11,8 MB' (coma decimal, unidades de 1024)."""
+    value = float(n or 0)
+    for unit in ("B", "KB", "MB", "GB", "TB"):
+        if value < 1024 or unit == "TB":
+            text = f"{value:.0f}" if unit == "B" else f"{value:.1f}".replace(".", ",")
+            return f"{text} {unit}"
+        value /= 1024
+
+
 SIMPLE_CATS = ("podcasts", "books", "comics", "photos")   # se agrupan por nombre, sin temporadas
 VIDEO_CATS = ("series", "movies", "docs")
 COVER_INHERIT = ["autor", "year", "genero", "sinopsis"]
@@ -280,6 +290,7 @@ def build_groups(items: List[Dict]) -> List[Dict]:
             g["parts"].sort(key=lambda x: x.get("episode") or 0)
             g["episodes"].sort(key=lambda x: (x.get("season") or 0, x.get("episode") or 0, x.get("id", 0)))
         g["href"] = group_href(g)
+        g["size_label"] = human_size(int((g.get("total_size") or 0) * 1024 * 1024))
         result.append(g)
 
     return result

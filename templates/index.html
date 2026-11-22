@@ -71,6 +71,8 @@
 
         .poster { width: 100%; height: 280px; object-fit: cover; display: block; }
         @media (min-width: 768px) { .poster { height: 320px; } }
+        .hrow { scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
+        .hrow::-webkit-scrollbar { height: 6px; } .hrow::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; } .hrow::-webkit-scrollbar-track { background: transparent; }
         .hrow { display: flex; gap: 1rem; overflow-x: auto; padding-bottom: .5rem; scroll-snap-type: x proximity; }
         .hrow > * { scroll-snap-align: start; }
         .photo-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: .5rem; }
@@ -214,17 +216,23 @@
 {% endmacro %}
 
 {% macro album_tile(series, artista, favs, show_artist=false) %}
+{% set href = '?section=music&album=' ~ (series.title|urlencode) ~ '&artista=' ~ ((series.artista or artista or '')|urlencode) %}
 <div class="group relative">
-    <a href="?section=music&album={{ series.title|urlencode }}&artista={{ (series.artista or artista)|urlencode }}">
+    <a href="{{ href }}">
         <div class="aspect-square panel rounded-lg overflow-hidden mb-2 relative">
             {% if series.thumbnail %}<img src="{{ series.thumbnail }}" loading="lazy" decoding="async" class="w-full h-full object-cover group-hover:scale-105 transition" alt="">
             {% else %}<div class="w-full h-full flex items-center justify-center faint text-3xl">♪</div>{% endif %}
         </div>
     </a>
-    <button type="button" class="album-btn btn-accent absolute bottom-16 right-2 w-12 h-12 rounded-full flex items-center justify-center shadow-lg transition opacity-100 md:opacity-0 md:group-hover:opacity-100"
+    <button type="button" class="album-btn btn-accent absolute bottom-20 right-2 w-12 h-12 rounded-full flex items-center justify-center shadow-lg transition opacity-100 md:opacity-0 md:group-hover:opacity-100"
             data-key="{{ series.normalized }}" data-playlist='{{ series.playlist|tojson }}'><span class="icon">▶&#xFE0E;</span></button>
-    <p class="font-medium text-sm truncate">{{ series.title }}</p>
-    <p class="text-xs dim truncate">{{ (series.artista ~ ' · ') if show_artist and series.artista else '' }}{{ series.year or ('Sencillo / EP' if series.episodes|length <= 3 else 'Álbum') }}</p>
+    <a href="/download/group?key={{ series.key|urlencode }}" download title="Descargar álbum (zip · {{ series.size_label }})" aria-label="Descargar álbum"
+       class="absolute top-2 left-2 w-9 h-9 rounded-full flex items-center justify-center transition opacity-100 md:opacity-0 md:group-hover:opacity-100"
+       style="background: rgba(0,0,0,.65); color: #fff; padding: 8px"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg></a>
+    <a href="{{ href }}" class="block hover:underline">
+        <p class="font-medium text-sm truncate">{{ series.title }}</p>
+        <p class="text-xs dim truncate">{{ (series.artista ~ ' · ') if show_artist and series.artista else '' }}{{ series.year or ('Sencillo / EP' if series.episodes|length <= 3 else 'Álbum') }}</p>
+    </a>
 </div>
 {% endmacro %}
 
@@ -243,6 +251,38 @@
     </div>
     {% endfor %}
 </div>
+{% endmacro %}
+
+{% macro cont_card(c) %}
+{% set g = c.group %}{% set ep = c.ep %}
+<div class="card rounded-xl p-3 flex gap-3 flex-shrink-0 w-72">
+    <a href="{{ g.href }}" class="w-14 flex-shrink-0 rounded-lg overflow-hidden panel" style="aspect-ratio: 2 / 3">
+        {% if g.thumbnail %}<img src="{{ g.thumbnail }}" loading="lazy" decoding="async" class="w-full h-full object-cover" alt="">{% endif %}
+    </a>
+    <div class="min-w-0 flex-1">
+        <p class="font-semibold text-sm truncate">{{ g.title }}</p>
+        <p class="text-xs dim truncate">Siguiente: {{ ep.title }}{% if ep.season and g.final_category in ['series', 'docs'] and g.seasons|length > 1 %} · T{{ ep.season }}{% endif %}</p>
+        <a href="{% if ep.ext in ['pdf', 'epub', 'cbz'] %}/read/{{ ep.id }}?key={{ g.key|urlencode }}{% else %}{{ ep.link }}{% endif %}" target="_blank" rel="noopener"
+           data-seen-id="{{ ep.id }}" data-key="{{ g.key }}"
+           class="btn-accent inline-block mt-2 px-3 py-1 rounded-lg text-xs font-semibold">Seguir</a>
+    </div>
+</div>
+{% endmacro %}
+
+{# filas del inicio de CADA sección: solo con lo de esa sección #}
+{% macro section_rows(cont, favgroups, recent, favs) %}
+{% if cont %}
+<section class="mb-10"><h2 class="text-xl font-bold mb-3">Continuar</h2>
+    <div class="hrow">{% for c in cont %}{{ cont_card(c) }}{% endfor %}</div></section>
+{% endif %}
+{% if favgroups %}
+<section class="mb-10"><h2 class="text-xl font-bold mb-3">Favoritos</h2>
+    <div class="hrow">{% for g in favgroups %}{{ mini(g, favs) }}{% endfor %}</div></section>
+{% endif %}
+{% if recent %}
+<section class="mb-10"><h2 class="text-xl font-bold mb-3">Agregado recientemente</h2>
+    <div class="hrow">{% for g in recent %}{{ mini(g, favs) }}{% endfor %}</div></section>
+{% endif %}
 {% endmacro %}
 
 {# ---- tarjetas por tipo de contenido ---- #}
@@ -312,6 +352,7 @@
             {% if g.final_category == 'music' %}
                 <div class="flex gap-2 items-center">
                     <a href="{{ g.href }}" class="btn-accent px-4 py-2 rounded-full text-sm font-semibold">Abrir álbum</a>
+                    <a href="/download/group?key={{ g.key|urlencode }}" download class="pill px-4 py-2 rounded-full text-sm font-semibold">Descargar · {{ g.size_label }}</a>
                     <button type="button" class="album-btn btn-accent px-4 py-2 rounded-full text-sm font-semibold flex items-center gap-2" data-key="{{ g.normalized }}" data-playlist='{{ g.playlist|tojson }}'><span class="icon">▶&#xFE0E;</span><span class="label">Reproducir</span></button>
                 </div>
             {% elif g.final_category == 'podcasts' %}
@@ -417,7 +458,8 @@
                 <span class="absolute left-4 top-3.5 faint">🔍</span>
             </div>
             <select name="sort" onchange="this.form.requestSubmit()" class="input px-3 py-3 rounded-xl text-sm">
-                <option value="title" {{ 'selected' if sort == 'title' else '' }}>Título</option>
+                <option value="" {{ 'selected' if not sort else '' }}>Recomendado</option>
+                <option value="title" {{ 'selected' if sort == 'title' else '' }}>Título (A-Z)</option>
                 <option value="date" {{ 'selected' if sort == 'date' else '' }}>Fecha de subida</option>
                 <option value="size" {{ 'selected' if sort == 'size' else '' }}>Tamaño</option>
                 <option value="year" {{ 'selected' if sort == 'year' else '' }}>Año</option>
@@ -475,23 +517,7 @@
         {% if cont %}
         <section class="mb-10">
             <h2 class="text-xl font-bold mb-3">Continuar</h2>
-            <div class="hrow">
-                {% for c in cont %}
-                {% set g = c.group %}{% set ep = c.ep %}
-                <div class="card rounded-xl p-3 flex gap-3 flex-shrink-0 w-72">
-                    <a href="{{ g.href }}" class="w-14 flex-shrink-0 rounded-lg overflow-hidden panel" style="aspect-ratio: 2 / 3">
-                        {% if g.thumbnail %}<img src="{{ g.thumbnail }}" loading="lazy" decoding="async" class="w-full h-full object-cover" alt="">{% endif %}
-                    </a>
-                    <div class="min-w-0 flex-1">
-                        <p class="font-semibold text-sm truncate">{{ g.title }}</p>
-                        <p class="text-xs dim truncate">Siguiente: {{ ep.title }}{% if ep.season and g.final_category in ['series', 'docs'] and g.seasons|length > 1 %} · T{{ ep.season }}{% endif %}</p>
-                        <a href="{% if ep.ext in ['pdf', 'epub', 'cbz'] %}/read/{{ ep.id }}?key={{ g.key|urlencode }}{% else %}{{ ep.link }}{% endif %}" target="_blank" rel="noopener"
-                           data-seen-id="{{ ep.id }}" data-key="{{ g.key }}"
-                           class="btn-accent inline-block mt-2 px-3 py-1 rounded-lg text-xs font-semibold">Seguir</a>
-                    </div>
-                </div>
-                {% endfor %}
-            </div>
+            <div class="hrow">{% for c in cont %}{{ cont_card(c) }}{% endfor %}</div>
         </section>
         {% endif %}
 
@@ -537,9 +563,15 @@
                     {% endif %}
                     {% if series.label %}<p class="text-sm dim mt-1">Sello: {{ series.label }}</p>{% endif %}
                     {% if series.sinopsis %}<p class="text-sm dim mt-3 max-w-2xl whitespace-pre-line">{{ series.sinopsis }}</p>{% endif %}
-                    <button type="button" class="album-btn btn-accent mt-4 px-6 py-3 rounded-full font-bold flex items-center gap-2" data-key="{{ series.normalized }}" data-playlist='{{ series.playlist|tojson }}'>
-                        <span class="icon">▶&#xFE0E;</span><span class="label">Reproducir</span>
-                    </button>
+                    <div class="flex flex-wrap items-center gap-3 mt-4">
+                        <button type="button" class="album-btn btn-accent px-6 py-3 rounded-full font-bold flex items-center gap-2" data-key="{{ series.normalized }}" data-playlist='{{ series.playlist|tojson }}'>
+                            <span class="icon">▶&#xFE0E;</span><span class="label">Reproducir</span>
+                        </button>
+                        <a href="/download/group?key={{ series.key|urlencode }}" download class="pill px-5 py-3 rounded-full font-semibold inline-flex items-center gap-2" title="Se descarga un zip con una carpeta llamada «{{ series.title }}»">
+                            <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20" aria-hidden="true"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
+                            Descargar · {{ series.size_label }}
+                        </a>
+                    </div>
                 </div>
             </div>
             {{ track_rows(series, seen_ids, artista) }}
@@ -609,6 +641,10 @@
 
     {# ================= LISTADOS ================= #}
     {% else %}
+        {% if landing and (sec_cont or sec_favs or sec_recent) %}
+        {{ section_rows(sec_cont, sec_favs, sec_recent, favs) }}
+        <h2 class="text-xl font-bold mb-3">{{ 'Todos los artistas' if section == 'music' else 'Todo' }}</h2>
+        {% endif %}
         <p class="text-xs faint mb-4">{{ found }} resultado{{ '' if found == 1 else 's' }}</p>
         <div class="space-y-6">
             {% for g in items %}{{ card(g, favs, seen_ids) }}
@@ -631,7 +667,7 @@
 
 <footer class="text-center text-sm faint py-10">
     <span class="brand text-lg">Biblioteca de Prozac</span>
-    <p class="mt-1">{{ total }} archivos</p>
+    <p class="mt-1">{{ total }} archivos · {{ total_size }}</p>
 </footer>
 </div>
 

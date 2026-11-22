@@ -19,7 +19,9 @@ from config import (ADMIN_USER, ADMIN_PASS, AUTO_META, CHANNEL_ID, DB_PATH, FULL
                     ITEMS_PER_PAGE, THUMB_DIR)
 from db import Database
 from groups import slug, same_artist, get_filters_from_groups, continue_list, similar_albums
-from library import Library
+from library import Library, human_size
+from downloads import archive_plan, content_disposition
+import zipstream
 from meta import enrich_pending
 from search import search as fuzzy_search
 
@@ -93,7 +95,7 @@ async def index(
     estudio: str = "",
     artista: str = "",
     album: str = "",
-    sort: str = "title",
+    sort: str = "",
     page: int = 1,
     view: str = "artists",
     username: str = Depends(verify_credentials)
@@ -160,6 +162,11 @@ async def index(
         items.sort(key=lambda x: x.get("latest_date") or "", reverse=True)
     elif sort == "size":
         items.sort(key=lambda x: x.get("total_size", 0), reverse=True)
+    elif sort == "title":
+        items.sort(key=lambda x: (x.get("title") or "").lower())
+    elif section == "music" and artista and not album:
+        # página de artista: sus álbumes del más nuevo al más viejo (sin año, al final)
+        items.sort(key=lambda x: (int(x["year"]) if str(x.get("year") or "").isdigit() else 0, (x.get("title") or "").lower()), reverse=True)
     elif not q and section != "favs":
         items.sort(key=lambda x: (x.get("title") or "").lower())
 
@@ -170,6 +177,17 @@ async def index(
     page = max(1, page)
     page_items = items[(page - 1) * ITEMS_PER_PAGE:page * ITEMS_PER_PAGE] if paginate else items
     total_pages = max(1, (total + ITEMS_PER_PAGE - 1) // ITEMS_PER_PAGE) if paginate else 1
+
+    # cada sección tiene su propio "inicio": continuar, favoritos y agregado recientemente
+    landing = (section in CATEGORY_KEYS and not (q or year or genero or estudio or artista or album)
+               and page == 1 and (section != "music" or view == "artists"))
+    sec_cont, sec_favs, sec_recent = [], [], []
+    if landing:
+        sec_cont = [c for c in continue_list(by_key, seen) if c["group"]["final_category"] == section]
+        sec_favs = [by_key[k] for k in sorted(favs, key=lambda k: -favs[k])
+                    if k in by_key and (by_key[k]["final_category"] == section or (section == "music" and by_key[k].get("is_artist")))][:12]
+        sec_recent = sorted([g for g in groups if g["final_category"] == section and not g.get("is_artist")],
+                            key=lambda x: x.get("latest_date") or "", reverse=True)[:10]
 
     similar_same, similar_other = [], []
     if section == "music" and album and len(items) == 1:
@@ -190,6 +208,11 @@ async def index(
         "items": page_items,
         "albums_list": albums_list,
         "eps_list": eps_list,
+        "landing": landing,
+        "sec_cont": sec_cont,
+        "sec_favs": sec_favs,
+        "sec_recent": sec_recent,
+        "total_size": human_size(library.total_bytes),
         "similar_same": similar_same,
         "similar_other": similar_other,
         "artist_profile": artist_profile,
@@ -353,38 +376,34 @@ async def thumb(msg_id: int, v: str = "", username: str = Depends(verify_credent
 
 
 
-# ---------------------------------------------------------------- descargas en zip
-async def _zip_response(ids: str, name: str, default: str):
-    id_list = [int(x) for x in ids.split(",") if x.strip().isdigit()]
-    safe_name = re.sub(r'[<>:"/\\|?*]', '', name).strip() or default
-    buffer = BytesIO()
-    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zf:
-        for mid in id_list:
-            msg = await client.get_messages(CHANNEL_ID, ids=mid)
-            doc = getattr(msg, "document", None) if msg else None
-            if not doc:
-                continue
-            filename = f"{mid}.bin"
-            for attr in doc.attributes:
-                if getattr(attr, "file_name", None):
-                    filename = attr.file_name
-                    break
-            data = await client.download_media(msg, file=bytes)
-            if data:
-                zf.writestr(f"{safe_name}/{filename}", data)
-    buffer.seek(0)
-    return StreamingResponse(buffer, media_type="application/zip",
-                             headers={"Content-Disposition": f'attachment; filename="{safe_name}.zip"'})
+# ---------------------------------------------------------------- descargas en zip (en streaming)
+def _opener(msg):
+    async def gen():
+        async for chunk in client.iter_download(msg.media, request_size=STREAM_CHUNK):
+            yield chunk
+    return gen
 
 
-@app.get("/download-album")
-async def download_album(ids: str = Query(...), name: str = Query("Album"), username: str = Depends(verify_credentials)):
-    return await _zip_response(ids, name, "Album")
-
-
-@app.get("/download-season")
-async def download_season(ids: str = Query(...), name: str = Query("Temporada"), username: str = Depends(verify_credentials)):
-    return await _zip_response(ids, name, "Temporada")
+@app.get("/download/group")
+async def download_group(key: str = Query(...), username: str = Depends(verify_credentials)):
+    """Zip de un álbum (o temporada, libro, etc.): una carpeta con su nombre y las pistas numeradas en orden."""
+    g = next((x for x in library.groups() if x.get("key") == key and not x.get("is_artist") and x.get("episodes")), None)
+    if not g:
+        raise HTTPException(status_code=404, detail="Nada que descargar")
+    ids = [e["id"] for e in g["episodes"]]
+    msgs = {}
+    for i in range(0, len(ids), 100):
+        for msg in await client.get_messages(CHANNEL_ID, ids=ids[i:i + 100]):
+            if msg and getattr(msg, "document", None):
+                msgs[msg.id] = msg
+    if any(i not in msgs for i in ids):
+        raise HTTPException(status_code=409, detail="Algunos archivos ya no están en el canal. Espera a la sincronización.")
+    folder, plan = archive_plan(g, {i: msgs[i].document.size or 0 for i in ids})
+    entries = [zipstream.Entry(name, size, _opener(msgs[mid])) for name, size, mid in plan]
+    return StreamingResponse(
+        zipstream.stream(entries), media_type="application/zip",
+        headers={"Content-Length": str(zipstream.total_length(entries)),
+                 "Content-Disposition": content_disposition(f"{folder}.zip")})
 
 
 # ---------------------------------------------------------------- admin / estado

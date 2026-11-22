@@ -205,6 +205,71 @@ def test_playlist_has_album_name():
         assert g["Oshin"]["playlist"][0]["album"] == "Oshin"
 
 
+def _zip_roundtrip(z64):
+    import io, zipfile, zlib
+    import zipstream
+    files = {"Oshin/01 - Druun.mp3": b"a" * 70000 + b"\x00\xff", "Oshin/02 - Past Lives.mp3": b"hola" * 5, "Oshin/03 - Ñandú ✓.mp3": b""}
+
+    def opener(data):
+        async def gen():
+            for i in range(0, len(data), 30000):
+                yield data[i:i + 30000]
+        return gen
+    entries = [zipstream.Entry(n, len(d), opener(d)) for n, d in files.items()]
+
+    async def collect():
+        out = bytearray()
+        async for c in zipstream.stream(entries, z64):
+            out += c
+        return bytes(out)
+    data = asyncio.run(collect())
+    assert len(data) == zipstream.total_length(entries, z64)                     # Content-Length exacto
+    with zipfile.ZipFile(io.BytesIO(data)) as zf:
+        assert zf.testzip() is None
+        assert zf.namelist() == list(files)                                      # carpeta + orden + nombres con acentos
+        for n, d in files.items():
+            assert zf.read(n) == d
+
+
+def test_zipstream_plain_and_zip64():
+    _zip_roundtrip(False)
+    _zip_roundtrip(True)
+
+
+def test_zipstream_aborts_on_wrong_size():
+    import zipstream
+    async def gen():
+        yield b"123"
+    e = zipstream.Entry("x/y.bin", 5, lambda: gen())
+    async def run():
+        async for _ in zipstream.stream([e], False):
+            pass
+    try:
+        asyncio.run(run()); assert False, "debía fallar"
+    except ValueError:
+        pass
+
+
+def test_archive_plan_names():
+    from downloads import archive_plan, safe_name, content_disposition
+    g = {"title": 'Live: "At" The/Murmrr?', "episodes": [
+        {"id": 1, "filename": "01 - Druun.mp3"}, {"id": 2, "filename": "DIIV - Past Lives.mp3"}, {"id": 3, "filename": "Past Lives.mp3"}]}
+    folder, plan = archive_plan(g, {1: 10, 2: 20, 3: 30})
+    assert folder == "Live At The Murmrr"
+    assert [p[0] for p in plan] == ["Live At The Murmrr/01 - Druun.mp3", "Live At The Murmrr/02 - DIIV - Past Lives.mp3", "Live At The Murmrr/03 - Past Lives.mp3"]
+    assert [p[1] for p in plan] == [10, 20, 30]
+    assert safe_name("///") == "Descarga"
+    assert "filename*=UTF-8''" in content_disposition("Ñandú.zip")
+
+
+def test_human_size_and_total_bytes():
+    from library import human_size
+    assert human_size(0) == "0 B" and human_size(1536) == "1,5 KB" and human_size(5 * 1024 ** 3) == "5,0 GB"
+    with tempfile.TemporaryDirectory() as tmp:
+        lib = lib_with(tmp)
+        assert lib.total_bytes == sum(r["size"] for r in SAMPLE)
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):

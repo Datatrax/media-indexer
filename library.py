@@ -4,7 +4,7 @@ from typing import Dict, Iterable, List
 
 from captions import extract_info
 from db import Database
-from groups import build_groups, add_synthetic_artists
+from groups import build_groups, add_synthetic_artists, human_size  # noqa: F401  (se reexporta)
 from meta import apply_meta
 
 
@@ -70,6 +70,10 @@ class Library:
     @property
     def total(self) -> int:
         return len(self.items)
+
+    @property
+    def total_bytes(self) -> int:
+        return sum(int(r.get("size") or 0) for r in self.raws.values())
 
     def groups(self) -> List[Dict]:
         """Grupos (series, películas, álbumes, artistas). Se recalculan solo si el catálogo cambió."""

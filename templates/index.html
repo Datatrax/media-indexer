@@ -678,12 +678,12 @@
 
 <!-- ============ REPRODUCTOR ============ -->
 <div id="player-bar">
-    <div class="pb-seek"><input type="range" class="seek" min="0" max="1000" value="0" step="1" aria-label="Progreso"></div>
+    <div class="pb-seek"><input type="range" class="seek" min="0" max="1000" value="0" step="1" aria-label="Progreso" title="Progreso de la pista"></div>
     <div class="pb-row">
         <div class="pb-left">
-            <button type="button" class="icon-btn pb-prev" onclick="prevTrack()" aria-label="Anterior"><span data-ic="prev"></span></button>
-            <button type="button" class="icon-btn play-big" data-role="playpause" onclick="togglePlay()" aria-label="Reproducir o pausar"><span data-ic="play"></span></button>
-            <button type="button" class="icon-btn pb-next" onclick="nextTrack(false)" aria-label="Siguiente"><span data-ic="next"></span></button>
+            <button type="button" class="icon-btn pb-prev" onclick="prevTrack()" aria-label="Anterior" title="Pista anterior"><span data-ic="prev"></span></button>
+            <button type="button" class="icon-btn play-big" data-role="playpause" onclick="togglePlay()" aria-label="Reproducir o pausar" title="Reproducir / Pausar"><span data-ic="play"></span></button>
+            <button type="button" class="icon-btn pb-next" onclick="nextTrack(false)" aria-label="Siguiente" title="Pista siguiente"><span data-ic="next"></span></button>
             <span class="pb-time"><span class="t-cur">0:00</span> / <span class="t-dur">0:00</span></span>
         </div>
         <div class="pb-center" onclick="if (!event.target.closest('a')) openNP()">
@@ -695,12 +695,12 @@
         </div>
         <div class="pb-right">
             <div class="pb-vol">
-                <button type="button" class="icon-btn" data-role="mute" aria-label="Silenciar"><span data-ic="volUp"></span></button>
-                <input type="range" class="seek vol" min="0" max="1" step="0.01" value="0.85" aria-label="Volumen">
+                <button type="button" class="icon-btn" data-role="mute" aria-label="Silenciar" title="Silenciar"><span data-ic="volUp"></span></button>
+                <input type="range" class="seek vol" min="0" max="1" step="0.01" value="0.85" aria-label="Volumen" title="Volumen">
             </div>
-            <button type="button" class="icon-btn pb-mode" data-role="repeat" aria-label="Repetir"><span data-ic="repeat"></span></button>
-            <button type="button" class="icon-btn pb-mode" data-role="shuffle" aria-label="Aleatorio"><span data-ic="shuffle"></span></button>
-            <button type="button" class="icon-btn" onclick="openNP()" aria-label="Abrir reproductor"><span data-ic="up"></span></button>
+            <button type="button" class="icon-btn pb-mode" data-role="repeat" aria-label="Repetir" title="Repetir"><span data-ic="repeat"></span></button>
+            <button type="button" class="icon-btn pb-mode" data-role="shuffle" aria-label="Aleatorio" title="Aleatorio"><span data-ic="shuffle"></span></button>
+            <button type="button" class="icon-btn" onclick="openNP()" aria-label="Abrir reproductor" title="Abrir reproductor"><span data-ic="up"></span></button>
         </div>
     </div>
 </div>

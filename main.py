@@ -95,6 +95,7 @@ async def index(
     estudio: str = "",
     artista: str = "",
     album: str = "",
+    key: str = "",
     sort: str = "",
     page: int = 1,
     view: str = "artists",
@@ -146,6 +147,11 @@ async def index(
     else:
         items = [g for g in groups if g["final_category"] == section and not g.get("is_artist")]
 
+    focus = bool(key)
+    if focus:      # enlace directo a UN elemento (desde "agregado recientemente", favoritos, continuar...)
+        items = [by_key[key]] if key in by_key else []
+        q = year = genero = estudio = ""
+
     if q and not album:
         items = fuzzy_search(items, q)      # sin acentos, tolera errores, ordena por relevancia
 
@@ -173,13 +179,13 @@ async def index(
     filters = get_filters_from_groups(groups, section)
     total = len(items)
 
-    paginate = section != "home" and not (section == "music" and (artista or album))
+    paginate = section != "home" and not focus and not (section == "music" and (artista or album))
     page = max(1, page)
     page_items = items[(page - 1) * ITEMS_PER_PAGE:page * ITEMS_PER_PAGE] if paginate else items
     total_pages = max(1, (total + ITEMS_PER_PAGE - 1) // ITEMS_PER_PAGE) if paginate else 1
 
     # cada sección tiene su propio "inicio": continuar, favoritos y agregado recientemente
-    landing = (section in CATEGORY_KEYS and not (q or year or genero or estudio or artista or album)
+    landing = (section in CATEGORY_KEYS and not (q or year or genero or estudio or artista or album or key)
                and page == 1 and (section != "music" or view == "artists"))
     sec_cont, sec_favs, sec_recent = [], [], []
     if landing:
@@ -199,6 +205,25 @@ async def index(
         albums_list = [g for g in page_items if len(g["episodes"]) > 3]
         eps_list = [g for g in page_items if len(g["episodes"]) <= 3]
 
+    base_params = {"section": section, "view": view if section == "music" else "", "q": q, "sort": sort,
+                   "year": year, "genero": genero, "estudio": estudio, "artista": artista}
+
+    def furl(name: str, value: str) -> str:
+        p = dict(base_params)
+        p[name] = "" if (p.get(name) or "").lower() == value.lower() else value
+        if section == "music":
+            if name == "artista":
+                p["view"] = "artists"
+            elif not p["artista"]:
+                p["view"] = "albums"      # género/año/sello en música: lista de álbumes, no de artistas
+        return "?" + urlencode({k: v for k, v in p.items() if v})
+
+    filter_labels = {"genero": "Género", "year": "Año", "artista": "Artista",
+                     "estudio": "Sello" if section == "music" else "Estudio"}
+    active_filters = [(filter_labels[k], k, v) for k, v in
+                      (("artista", artista), ("genero", genero), ("year", year), ("estudio", estudio)) if v]
+    clear_url = "?" + urlencode({"section": section, **({"view": "artists"} if section == "music" else {})})
+
     qs = urlencode({k: v for k, v in {
         "section": section, "view": view, "q": q, "sort": sort, "year": year,
         "genero": genero, "estudio": estudio, "artista": artista}.items() if v})
@@ -209,6 +234,11 @@ async def index(
         "albums_list": albums_list,
         "eps_list": eps_list,
         "landing": landing,
+        "focus": focus,
+        "section_label": dict(SECTION_LABELS).get(section, ""),
+        "furl": furl,
+        "active_filters": active_filters,
+        "clear_url": clear_url,
         "sec_cont": sec_cont,
         "sec_favs": sec_favs,
         "sec_recent": sec_recent,

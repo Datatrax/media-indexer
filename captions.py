@@ -45,11 +45,18 @@ def parse_caption(caption: str) -> Dict[str, str]:
     bio: List[str] = []
     free: List[str] = []
     capturing = False
+    blanks = 0
 
     for raw in caption.replace("\r", "").split("\n"):
         line = re.sub(r"[*_`~]", "", raw).strip()
         if not line:
+            # línea en blanco (doble Enter): se conserva como separación entre párrafos (máximo 2 seguidas)
+            blanks += 1
+            target = bio if capturing else free
+            if target and blanks <= 2:
+                target.append("")
             continue
+        blanks = 0
 
         key = None
         val = ""
@@ -79,7 +86,7 @@ def parse_caption(caption: str) -> Dict[str, str]:
         elif len(text) > 30:
             free.append(text)
 
-    text = "\n".join(bio) if bio else "\n".join(free)
+    text = "\n".join(bio if bio else free).strip("\n")
     if text:
         info["sinopsis"] = text
 

@@ -253,6 +253,25 @@
 </div>
 {% endmacro %}
 
+{% macro chip_group(title, name, values, current, furl) %}
+{% if values %}
+<details class="panel rounded-lg" {% if current %}open{% endif %}>
+    <summary class="px-3 py-2 text-sm font-medium flex items-center justify-between gap-3">
+        <span>{{ title }} <span class="faint">· {{ values|length }}</span></span>
+        {% if current %}<span class="text-xs truncate" style="color: var(--accent)">{{ current }}</span>{% endif %}
+    </summary>
+    <div class="px-3 pb-3">
+        {% if values|length > 10 %}<input type="search" class="chip-filter input w-full px-3 py-2 rounded-lg text-sm mb-2" placeholder="Filtrar {{ title|lower }}…" aria-label="Filtrar {{ title|lower }}">{% endif %}
+        <div class="chip-box flex flex-wrap gap-2 overflow-y-auto" style="max-height: 11rem">
+            {% for v, n in values %}
+            <a href="{{ furl(name, v) }}" data-chip="{{ v }}" class="pill {{ 'active' if current and current|lower == v|lower else '' }} px-3 py-1 rounded-full text-xs">{{ v }} <span class="opacity-60">{{ n }}</span></a>
+            {% endfor %}
+        </div>
+    </div>
+</details>
+{% endif %}
+{% endmacro %}
+
 {% macro cont_card(c) %}
 {% set g = c.group %}{% set ep = c.ep %}
 <div class="card rounded-xl p-3 flex gap-3 flex-shrink-0 w-72">
@@ -357,12 +376,12 @@
                 </div>
             {% elif g.final_category == 'podcasts' %}
                 <button type="button" class="album-btn btn-accent px-4 py-2 rounded-full text-sm font-semibold flex items-center gap-2 mb-3" data-key="{{ g.key }}" data-seen="1" data-playlist='{{ g.playlist|tojson }}'><span class="icon">▶&#xFE0E;</span><span class="label">Reproducir</span></button>
-                <details {% if g.episodes|length <= 3 %}open{% endif %}>
+                <details>
                     <summary class="text-sm font-semibold dim"><span class="season-arrow">▶&#xFE0E;</span> Episodios ({{ g.episodes|length }})</summary>
                     <div class="mt-2 max-h-96 overflow-y-auto">{{ track_rows(g, seen_ids) }}</div>
                 </details>
             {% else %}
-                <details {% if g.episodes|length <= 3 %}open{% endif %}>
+                <details>
                     <summary class="text-sm font-semibold dim"><span class="season-arrow">▶&#xFE0E;</span> {{ 'Tomos y capítulos' if g.final_category == 'comics' else 'Archivos' }} ({{ g.episodes|length }})</summary>
                     <div class="mt-2 space-y-2 max-h-96 overflow-y-auto">
                         {% for ep in g.episodes %}{{ file_row(ep, g, seen_ids) }}{% endfor %}
@@ -397,21 +416,20 @@
 
         <div class="border-t hline pt-4">
             {% if g.final_category in ['series', 'docs'] %}
-                {% set n_sections = g.seasons|length + (1 if g.ovas else 0) + (1 if g.parts else 0) %}
                 {% for s, eps in g.seasons.items() %}
-                <details class="mb-2" {% if n_sections == 1 %}open{% endif %}>
+                <details class="mb-2">
                     <summary class="text-sm font-semibold dim"><span class="season-arrow">▶&#xFE0E;</span> Temporada {{ s }} ({{ eps|length }})</summary>
                     {{ ep_grid(eps, g, seen_ids) }}
                 </details>
                 {% endfor %}
                 {% if g.ovas %}
-                <details class="mb-2" {% if n_sections == 1 %}open{% endif %}>
+                <details class="mb-2">
                     <summary class="text-sm font-semibold dim"><span class="season-arrow">▶&#xFE0E;</span> OVAs / Especiales ({{ g.ovas|length }})</summary>
                     {{ ep_grid(g.ovas, g, seen_ids) }}
                 </details>
                 {% endif %}
                 {% if g.parts %}
-                <details class="mb-2" {% if n_sections == 1 %}open{% endif %}>
+                <details class="mb-2">
                     <summary class="text-sm font-semibold dim"><span class="season-arrow">▶&#xFE0E;</span> Otros archivos ({{ g.parts|length }})</summary>
                     {{ ep_grid(g.parts, g, seen_ids) }}
                 </details>
@@ -449,7 +467,10 @@
     <form method="get" class="mb-6">
         <input type="hidden" name="section" value="{{ section }}">
         <input type="hidden" name="view" value="{{ view }}">
-        {% if artista and section != 'music' %}<input type="hidden" name="artista" value="{{ artista }}">{% endif %}
+        {% if artista %}<input type="hidden" name="artista" value="{{ artista }}">{% endif %}
+        {% if year %}<input type="hidden" name="year" value="{{ year }}">{% endif %}
+        {% if genero %}<input type="hidden" name="genero" value="{{ genero }}">{% endif %}
+        {% if estudio %}<input type="hidden" name="estudio" value="{{ estudio }}">{% endif %}
         {% if album %}<input type="hidden" name="album" value="{{ album }}">{% endif %}
         <div class="flex gap-3 mb-3">
             <div class="relative flex-1">
@@ -466,46 +487,22 @@
             </select>
         </div>
 
-        {% if section != 'favs' %}
-        <details class="panel rounded-xl overflow-hidden" {% if year or genero or estudio or artista %}open{% endif %}>
-            <summary class="px-4 py-3 text-sm font-medium" style="color: var(--accent)">⚙️ Búsqueda avanzada</summary>
-            <div class="px-4 pb-4 pt-2 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 border-t hline">
-                {% if section == 'music' %}
-                <div>
-                    <label class="block text-xs dim mb-1">Artista</label>
-                    <select name="artista" class="input w-full px-3 py-2 rounded-lg text-sm">
-                        <option value="">Todos los artistas</option>
-                        {% for a in all_artists %}<option value="{{ a }}" {{ 'selected' if artista == a else '' }}>{{ a }}</option>{% endfor %}
-                    </select>
+        {% if section != 'favs' and not focus %}
+        <details class="panel rounded-xl overflow-hidden" {% if active_filters %}open{% endif %}>
+            <summary class="px-4 py-3 text-sm font-medium" style="color: var(--accent)">⚙️ Explorar y filtrar{% if active_filters %} · {{ active_filters|length }} activo{{ '' if active_filters|length == 1 else 's' }}{% endif %}</summary>
+            <div class="px-4 pb-4 pt-3 border-t hline space-y-3">
+                {% if active_filters %}
+                <div class="flex flex-wrap items-center gap-2">
+                    <span class="text-xs dim">Filtros activos:</span>
+                    {% for label, name, val in active_filters %}<a href="{{ furl(name, val) }}" class="pill active px-3 py-1 rounded-full text-xs">{{ label }}: {{ val }} ✕</a>{% endfor %}
+                    <a href="{{ clear_url }}" class="pill px-3 py-1 rounded-full text-xs">Limpiar todo</a>
                 </div>
                 {% endif %}
-                <div>
-                    <label class="block text-xs dim mb-1">Año</label>
-                    <select name="year" class="input w-full px-3 py-2 rounded-lg text-sm">
-                        <option value="">Todos los años</option>
-                        {% for y in all_years %}<option value="{{ y }}" {{ 'selected' if year == y|string else '' }}>{{ y }}</option>{% endfor %}
-                    </select>
-                </div>
-                <div>
-                    <label class="block text-xs dim mb-1">Género</label>
-                    <select name="genero" class="input w-full px-3 py-2 rounded-lg text-sm">
-                        <option value="">Todos los géneros</option>
-                        {% for g in all_genres %}<option value="{{ g }}" {{ 'selected' if genero|lower == g|lower else '' }}>{{ g }}</option>{% endfor %}
-                    </select>
-                </div>
-                {% if section in ['music', 'series', 'movies', 'docs'] %}
-                <div>
-                    <label class="block text-xs dim mb-1">{{ 'Sello' if section == 'music' else 'Estudio' }}</label>
-                    <select name="estudio" class="input w-full px-3 py-2 rounded-lg text-sm">
-                        <option value="">Todos</option>
-                        {% for s in all_studios %}<option value="{{ s }}" {{ 'selected' if estudio == s else '' }}>{{ s }}</option>{% endfor %}
-                    </select>
-                </div>
-                {% endif %}
-                <div class="sm:col-span-2 lg:col-span-4 flex gap-3">
-                    <button class="btn-accent px-4 py-2 rounded-lg text-sm font-semibold" type="submit">Aplicar</button>
-                    <a href="?section={{ section }}{% if section == 'music' %}&view=artists{% endif %}" class="pill px-4 py-2 rounded-lg text-sm">Limpiar</a>
-                </div>
+                {% if section == 'music' %}{{ chip_group('Artistas', 'artista', all_artists, artista, furl) }}{% endif %}
+                {{ chip_group('Géneros', 'genero', all_genres, genero, furl) }}
+                {{ chip_group('Años', 'year', all_years, year, furl) }}
+                {% if section in ['series', 'movies', 'docs'] %}{{ chip_group('Estudios', 'estudio', all_studios, estudio, furl) }}
+                {% elif section == 'music' %}{{ chip_group('Sellos', 'estudio', all_studios, estudio, furl) }}{% endif %}
             </div>
         </details>
         {% endif %}
@@ -645,7 +642,11 @@
         {{ section_rows(sec_cont, sec_favs, sec_recent, favs) }}
         <h2 class="text-xl font-bold mb-3">{{ 'Todos los artistas' if section == 'music' else 'Todo' }}</h2>
         {% endif %}
+        {% if focus %}
+        <a href="?section={{ section }}{% if section == 'music' %}&view=artists{% endif %}" class="text-sm dim hover:opacity-80 mb-4 inline-block">← Ver todo en {{ section_label or 'la biblioteca' }}</a>
+        {% else %}
         <p class="text-xs faint mb-4">{{ found }} resultado{{ '' if found == 1 else 's' }}</p>
+        {% endif %}
         <div class="space-y-6">
             {% for g in items %}{{ card(g, favs, seen_ids) }}
             {% else %}
@@ -1146,6 +1147,16 @@
         navigate(url.href);
     });
     window.addEventListener('popstate', () => navigate(location.href, false));
+
+    // ---------- filtrar los botones de géneros / artistas / años ----------
+    const fold = (s) => (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+    document.addEventListener('input', (e) => {
+        const inp = e.target.closest ? e.target.closest('.chip-filter') : null;
+        if (!inp) return;
+        const q = fold(inp.value.trim());
+        inp.parentElement.querySelectorAll('[data-chip]').forEach(a => { a.style.display = fold(a.dataset.chip).includes(q) ? '' : 'none'; });
+    });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target.closest && e.target.closest('.chip-filter')) e.preventDefault(); }, true);
 
     // ---------- lightbox y teclado ----------
     function openLightbox(e, src) { e.preventDefault(); e.stopPropagation(); $('lightbox-img').src = src; $('lightbox').classList.add('active'); }

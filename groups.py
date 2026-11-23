@@ -1,6 +1,6 @@
 """Agrupación de archivos en series, películas, álbumes y artistas."""
 import re
-from collections import defaultdict
+from collections import Counter, defaultdict
 from typing import Dict, List
 from urllib.parse import quote_plus
 
@@ -111,7 +111,7 @@ def group_href(g: Dict) -> str:
         return f"?section=music&view=artists&artista={quote_plus(g['title'])}"
     if g["final_category"] == "music":
         return f"?section=music&album={quote_plus(g['title'])}&artista={quote_plus(g.get('artista') or '')}"
-    return f"?section={g['final_category']}&q={quote_plus(g['title'])}"
+    return f"?section={g['final_category']}&key={quote_plus(g.get('key') or g['title'])}"
 
 
 def link_covers(items: List[Dict]) -> None:
@@ -321,12 +321,11 @@ def add_synthetic_artists(groups: List[Dict]) -> List[Dict]:
 
 
 def get_filters_from_groups(groups: List[Dict], section: str):
-    years, genres, studios, artists, labels = set(), set(), set(), set(), set()
+    """Valores posibles de cada filtro en la sección, con cuántos elementos tiene cada uno: [(valor, cantidad)]."""
+    years, genres, studios, artists, labels = (Counter() for _ in range(5))
     for g in groups:
         if section == "music":
-            if g.get("is_artist"):
-                continue
-            if g["final_category"] != "music":
+            if g.get("is_artist") or g["final_category"] != "music":
                 continue
         elif section in CATEGORIES:
             if g["final_category"] != section or g.get("is_artist"):
@@ -335,23 +334,23 @@ def get_filters_from_groups(groups: List[Dict], section: str):
             continue
 
         if g.get("year"):
-            years.add(str(g["year"]))
-        if g.get("genero"):
-            for gen in re.split(r'[,;/]', g["genero"]):
-                if gen.strip():
-                    genres.add(gen.strip())
+            years[str(g["year"])] += 1
+        for gen in {x.strip() for x in re.split(r"[,;/]", g.get("genero") or "") if x.strip()}:
+            genres[gen] += 1
         if g.get("estudio"):
-            studios.add(g["estudio"])
+            studios[g["estudio"]] += 1
         if g.get("artista"):
-            artists.add(g["artista"])
+            artists[g["artista"]] += 1
         if g.get("label"):
-            labels.add(g["label"])
+            labels[g["label"]] += 1
+
+    by_name = lambda c: sorted(c.items(), key=lambda kv: kv[0].lower())
     return {
-        "years": sorted(years, reverse=True),
-        "genres": sorted(genres),
-        "studios": sorted(studios),
-        "artists": sorted(artists),
-        "labels": sorted(labels),
+        "years": sorted(years.items(), key=lambda kv: kv[0], reverse=True),
+        "genres": by_name(genres),
+        "studios": by_name(studios),
+        "artists": by_name(artists),
+        "labels": by_name(labels),
     }
 
 

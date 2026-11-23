@@ -5,7 +5,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import jinja2
 import meta
-from captions import extract_info
+from captions import extract_info, parse_caption
 from db import Database
 from groups import continue_list
 from library import Library
@@ -146,8 +146,8 @@ def test_templates_render_every_view():
         tpl = env.get_template("index.html")
         favs = {by_title(lib)["Dune"]["key"]}
         base = dict(request=None, items=[], albums_list=[], eps_list=[], artist_profile=None, total=lib.total, found=0, counts={}, nav=[{"key": "home", "label": "Inicio", "count": None}],
-                    recent=[], cont=[], fav_groups=[], favs=favs, seen_ids={11}, section="home", q="", page=1, total_pages=1, qs="", all_years=["2012"], all_genres=["Acción"],
-                    all_studios=[], all_artists=["DIIV"], sort="title", year="", genero="", estudio="", artista="", album="", view="artists")
+                    recent=[], cont=[], fav_groups=[], favs=favs, seen_ids={11}, section="home", q="", page=1, total_pages=1, qs="", all_years=[("2012", 1)], all_genres=[("Acción", 2)],
+                    all_studios=[], all_artists=[("DIIV", 1)], furl=lambda n, v: "?section=x&" + n + "=" + v, active_filters=[], clear_url="?section=x", focus=False, section_label="", sort="title", year="", genero="", estudio="", artista="", album="", view="artists")
 
         def render(**kw): return tpl.render(**{**base, **kw})
         cat = lambda c: [g for g in groups if g["final_category"] == c and not g.get("is_artist")]
@@ -268,6 +268,35 @@ def test_human_size_and_total_bytes():
     with tempfile.TemporaryDirectory() as tmp:
         lib = lib_with(tmp)
         assert lib.total_bytes == sum(r["size"] for r in SAMPLE)
+
+
+def test_synopsis_keeps_blank_lines():
+    cap = "Tipo: Serie\nNombre: X\nSinopsis: Primer párrafo.\nSigue el primero.\n\n\nSegundo párrafo.\n\n\n\n\nTercero.\nAño: 2019"
+    p = parse_caption(cap)
+    assert p["sinopsis"] == "Primer párrafo.\nSigue el primero.\n\n\nSegundo párrafo.\n\n\nTercero."      # se respeta el doble Enter (máx. 2 vacías)
+    assert p["year"] == "2019"
+    assert parse_caption("Tipo: Serie\nSinopsis: Uno\n\nDos")["sinopsis"] == "Uno\n\nDos"
+    assert parse_caption("Sinopsis: Solo\n\n\n")["sinopsis"] == "Solo"                                     # sin vacías al final
+
+
+def test_filters_return_counts():
+    from groups import get_filters_from_groups
+    with tempfile.TemporaryDirectory() as tmp:
+        lib = lib_with(tmp, [
+            raw(1, "p.jpg", "Tipo: Álbum\nÁlbum: A\nArtista: DIIV\nAño: 2012\nGénero: dream pop, shoegaze", "image/jpeg", True, True), raw(2, "01.mp3", "", "audio/mpeg"),
+            raw(3, "p.jpg", "Tipo: Álbum\nÁlbum: B\nArtista: DIIV\nAño: 2019\nGénero: shoegaze", "image/jpeg", True, True), raw(4, "01.mp3", "", "audio/mpeg"),
+        ])
+        f = get_filters_from_groups(lib.groups(), "music")
+        assert f["genres"] == [("dream pop", 1), ("shoegaze", 2)]
+        assert f["years"] == [("2019", 1), ("2012", 1)] and f["artists"] == [("DIIV", 2)]
+
+
+def test_group_href_points_to_that_exact_item():
+    from urllib.parse import parse_qs
+    with tempfile.TemporaryDirectory() as tmp:
+        g = by_title(lib_with(tmp))["High School DxD"]
+        q = parse_qs(g["href"].lstrip("?"))
+        assert q["section"] == ["series"] and q["key"] == [g["key"]] and "q" not in q
 
 
 if __name__ == "__main__":

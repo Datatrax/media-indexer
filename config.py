@@ -27,6 +27,7 @@ ITEMS_PER_PAGE = int(os.getenv("ITEMS_PER_PAGE", "12"))
 FULL_SYNC = os.getenv("FULL_SYNC", "0") == "1"   # fuerza releer todo el canal al arrancar
 AUTO_META = os.getenv("AUTO_META", "0") == "1"   # sinopsis/portadas automáticas (Jikan, Open Library, TMDB)
 TMDB_API_KEY = os.getenv("TMDB_API_KEY") or None
+AUTO_BACKUP = os.getenv("AUTO_BACKUP", "0") == "1"   # respaldo en "Mensajes guardados" de Telegram
 
 DATA_DIR = Path(os.getenv("DATA_DIR", "data"))
 THUMB_DIR = DATA_DIR / "thumbs"

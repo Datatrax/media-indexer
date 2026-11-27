@@ -237,6 +237,7 @@ def extract_info(raw: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         "date": raw.get("date") or "",
         "link": raw.get("link") or "",
         "thumbnail": f"/thumb/{msg_id}?v={raw.get('stamp', '0')}" if raw.get("thumb") else None,
+        "thumb_small": f"/thumb/{msg_id}?v={raw.get('stamp', '0')}&s=1" if raw.get("thumb") else None,
         "duration": duration,
         "duration_str": f"{duration // 60}:{duration % 60:02d}" if duration else "",
         "caption": caption,

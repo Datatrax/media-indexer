@@ -174,6 +174,7 @@ def build_groups(items: List[Dict]) -> List[Dict]:
         "secuela": None,
         "sinopsis": None,
         "thumbnail": None,
+        "thumb_small": None,
         "latest_date": "",
         "total_size": 0,
         "is_artist": False,
@@ -231,6 +232,8 @@ def build_groups(items: List[Dict]) -> List[Dict]:
                 for field in ["year", "genero", "sinopsis", "thumbnail"]:
                     if item.get(field):
                         g[field] = item[field]
+                if item.get("thumb_small"):
+                    g["thumb_small"] = item["thumb_small"]
                 continue
 
             if cat == "photos" or not item.get("is_photo"):
@@ -248,6 +251,7 @@ def build_groups(items: List[Dict]) -> List[Dict]:
             if item.get("thumbnail"):
                 if item.get("is_photo") or not g["thumbnail"]:
                     g["thumbnail"] = item["thumbnail"]
+                    g["thumb_small"] = item.get("thumb_small") or item["thumbnail"]
 
             if item.get("date") and item["date"] > (g["latest_date"] or ""):
                 g["latest_date"] = item["date"]
@@ -309,12 +313,13 @@ def add_synthetic_artists(groups: List[Dict]) -> List[Dict]:
         e = extra.setdefault(slug(name), {
             "title": name, "is_artist": True, "synthetic": True, "final_category": "", "key": f"artist::{slug(name)}",
             "href": f"?section=music&view=artists&artista={quote_plus(name)}",
-            "thumbnail": g.get("thumbnail"), "year": None, "genero": g.get("genero"),
+            "thumbnail": g.get("thumbnail"), "thumb_small": g.get("thumb_small"), "year": None, "genero": g.get("genero"),
             "sinopsis": None, "latest_date": g.get("latest_date") or "", "total_size": 0,
             "episodes": [], "playlist": [],
         })
         if not e["thumbnail"] and g.get("thumbnail"):
             e["thumbnail"] = g["thumbnail"]
+            e["thumb_small"] = g.get("thumb_small") or g["thumbnail"]
         if (g.get("latest_date") or "") > e["latest_date"]:
             e["latest_date"] = g["latest_date"]
     return groups + list(extra.values())
@@ -354,13 +359,16 @@ def get_filters_from_groups(groups: List[Dict], section: str):
     }
 
 
-def continue_list(by_key: Dict[str, Dict], seen: Dict[int, tuple], limit: int = 12) -> List[Dict]:
-    """'Continuar': por cada grupo con algo visto, el siguiente archivo sin ver."""
+def continue_list(by_key: Dict[str, Dict], seen: Dict[int, tuple], limit: int = 12, unfinished=None) -> List[Dict]:
+    """'Continuar': por cada grupo con algo visto, lo siguiente por ver. Lo que quedó a medias (audio o libro
+    con progreso guardado) cuenta como pendiente, así que aparece él mismo en vez de saltar al siguiente."""
+    unfinished = set(unfinished or ())
     last_by_key: Dict[str, tuple] = {}
     for item_id, (key, at) in seen.items():
         cur = last_by_key.get(key)
         if not cur or at > cur[1]:
             last_by_key[key] = (item_id, at)
+    done = {i for i in seen if i not in unfinished}
     out = []
     for key, (last_id, at) in sorted(last_by_key.items(), key=lambda kv: -kv[1][1]):
         g = by_key.get(key)
@@ -368,9 +376,9 @@ def continue_list(by_key: Dict[str, Dict], seen: Dict[int, tuple], limit: int = 
             continue
         eps = g["episodes"]
         ids = [e["id"] for e in eps]
-        start = ids.index(last_id) + 1 if last_id in ids else 0
-        nxt = (next((e for e in eps[start:] if e["id"] not in seen), None)
-               or next((e for e in eps if e["id"] not in seen), None))
+        start = ids.index(last_id) + (0 if last_id in unfinished else 1) if last_id in ids else 0
+        nxt = (next((e for e in eps[start:] if e["id"] not in done), None)
+               or next((e for e in eps if e["id"] not in done), None))
         if nxt:
             out.append({"group": g, "ep": nxt, "at": at})
         if len(out) >= limit:

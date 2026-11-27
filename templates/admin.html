@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="theme-color" content="#0c0a14">
+    <title>Administración · Biblioteca de Prozac</title>
+    <style>
+        :root { --bg: #0c0a14; --card: #16131f; --line: #2e2a3d; --text: #f3f0fa; --dim: #a39cba; --accent: #c084fc; }
+        * { box-sizing: border-box; }
+        body { margin: 0; background: var(--bg); color: var(--text); font-family: system-ui, -apple-system, Segoe UI, sans-serif; padding: env(safe-area-inset-top) 0 40px; }
+        .wrap { max-width: 980px; margin: 0 auto; padding: 20px 16px; }
+        h1 { font-size: 26px; margin: 8px 0 4px; } h2 { font-size: 18px; margin: 32px 0 12px; }
+        a { color: var(--accent); } .dim { color: var(--dim); } .small { font-size: 13px; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+        .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px; }
+        .card b { display: block; font-size: 22px; } .card span { color: var(--dim); font-size: 13px; }
+        button, .btn { background: var(--accent); color: #16081f; border: 0; border-radius: 10px; padding: 10px 16px; font-weight: 600; font-size: 14px; cursor: pointer; text-decoration: none; display: inline-block; }
+        button.sec, .btn.sec { background: #2a2540; color: var(--text); }
+        button:disabled { opacity: .5; cursor: wait; }
+        .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+        #msg { margin-top: 12px; min-height: 22px; font-size: 14px; }
+        details.p { background: var(--card); border: 1px solid var(--line); border-radius: 12px; margin-bottom: 10px; }
+        details.p > summary { cursor: pointer; padding: 14px; display: flex; gap: 10px; align-items: center; list-style: none; }
+        details.p > summary::-webkit-details-marker { display: none; }
+        .badge { font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 999px; text-transform: uppercase; }
+        .alto { background: #7f1d1d; color: #fecaca; } .medio { background: #78350f; color: #fde68a; } .info { background: #1e3a5f; color: #bfdbfe; }
+        .count { margin-left: auto; color: var(--dim); font-variant-numeric: tabular-nums; }
+        .body { padding: 0 14px 14px; }
+        table { width: 100%; border-collapse: collapse; font-size: 14px; margin-top: 8px; }
+        td { padding: 8px 6px; border-top: 1px solid var(--line); vertical-align: top; word-break: break-word; }
+        td:last-child { white-space: nowrap; text-align: right; }
+        .ok { color: #86efac; } .bad { color: #fca5a5; }
+    </style>
+</head>
+<body>
+<div class="wrap">
+    <a href="/?section=home">← Volver a la biblioteca</a>
+    <h1>Administración</h1>
+    <p class="dim small" style="margin-top:0">Qué quedó sin clasificar, sin portada o sin datos, y herramientas de mantenimiento.</p>
+
+    <h2>Resumen</h2>
+    <div class="grid">
+        <div class="card"><b>{{ diag.summary.files }}</b><span>archivos</span></div>
+        <div class="card"><b>{{ diag.summary.size }}</b><span>peso total</span></div>
+        <div class="card"><b>{{ diag.summary.groups }}</b><span>elementos agrupados</span></div>
+        <div class="card"><b>{{ diag.summary.artists }}</b><span>artistas</span></div>
+        <div class="card"><b>{{ diag.summary.thumbs }}</b><span>miniaturas en disco</span></div>
+        <div class="card"><b>{{ diag.summary.data_size }}</b><span>datos del servidor (caché)</span></div>
+    </div>
+    <p class="small dim" style="margin-top:12px">
+        {% for name, n in diag.summary.by_category %}{{ name }}: <b style="color:var(--text)">{{ n }}</b>{% if not loop.last %} · {% endif %}{% endfor %}
+    </p>
+    <p class="small dim">
+        Sincronización con Telegram:
+        {% if sync.running %}<b class="ok">en curso</b> ({{ sync.scanned or 0 }} revisados){% elif sync.error %}<b class="bad">con error:</b> {{ sync.error }}{% else %}<b class="ok">al día</b>{% endif %}
+        · Base de datos: {{ diag.summary.db_size }}
+        · Datos automáticos: {{ 'activados' if meta_on else 'apagados' }} ({{ diag.summary.meta_entries }} guardados)
+    </p>
+
+    <h2>Acciones</h2>
+    <div class="row">
+        <button type="button" id="resync">Revisar todo el canal ahora</button>
+        <button type="button" id="backup" class="sec">Descargar respaldo</button>
+        <label class="btn sec" for="restore-file" style="margin:0">Restaurar respaldo…</label>
+        <input type="file" id="restore-file" accept="application/json,.json" hidden>
+    </div>
+    <div id="msg" class="dim"></div>
+    <p class="small dim">
+        <b>Respaldo:</b> guarda favoritos, lo que ya viste, tu avance en libros y podcasts, y los datos automáticos. Al restaurar se <i>fusiona</i> con lo que ya tengas (no se borra nada).
+        {% if auto_backup %}<br><b class="ok">Respaldo automático activo:</b> se guarda en «Mensajes guardados» de tu Telegram cada vez que algo cambia
+        {% if backup_state.last_upload %}(último: <span data-ts="{{ backup_state.last_upload }}"></span>){% endif %}{% if backup_state.last_restore %}; se restauró solo al arrancar (<span data-ts="{{ backup_state.last_restore }}"></span>){% endif %}.
+        {% if backup_state.error %}<span class="bad"> Error: {{ backup_state.error }}</span>{% endif %}
+        {% else %}<br>El respaldo automático en Telegram está apagado: agrega <code>AUTO_BACKUP=1</code> en las variables de entorno para activarlo (recomendado si tu hosting no tiene disco persistente).{% endif %}
+    </p>
+
+    <h2>Problemas detectados {% if diag.problems %}<span class="dim small">({{ diag.problems|length }} tipos)</span>{% endif %}</h2>
+    {% for p in diag.problems %}
+    <details class="p">
+        <summary><span class="badge {{ p.severity }}">{{ {'alto': 'importante', 'medio': 'revisar', 'info': 'opcional'}[p.severity] }}</span><b>{{ p.title }}</b><span class="count">{{ p.count }}</span></summary>
+        <div class="body">
+            <p class="dim small" style="margin:0">{{ p.hint }}</p>
+            <table>
+                {% for r in p.rows %}
+                <tr><td>{{ r.title }}<div class="dim small">{{ r.detail }}</div></td><td>{% if r.link %}<a href="{{ r.link }}" target="_blank" rel="noopener">Abrir en Telegram</a>{% endif %}</td></tr>
+                {% endfor %}
+            </table>
+            {% if p.hidden %}<p class="dim small">… y {{ p.hidden }} más.</p>{% endif %}
+        </div>
+    </details>
+    {% else %}
+    <div class="card ok">Todo en orden: no se encontró nada raro. 🎉</div>
+    {% endfor %}
+</div>
+
+<script>
+    const $ = (id) => document.getElementById(id);
+    const msg = (t, cls) => { $('msg').className = cls || 'dim'; $('msg').textContent = t; };
+    document.querySelectorAll('[data-ts]').forEach(e => { e.textContent = new Date(Number(e.dataset.ts) * 1000).toLocaleString(); });
+    const json = { 'Content-Type': 'application/json' };
+
+    $('resync').onclick = async () => {
+        $('resync').disabled = true;
+        try {
+            const r = await fetch('/admin/resync', { method: 'POST', headers: json, body: '{}' });
+            const d = await r.json(); msg(d.status || 'Listo', 'ok');
+        } catch (e) { msg('No se pudo iniciar la revisión', 'bad'); }
+        setTimeout(() => { $('resync').disabled = false; }, 4000);
+    };
+
+    // El respaldo incluye también "más escuchadas", que se guardan en este navegador
+    $('backup').onclick = async () => {
+        try {
+            const data = await (await fetch('/admin/backup')).json();
+            let plays = {}; try { plays = JSON.parse(localStorage.getItem('playCounts3') || '{}'); } catch (e) {}
+            data.browser = { playCounts3: plays };
+            const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
+            const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+            a.download = 'biblioteca-respaldo-' + new Date().toISOString().slice(0, 10) + '.json'; a.click();
+            setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+            msg('Respaldo descargado: ' + data.favorites.length + ' favoritos, ' + data.seen.length + ' vistos, ' + data.progress.length + ' avances.', 'ok');
+        } catch (e) { msg('No se pudo crear el respaldo', 'bad'); }
+    };
+
+    $('restore-file').onchange = async (ev) => {
+        const file = ev.target.files[0]; if (!file) return;
+        try {
+            const data = JSON.parse(await file.text());
+            const r = await fetch('/admin/restore', { method: 'POST', headers: json, body: JSON.stringify(data) });
+            const d = await r.json();
+            if (!r.ok) { msg(d.detail || 'Ese archivo no es un respaldo válido', 'bad'); return; }
+            const b = (data.browser && data.browser.playCounts3) || {};
+            let mine = {}; try { mine = JSON.parse(localStorage.getItem('playCounts3') || '{}'); } catch (e) {}
+            for (const [id, e] of Object.entries(b)) if (!mine[id] || e.n > mine[id].n) mine[id] = e;
+            try { localStorage.setItem('playCounts3', JSON.stringify(mine)); } catch (e) {}
+            msg('Restaurado: ' + d.counts.favoritos + ' favoritos, ' + d.counts.vistos + ' vistos, ' + d.counts.progreso + ' avances nuevos o más recientes.', 'ok');
+        } catch (e) { msg('No se pudo leer ese archivo', 'bad'); }
+        ev.target.value = '';
+    };
+</script>
+</body>
+</html>

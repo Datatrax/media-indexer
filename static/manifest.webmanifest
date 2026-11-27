@@ -1,0 +1,24 @@
+{
+  "id": "/",
+  "name": "Biblioteca de Prozac",
+  "short_name": "Prozac",
+  "description": "Tu nube de Telegram como biblioteca: series, películas, música, libros y más.",
+  "start_url": "/?section=home",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0c0a14",
+  "theme_color": "#0c0a14",
+  "lang": "es",
+  "icons": [
+    { "src": "/static/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/static/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/static/icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Música", "short_name": "Música", "url": "/?section=music&view=artists" },
+    { "name": "Series", "short_name": "Series", "url": "/?section=series" },
+    { "name": "Libros", "short_name": "Libros", "url": "/?section=books" },
+    { "name": "Favoritos", "short_name": "Favoritos", "url": "/?section=favs" }
+  ]
+}

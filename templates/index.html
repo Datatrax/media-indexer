@@ -2,8 +2,16 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>Biblioteca de Prozac</title>
+    <link rel="manifest" href="/manifest.webmanifest" crossorigin="use-credentials">
+    <meta name="theme-color" content="#0c0a14">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Prozac">
+    <link rel="icon" type="image/png" href="/static/icons/icon-192.png">
+    <link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
     <script>try { if (localStorage.getItem('theme') === 'light') document.documentElement.classList.add('light'); } catch (e) {}</script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -36,7 +44,7 @@
             background-color: var(--bg);
             background-image: radial-gradient(900px 480px at 8% -8%, var(--glow), transparent 62%);
             background-attachment: fixed; background-repeat: no-repeat;
-            color: var(--text); min-height: 100vh;
+            color: var(--text); min-height: 100vh; padding-top: env(safe-area-inset-top);
         }
         .dim { color: var(--dim); } .faint { color: var(--faint); }
         .panel { background: var(--panel); } .panel-h:hover { background: var(--panel-hover); }
@@ -129,6 +137,9 @@
             .pb-seek { top: -8px; height: 18px; }
         }
 
+        #toast { position: fixed; left: 50%; bottom: calc(96px + env(safe-area-inset-bottom)); transform: translate(-50%, 12px); background: rgba(24,24,27,.96); color: #fff; padding: 10px 16px; border-radius: 999px; font-size: 14px; opacity: 0; pointer-events: none; transition: opacity .25s, transform .25s; z-index: 1200; border: 1px solid #333; }
+        #toast.show { opacity: 1; transform: translate(-50%, 0); }
+
         /* ---- pantalla "Reproduciendo" ---- */
         #np { position: fixed; inset: 0; z-index: 1100; display: none; flex-direction: column; color: #fff; background: linear-gradient(180deg, #202028 0%, #0a0a0c 70%); }
         #np.open { display: flex; }
@@ -189,9 +200,10 @@
 </div>
 {% endmacro %}
 
-{% macro file_row(ep, g, seen_ids) %}
+{% macro file_row(ep, g, seen_ids, progress) %}
 <div class="panel rounded-lg px-3 py-2 flex items-center gap-2 text-sm {{ 'seen' if ep.id in seen_ids else '' }}" data-seen-scope data-seen-id="{{ ep.id }}">
-    <span class="flex-1 min-w-0 truncate"><span class="seen-mark">✓ </span>{{ ep.title }} <span class="text-xs faint uppercase">{{ ep.ext }}</span></span>
+    <span class="flex-1 min-w-0 truncate"><span class="seen-mark">✓ </span>{{ ep.title }} <span class="text-xs faint uppercase">{{ ep.ext }}</span>
+        {% if progress and progress.get(ep.id) %}<span class="text-xs ml-1" style="color: var(--accent)">· {{ progress[ep.id].label }}</span>{% endif %}</span>
     <span class="text-xs faint hidden sm:inline">{{ ep.size_mb }} MB</span>
     {% if ep.ext in ['pdf', 'epub', 'cbz'] %}
     <a href="/read/{{ ep.id }}?key={{ g.key|urlencode }}" target="_blank" rel="noopener" data-seen-id="{{ ep.id }}" data-key="{{ g.key }}"
@@ -205,7 +217,7 @@
 <div class="relative flex-shrink-0 w-36 sm:w-40">
     <a href="{{ g.href }}" class="block">
         <div class="rounded-xl overflow-hidden panel mb-2" style="aspect-ratio: {{ '1 / 1' if (g.is_artist or g.final_category in ['music', 'podcasts', 'photos']) else '2 / 3' }}">
-            {% if g.thumbnail %}<img src="{{ g.thumbnail }}" loading="lazy" decoding="async" class="w-full h-full object-cover" alt="">
+            {% if g.thumbnail %}<img src="{{ g.thumb_small or g.thumbnail }}" loading="lazy" decoding="async" class="w-full h-full object-cover" alt="">
             {% else %}<div class="w-full h-full flex items-center justify-center faint text-3xl">♪</div>{% endif %}
         </div>
         <p class="text-sm font-medium truncate">{{ g.title }}</p>
@@ -220,7 +232,7 @@
 <div class="group relative">
     <a href="{{ href }}">
         <div class="aspect-square panel rounded-lg overflow-hidden mb-2 relative">
-            {% if series.thumbnail %}<img src="{{ series.thumbnail }}" loading="lazy" decoding="async" class="w-full h-full object-cover group-hover:scale-105 transition" alt="">
+            {% if series.thumbnail %}<img src="{{ series.thumb_small or series.thumbnail }}" loading="lazy" decoding="async" class="w-full h-full object-cover group-hover:scale-105 transition" alt="">
             {% else %}<div class="w-full h-full flex items-center justify-center faint text-3xl">♪</div>{% endif %}
         </div>
     </a>
@@ -236,7 +248,7 @@
 </div>
 {% endmacro %}
 
-{% macro track_rows(g, seen_ids, fallback_artist='') %}
+{% macro track_rows(g, seen_ids, progress, fallback_artist='') %}
 <div class="space-y-2" data-playlist-root data-key="{{ g.key }}" {% if g.final_category == 'podcasts' %}data-seen="1"{% endif %}>
     {% for ep in g.episodes %}
     <div class="track-row panel panel-h flex items-center gap-3 rounded-xl px-3 py-2.5 {{ 'seen' if ep.id in seen_ids else '' }}"
@@ -245,7 +257,8 @@
         <button type="button" data-id="{{ ep.id }}" class="track-btn btn-accent w-9 h-9 rounded-full flex items-center justify-center font-bold flex-shrink-0">▶&#xFE0E;</button>
         <div class="flex-1 min-w-0">
             <p class="font-medium text-sm truncate"><span class="seen-mark">✓ </span>{{ ep.title }}</p>
-            <p class="text-xs faint">{% if ep.duration_str %}{{ ep.duration_str }} · {% endif %}{{ ep.size_mb }} MB</p>
+            <p class="text-xs faint">{% if ep.duration_str %}{{ ep.duration_str }} · {% endif %}{{ ep.size_mb }} MB{% if progress and progress.get(ep.id) %} · <span style="color: var(--accent)">retomar en {{ progress[ep.id].label.split(' de ')[0] }}</span>{% endif %}</p>
+            {% if progress and progress.get(ep.id) %}<div class="mt-1 rounded" style="height: 3px; background: var(--panel-hover)"><div class="rounded" style="height: 3px; width: {{ progress[ep.id].pct }}%; background: var(--accent)"></div></div>{% endif %}
         </div>
         <a href="/stream/{{ ep.id }}" download class="pill text-xs px-3 py-1.5 rounded-lg">Descargar</a>
     </div>
@@ -272,15 +285,15 @@
 {% endif %}
 {% endmacro %}
 
-{% macro cont_card(c) %}
+{% macro cont_card(c, progress) %}
 {% set g = c.group %}{% set ep = c.ep %}
 <div class="card rounded-xl p-3 flex gap-3 flex-shrink-0 w-72">
     <a href="{{ g.href }}" class="w-14 flex-shrink-0 rounded-lg overflow-hidden panel" style="aspect-ratio: 2 / 3">
-        {% if g.thumbnail %}<img src="{{ g.thumbnail }}" loading="lazy" decoding="async" class="w-full h-full object-cover" alt="">{% endif %}
+        {% if g.thumbnail %}<img src="{{ g.thumb_small or g.thumbnail }}" loading="lazy" decoding="async" class="w-full h-full object-cover" alt="">{% endif %}
     </a>
     <div class="min-w-0 flex-1">
         <p class="font-semibold text-sm truncate">{{ g.title }}</p>
-        <p class="text-xs dim truncate">Siguiente: {{ ep.title }}{% if ep.season and g.final_category in ['series', 'docs'] and g.seasons|length > 1 %} · T{{ ep.season }}{% endif %}</p>
+        <p class="text-xs dim truncate">{{ 'Seguir' if progress and progress.get(ep.id) else 'Siguiente' }}: {{ ep.title }}{% if progress and progress.get(ep.id) %} · {{ progress[ep.id].label.split(' de ')[0] }}{% endif %}{% if ep.season and g.final_category in ['series', 'docs'] and g.seasons|length > 1 %} · T{{ ep.season }}{% endif %}</p>
         <a href="{% if ep.ext in ['pdf', 'epub', 'cbz'] %}/read/{{ ep.id }}?key={{ g.key|urlencode }}{% else %}{{ ep.link }}{% endif %}" target="_blank" rel="noopener"
            data-seen-id="{{ ep.id }}" data-key="{{ g.key }}"
            class="btn-accent inline-block mt-2 px-3 py-1 rounded-lg text-xs font-semibold">Seguir</a>
@@ -289,10 +302,10 @@
 {% endmacro %}
 
 {# filas del inicio de CADA sección: solo con lo de esa sección #}
-{% macro section_rows(cont, favgroups, recent, favs) %}
+{% macro section_rows(cont, favgroups, recent, favs, progress) %}
 {% if cont %}
 <section class="mb-10"><h2 class="text-xl font-bold mb-3">Continuar</h2>
-    <div class="hrow">{% for c in cont %}{{ cont_card(c) }}{% endfor %}</div></section>
+    <div class="hrow">{% for c in cont %}{{ cont_card(c, progress) }}{% endfor %}</div></section>
 {% endif %}
 {% if favgroups %}
 <section class="mb-10"><h2 class="text-xl font-bold mb-3">Favoritos</h2>
@@ -305,7 +318,7 @@
 {% endmacro %}
 
 {# ---- tarjetas por tipo de contenido ---- #}
-{% macro card(g, favs, seen_ids) %}
+{% macro card(g, favs, seen_ids, progress) %}
 <div class="card rounded-2xl overflow-hidden">
 {% if g.is_artist %}
     <div class="relative">
@@ -334,13 +347,13 @@
             {{ star(g, favs) }}
         </div>
         <div class="photo-grid">
-            {% for ph in photos[:8] %}<img src="{{ ph.thumbnail }}" loading="lazy" decoding="async" class="photo" onclick="openLightbox(event, this.src)" alt="">{% endfor %}
+            {% for ph in photos[:8] %}<img src="{{ ph.thumb_small or ph.thumbnail }}" data-full="{{ ph.thumbnail }}" loading="lazy" decoding="async" class="photo" onclick="openLightbox(event, this.dataset.full || this.src)" alt="">{% endfor %}
         </div>
         {% if photos|length > 8 %}
         <details class="mt-3">
             <summary class="text-sm dim hover:opacity-80"><span class="season-arrow">▶&#xFE0E;</span> Ver {{ photos|length - 8 }} más</summary>
             <div class="photo-grid mt-3">
-                {% for ph in photos[8:] %}<img src="{{ ph.thumbnail }}" loading="lazy" decoding="async" class="photo" onclick="openLightbox(event, this.src)" alt="">{% endfor %}
+                {% for ph in photos[8:] %}<img src="{{ ph.thumb_small or ph.thumbnail }}" data-full="{{ ph.thumbnail }}" loading="lazy" decoding="async" class="photo" onclick="openLightbox(event, this.dataset.full || this.src)" alt="">{% endfor %}
             </div>
         </details>
         {% endif %}
@@ -349,7 +362,7 @@
 {% elif g.final_category in ['podcasts', 'music'] or g.final_category in ['books', 'comics'] %}
     <div class="flex">
         <div class="w-28 sm:w-40 flex-shrink-0 panel">
-            {% if g.thumbnail %}<img src="{{ g.thumbnail }}" loading="lazy" decoding="async" class="cover-img w-full h-full object-cover" style="aspect-ratio: {{ '2 / 3' if g.final_category in ['books', 'comics'] else '1 / 1' }}; min-height: 100%" alt="" onclick="openLightbox(event, this.src)">
+            {% if g.thumbnail %}<img src="{{ g.thumb_small or g.thumbnail }}" data-full="{{ g.thumbnail }}" loading="lazy" decoding="async" class="cover-img w-full h-full object-cover" style="aspect-ratio: {{ '2 / 3' if g.final_category in ['books', 'comics'] else '1 / 1' }}; min-height: 100%" alt="" onclick="openLightbox(event, this.dataset.full || this.src)">
             {% else %}<div class="w-full h-full flex items-center justify-center faint text-3xl" style="aspect-ratio: {{ '2 / 3' if g.final_category in ['books', 'comics'] else '1 / 1' }}">{{ '♪' if g.final_category in ['podcasts', 'music'] else '▤' }}</div>{% endif %}
         </div>
         <div class="flex-1 p-4 min-w-0">
@@ -378,13 +391,13 @@
                 <button type="button" class="album-btn btn-accent px-4 py-2 rounded-full text-sm font-semibold flex items-center gap-2 mb-3" data-key="{{ g.key }}" data-seen="1" data-playlist='{{ g.playlist|tojson }}'><span class="icon">▶&#xFE0E;</span><span class="label">Reproducir</span></button>
                 <details>
                     <summary class="text-sm font-semibold dim"><span class="season-arrow">▶&#xFE0E;</span> Episodios ({{ g.episodes|length }})</summary>
-                    <div class="mt-2 max-h-96 overflow-y-auto">{{ track_rows(g, seen_ids) }}</div>
+                    <div class="mt-2 max-h-96 overflow-y-auto">{{ track_rows(g, seen_ids, progress) }}</div>
                 </details>
             {% else %}
                 <details>
                     <summary class="text-sm font-semibold dim"><span class="season-arrow">▶&#xFE0E;</span> {{ 'Tomos y capítulos' if g.final_category == 'comics' else 'Archivos' }} ({{ g.episodes|length }})</summary>
                     <div class="mt-2 space-y-2 max-h-96 overflow-y-auto">
-                        {% for ep in g.episodes %}{{ file_row(ep, g, seen_ids) }}{% endfor %}
+                        {% for ep in g.episodes %}{{ file_row(ep, g, seen_ids, progress) }}{% endfor %}
                     </div>
                 </details>
             {% endif %}
@@ -448,6 +461,7 @@
 <button id="theme-btn" type="button" class="fixed top-3 right-3 z-50 w-10 h-10 rounded-full pill text-lg flex items-center justify-center" aria-label="Cambiar tema" title="Cambiar tema">☾&#xFE0E;</button>
 
 <div id="page">
+<script type="application/json" id="progress-data">{{ (progress_json or {})|tojson }}</script>
 <div class="container mx-auto px-4 py-6 max-w-5xl">
 
     <div class="mb-6 text-center">
@@ -514,7 +528,7 @@
         {% if cont %}
         <section class="mb-10">
             <h2 class="text-xl font-bold mb-3">Continuar</h2>
-            <div class="hrow">{% for c in cont %}{{ cont_card(c) }}{% endfor %}</div>
+            <div class="hrow">{% for c in cont %}{{ cont_card(c, progress) }}{% endfor %}</div>
         </section>
         {% endif %}
 
@@ -548,7 +562,7 @@
             <a href="{% if back %}?section=music&artista={{ back|urlencode }}&view=artists{% else %}?section=music&view=artists{% endif %}" class="text-sm dim hover:opacity-80 mb-4 inline-block">← Volver{% if back %} a {{ back }}{% endif %}</a>
             <div class="flex flex-col md:flex-row gap-6 mb-8">
                 {% if series.thumbnail %}
-                <img src="{{ series.thumbnail }}" class="album-cover w-48 h-48 rounded-lg object-cover flex-shrink-0 cursor-zoom-in" onclick="openLightbox(event, this.src)" alt="">
+                <img src="{{ series.thumb_small or series.thumbnail }}" data-full="{{ series.thumbnail }}" class="album-cover w-48 h-48 rounded-lg object-cover flex-shrink-0 cursor-zoom-in" onclick="openLightbox(event, this.dataset.full || this.src)" alt="">
                 {% endif %}
                 <div class="min-w-0">
                     <p class="text-sm dim">Álbum</p>
@@ -571,7 +585,7 @@
                     </div>
                 </div>
             </div>
-            {{ track_rows(series, seen_ids, artista) }}
+            {{ track_rows(series, seen_ids, progress, artista) }}
         </div>
         {% else %}
         <div class="text-center py-20 faint">Álbum no encontrado</div>
@@ -639,7 +653,7 @@
     {# ================= LISTADOS ================= #}
     {% else %}
         {% if landing and (sec_cont or sec_favs or sec_recent) %}
-        {{ section_rows(sec_cont, sec_favs, sec_recent, favs) }}
+        {{ section_rows(sec_cont, sec_favs, sec_recent, favs, progress) }}
         <h2 class="text-xl font-bold mb-3">{{ 'Todos los artistas' if section == 'music' else 'Todo' }}</h2>
         {% endif %}
         {% if focus %}
@@ -648,7 +662,7 @@
         <p class="text-xs faint mb-4">{{ found }} resultado{{ '' if found == 1 else 's' }}</p>
         {% endif %}
         <div class="space-y-6">
-            {% for g in items %}{{ card(g, favs, seen_ids) }}
+            {% for g in items %}{{ card(g, favs, seen_ids, progress) }}
             {% else %}
             <div class="text-center py-20 faint">
                 {% if section == 'favs' and not q %}Aún no tienes favoritos. Toca ☆ en cualquier tarjeta para guardarlo aquí.{% else %}No se encontraron resultados{% endif %}
@@ -669,6 +683,11 @@
 <footer class="text-center text-sm faint py-10">
     <span class="brand text-lg">Biblioteca de Prozac</span>
     <p class="mt-1">{{ total }} archivos · {{ total_size }}</p>
+    <p class="mt-3 flex flex-wrap items-center justify-center gap-3">
+        <button type="button" id="install-btn" class="pill px-4 py-2 rounded-full text-sm" style="display:none">📲 Instalar app</button>
+        <a href="/admin" class="text-xs hover:underline">Administración</a>
+    </p>
+    <p id="ios-hint" class="text-xs mt-2" style="display:none">En iPhone: toca Compartir y luego «Añadir a pantalla de inicio» para instalarla.</p>
 </footer>
 </div>
 
@@ -678,12 +697,12 @@
 
 <!-- ============ REPRODUCTOR ============ -->
 <div id="player-bar">
-    <div class="pb-seek"><input type="range" class="seek" min="0" max="1000" value="0" step="1" aria-label="Progreso" title="Progreso de la pista"></div>
+    <div class="pb-seek"><input type="range" class="seek" min="0" max="1000" value="0" step="1" aria-label="Progreso"></div>
     <div class="pb-row">
         <div class="pb-left">
-            <button type="button" class="icon-btn pb-prev" onclick="prevTrack()" aria-label="Anterior" title="Pista anterior"><span data-ic="prev"></span></button>
-            <button type="button" class="icon-btn play-big" data-role="playpause" onclick="togglePlay()" aria-label="Reproducir o pausar" title="Reproducir / Pausar"><span data-ic="play"></span></button>
-            <button type="button" class="icon-btn pb-next" onclick="nextTrack(false)" aria-label="Siguiente" title="Pista siguiente"><span data-ic="next"></span></button>
+            <button type="button" class="icon-btn pb-prev" onclick="prevTrack()" aria-label="Anterior"><span data-ic="prev"></span></button>
+            <button type="button" class="icon-btn play-big" data-role="playpause" onclick="togglePlay()" aria-label="Reproducir o pausar"><span data-ic="play"></span></button>
+            <button type="button" class="icon-btn pb-next" onclick="nextTrack(false)" aria-label="Siguiente"><span data-ic="next"></span></button>
             <span class="pb-time"><span class="t-cur">0:00</span> / <span class="t-dur">0:00</span></span>
         </div>
         <div class="pb-center" onclick="if (!event.target.closest('a')) openNP()">
@@ -695,12 +714,12 @@
         </div>
         <div class="pb-right">
             <div class="pb-vol">
-                <button type="button" class="icon-btn" data-role="mute" aria-label="Silenciar" title="Silenciar"><span data-ic="volUp"></span></button>
-                <input type="range" class="seek vol" min="0" max="1" step="0.01" value="0.85" aria-label="Volumen" title="Volumen">
+                <button type="button" class="icon-btn" data-role="mute" aria-label="Silenciar"><span data-ic="volUp"></span></button>
+                <input type="range" class="seek vol" min="0" max="1" step="0.01" value="0.85" aria-label="Volumen">
             </div>
-            <button type="button" class="icon-btn pb-mode" data-role="repeat" aria-label="Repetir" title="Repetir"><span data-ic="repeat"></span></button>
-            <button type="button" class="icon-btn pb-mode" data-role="shuffle" aria-label="Aleatorio" title="Aleatorio"><span data-ic="shuffle"></span></button>
-            <button type="button" class="icon-btn" onclick="openNP()" aria-label="Abrir reproductor" title="Abrir reproductor"><span data-ic="up"></span></button>
+            <button type="button" class="icon-btn pb-mode" data-role="repeat" aria-label="Repetir"><span data-ic="repeat"></span></button>
+            <button type="button" class="icon-btn pb-mode" data-role="shuffle" aria-label="Aleatorio"><span data-ic="shuffle"></span></button>
+            <button type="button" class="icon-btn" onclick="openNP()" aria-label="Abrir reproductor"><span data-ic="up"></span></button>
         </div>
     </div>
 </div>
@@ -737,6 +756,7 @@
         </div>
     </div>
 </div>
+<div id="toast" role="status" aria-live="polite"></div>
 <audio id="audio" preload="metadata"></audio>
 
 <script>
@@ -796,6 +816,33 @@
         updateThemeIcon();
     });
     updateThemeIcon();
+
+    // ---------- aviso breve ----------
+    let toastTimer = null;
+    function toast(msg) {
+        const el = $('toast'); el.textContent = msg; el.classList.add('show');
+        clearTimeout(toastTimer); toastTimer = setTimeout(() => el.classList.remove('show'), 3500);
+    }
+
+    // ---------- progreso guardado (podcasts y audiolibros) ----------
+    const progressMap = {};            // id -> { pos, dur, at }
+    function loadProgress() {
+        const el = $('progress-data'); if (!el) return;
+        try {
+            const data = JSON.parse(el.textContent || '{}');
+            for (const [id, p] of Object.entries(data)) if (!progressMap[id] || p.at >= progressMap[id].at) progressMap[id] = p;
+        } catch (e) {}
+    }
+    let pendingSeek = 0, lastSave = 0;
+    function saveProgress(final) {
+        if (!seenKey || !currentId || !audio.duration || !isFinite(audio.duration)) return;
+        const body = { id: Number(currentId), key: seenKey, pos: audio.currentTime, dur: audio.duration };
+        const finished = audio.duration - audio.currentTime <= 15 || audio.ended;
+        if (finished) delete progressMap[currentId]; else progressMap[currentId] = { pos: body.pos, dur: body.dur, at: Date.now() / 1000 };
+        if (final && navigator.sendBeacon) navigator.sendBeacon('/api/progress', new Blob([JSON.stringify(body)], { type: 'application/json' }));
+        else postJSON('/api/progress', body);
+        lastSave = Date.now();
+    }
 
     // ---------- estado del reproductor ----------
     let queue = [], order = [], pos = -1;
@@ -866,6 +913,8 @@
         currentId = t.id;
         if (!t.cover) t.cover = coverForTrack(t.id) || lastCover;
         audio.src = `/stream/${t.id}`;
+        const saved = seenKey && progressMap[t.id];
+        pendingSeek = (saved && saved.pos > 5 && saved.dur - saved.pos > 15) ? saved.pos : 0;
         updateBarUI(t);
         $('player-bar').style.display = 'block';
         document.body.classList.add('has-player');
@@ -903,6 +952,7 @@
         store.set('repeat', repeat); updateModes();
     }
     audio.addEventListener('ended', () => {
+        saveProgress(false);
         if (repeat === 'one') { audio.currentTime = 0; audio.play().catch(() => {}); return; }
         nextTrack(true);
     });
@@ -957,7 +1007,7 @@
         if ('mediaSession' in navigator) navigator.mediaSession.playbackState = playing ? 'playing' : 'paused';
     }
     audio.addEventListener('play', syncButtons);
-    audio.addEventListener('pause', syncButtons);
+    audio.addEventListener('pause', () => { syncButtons(); if (!audio.ended) saveProgress(false); });
     audio.addEventListener('ended', syncButtons);
 
     // volumen
@@ -979,7 +1029,10 @@
             dragging = null;
         });
     });
-    audio.addEventListener('loadedmetadata', () => setTimes(0, audio.duration));
+    audio.addEventListener('loadedmetadata', () => {
+        setTimes(0, audio.duration);
+        if (pendingSeek) { audio.currentTime = pendingSeek; toast('Retomando en ' + fmt(pendingSeek)); pendingSeek = 0; }
+    });
     let lastPos = 0;
     audio.addEventListener('timeupdate', () => {
         if (!audio.duration) return;
@@ -988,6 +1041,7 @@
             document.querySelectorAll('.seek:not(.vol)').forEach(r => { r.value = v; paintRange(r, 1000); });
             setTimes(audio.currentTime, audio.duration);
         }
+        if (seenKey && Date.now() - lastSave > 10000) saveProgress(false);
         const now = Date.now();
         if ('mediaSession' in navigator && navigator.mediaSession.setPositionState && now - lastPos > 1000 && isFinite(audio.duration)) {
             lastPos = now;
@@ -1094,7 +1148,12 @@
             if (!tracks.length) return;
             const holder = ab.closest('.group, .album-block, .card');
             const img = holder ? holder.querySelector('img') : null;
-            startPlaylist(tracks, 0, ab.dataset.key, img ? img.src : '', ab.dataset.seen === '1' ? ab.dataset.key : null);
+            let startIdx = 0;
+            if (ab.dataset.seen === '1') {     // podcast / audiolibro: empieza por el episodio que dejaste a medias
+                const part = tracks.map((t, i) => [i, progressMap[t.id]]).filter(([i, p]) => p).sort((a, b) => b[1].at - a[1].at);
+                if (part.length) startIdx = part[0][0];
+            }
+            startPlaylist(tracks, startIdx, ab.dataset.key, img ? img.src : '', ab.dataset.seen === '1' ? ab.dataset.key : null);
             return;
         }
 
@@ -1124,7 +1183,7 @@
             [...doc.body.classList].filter(c => c.startsWith('sec-')).forEach(c => document.body.classList.add(c));
             if (push) { history.pushState({}, '', url); window.scrollTo(0, 0); }
             else window.scrollTo(0, scrollPos[url] || 0);
-            renderMostPlayed(); syncButtons();
+            renderMostPlayed(); loadProgress(); syncButtons(); syncInstallUi();
             navBar(100); setTimeout(() => navToken === token && navBar(0), 200);
         } catch (err) { location.href = url; }
     }
@@ -1158,6 +1217,9 @@
     });
     document.addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target.closest && e.target.closest('.chip-filter')) e.preventDefault(); }, true);
 
+    window.addEventListener('pagehide', () => { if (!audio.paused) saveProgress(true); });
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden' && !audio.paused) saveProgress(true); });
+
     // ---------- lightbox y teclado ----------
     function openLightbox(e, src) { e.preventDefault(); e.stopPropagation(); $('lightbox-img').src = src; $('lightbox').classList.add('active'); }
     function closeLightbox() { $('lightbox').classList.remove('active'); }
@@ -1166,8 +1228,23 @@
         if (e.code === 'Space' && audio.src && !e.target.closest('input, select, textarea, button, a, summary')) { e.preventDefault(); togglePlay(); }
     });
 
+    // ---------- app instalable (PWA) ----------
+    if ('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(() => {}));
+    let installEvent = null;
+    window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); installEvent = e; const b = $('install-btn'); if (b) b.style.display = ''; });
+    window.addEventListener('appinstalled', () => { installEvent = null; const b = $('install-btn'); if (b) b.style.display = 'none'; });
+    document.addEventListener('click', (e) => {
+        if (e.target.closest && e.target.closest('#install-btn') && installEvent) { installEvent.prompt(); installEvent.userChoice.finally(() => { installEvent = null; const b = $('install-btn'); if (b) b.style.display = 'none'; }); }
+    });
+    // el pie se vuelve a dibujar con cada cambio de página: se recuerda si ya se puede instalar
+    function syncInstallUi() {
+        const b = $('install-btn'); if (b) b.style.display = installEvent ? '' : 'none';
+        const standalone = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone;
+        const h = $('ios-hint'); if (h) h.style.display = (/iphone|ipad|ipod/i.test(navigator.userAgent) && !standalone) ? '' : 'none';
+    }
+
     // ---------- arranque ----------
-    applyVolume(); updateModes(); renderMostPlayed(); syncButtons();
+    applyVolume(); updateModes(); loadProgress(); renderMostPlayed(); syncButtons(); syncInstallUi();
 </script>
 </body>
 </html>

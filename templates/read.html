@@ -2,84 +2,179 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="theme-color" content="#000000">
     <title>{{ item.title }} · Lector</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-    {% if ext == 'epub' %}<script src="https://cdnjs.cloudflare.com/ajax/libs/epub.js/0.3.93/epub.min.js"></script>{% endif %}
     <style>
         * { box-sizing: border-box; }
         html, body { height: 100%; margin: 0; background: #111; color: #eee; font-family: system-ui, sans-serif; }
-        #bar { height: 48px; display: flex; align-items: center; gap: 12px; padding: 0 12px; background: #000; border-bottom: 1px solid #222; }
-        #bar .title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; }
-        button { background: #222; color: #eee; border: 0; border-radius: 8px; padding: 8px 14px; font-size: 14px; cursor: pointer; }
-        button:hover { background: #333; }
-        #status { font-size: 12px; color: #999; }
-        #viewer { height: calc(100% - 48px); overflow: auto; background: #fff; }
-        #comic { height: calc(100% - 48px); overflow: auto; text-align: center; background: #111; }
-        #comic img { max-width: 100%; height: auto; display: block; margin: 0 auto; }
+        #bar { min-height: 48px; display: flex; align-items: center; gap: 8px; padding: 6px 10px; padding-top: calc(6px + env(safe-area-inset-top)); background: #000; border-bottom: 1px solid #222; flex-wrap: wrap; }
+        #bar .title { flex: 1; min-width: 80px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; }
+        button, a.btn { background: #222; color: #eee; border: 0; border-radius: 8px; padding: 8px 12px; font-size: 14px; cursor: pointer; text-decoration: none; }
+        button:hover, a.btn:hover { background: #333; }
+        #status { font-size: 12px; color: #999; white-space: nowrap; }
+        #pageno { width: 56px; background: #1b1b1b; color: #eee; border: 1px solid #333; border-radius: 8px; padding: 7px 6px; text-align: center; font-size: 14px; }
+        #viewer { height: calc(100% - 52px); overflow: auto; background: #fff; }
+        #stage { height: calc(100% - 52px); overflow: auto; background: #1a1a1a; text-align: center; -webkit-overflow-scrolling: touch; }
+        #stage canvas, #stage img { display: block; margin: 8px auto; max-width: none; background: #fff; }
+        #stage img { background: transparent; }
+        #msg { padding: 24px; text-align: center; color: #bbb; }
+        #msg a { color: #c084fc; }
     </style>
 </head>
 <body>
 <div id="bar">
-    <button onclick="history.length > 1 ? history.back() : window.close()">← Volver</button>
+    <button type="button" onclick="history.length > 1 ? history.back() : window.close()">← Volver</button>
     <div class="title">{{ item.title }}</div>
     <span id="status">Cargando…</span>
-    <button id="prev">◀</button>
-    <button id="next">▶</button>
+    <button type="button" id="prev" aria-label="Anterior">◀</button>
+    {% if ext != 'epub' %}<input id="pageno" type="number" min="1" value="1" aria-label="Página"><span id="total" style="font-size:13px;color:#999"></span>{% endif %}
+    <button type="button" id="next" aria-label="Siguiente">▶</button>
+    {% if ext == 'pdf' %}<button type="button" id="zout" aria-label="Alejar">−</button><button type="button" id="zin" aria-label="Acercar">+</button>{% endif %}
 </div>
-{% if ext == 'epub' %}<div id="viewer"></div>{% else %}<div id="comic"><img id="page" alt=""></div>{% endif %}
+{% if ext == 'epub' %}<div id="viewer"></div>{% else %}<div id="stage">{% if ext == 'pdf' %}<canvas id="cv"></canvas>{% else %}<img id="page" alt="">{% endif %}</div>{% endif %}
 
 <script>
     const ID = {{ item.id }};
     const KEY = {{ key|tojson }};
-    const status = document.getElementById('status');
-    if (KEY) fetch('/api/seen', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: ID, key: KEY }), keepalive: true }).catch(() => {});
+    const RESUME = {{ (resume or none)|tojson }};
+    const $ = (id) => document.getElementById(id);
+    const status = $('status');
 
-    {% if ext == 'epub' %}
-    const book = ePub('/stream/' + ID, { openAs: 'epub' });
-    const rendition = book.renderTo('viewer', { width: '100%', height: '100%', flow: 'paginated', spread: 'auto' });
-    rendition.display().then(() => { status.textContent = ''; }).catch(() => { status.textContent = 'No se pudo abrir este EPUB'; });
-    document.getElementById('prev').onclick = () => rendition.prev();
-    document.getElementById('next').onclick = () => rendition.next();
-    document.addEventListener('keydown', (e) => { if (e.key === 'ArrowLeft') rendition.prev(); if (e.key === 'ArrowRight') rendition.next(); });
-    {% else %}
-    // CBZ = zip de imágenes: se descarga completo en el navegador y se muestra página por página
-    let pages = [], current = 0;
-    const img = document.getElementById('page'), box = document.getElementById('comic');
-    async function load() {
-        const resp = await fetch('/stream/' + ID);
-        const total = Number(resp.headers.get('Content-Length')) || 0;
-        const reader = resp.body.getReader();
-        const chunks = []; let got = 0;
-        while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            chunks.push(value); got += value.length;
-            if (total) status.textContent = 'Descargando ' + Math.round(got * 100 / total) + '%';
-        }
-        const zip = await JSZip.loadAsync(new Blob(chunks));
-        pages = Object.keys(zip.files).filter(n => /\.(jpe?g|png|webp|gif)$/i.test(n) && !zip.files[n].dir)
-            .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
-        if (!pages.length) { status.textContent = 'No hay imágenes en este archivo'; return; }
-        window.zip = zip;
-        show(0);
+    // ---- guarda por dónde vas (se envía 1.5 s después del último cambio y al salir) ----
+    let saveTimer = null, pending = null;
+    function save(pos, dur, extra) { pending = { id: ID, key: KEY, pos, dur, extra: extra || '' }; clearTimeout(saveTimer); saveTimer = setTimeout(() => flush(false), 1500); }
+    function flush(final) {
+        if (!pending || !KEY) return;
+        const body = JSON.stringify(pending); pending = null; clearTimeout(saveTimer);
+        if (final && navigator.sendBeacon) navigator.sendBeacon('/api/progress', new Blob([body], { type: 'application/json' }));
+        else fetch('/api/progress', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body, keepalive: true }).catch(() => {});
     }
-    async function show(i) {
-        if (i < 0 || i >= pages.length) return;
-        current = i;
-        const blob = await window.zip.files[pages[i]].async('blob');
-        if (img.dataset.url) URL.revokeObjectURL(img.dataset.url);
-        img.dataset.url = URL.createObjectURL(blob);
-        img.src = img.dataset.url;
-        box.scrollTop = 0;
-        status.textContent = (i + 1) + ' / ' + pages.length;
-    }
-    document.getElementById('prev').onclick = () => show(current - 1);
-    document.getElementById('next').onclick = () => show(current + 1);
-    document.addEventListener('keydown', (e) => { if (e.key === 'ArrowLeft') show(current - 1); if (e.key === 'ArrowRight' || e.key === ' ') show(current + 1); });
-    box.addEventListener('click', (e) => { (e.clientX < window.innerWidth / 2) ? show(current - 1) : show(current + 1); });
-    load().catch(() => { status.textContent = 'No se pudo abrir este archivo'; });
-    {% endif %}
+    addEventListener('pagehide', () => flush(true));
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flush(true); });
+    const fail = (text) => { status.textContent = text; };
+    const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
 </script>
+
+{% if ext == 'pdf' %}
+<script type="module">
+    // PDF.js servido desde este mismo servidor; pide el archivo por partes, así que abre rápido aunque pese mucho
+    try {
+        const pdfjs = await import('/static/vendor/pdf.min.mjs');
+        pdfjs.GlobalWorkerOptions.workerSrc = '/static/vendor/pdf.worker.min.mjs';
+        const pdf = await pdfjs.getDocument({ url: '/stream/' + ID, rangeChunkSize: 262144, disableAutoFetch: true }).promise;
+        const total = pdf.numPages, stage = $('stage'), cv = $('cv'), input = $('pageno');
+        $('total').textContent = '/ ' + total; input.max = total;
+        let page = clamp(RESUME && RESUME.pos ? Math.round(RESUME.pos) : 1, 1, total);
+        let zoom = Number(localStorage.getItem('pdfZoom')) || 1, token = 0, current = null;
+
+        async function show(n, keepScroll) {
+            n = clamp(n, 1, total); page = n; input.value = n;
+            const mine = ++token;
+            if (current) { try { current.cancel(); await current.promise; } catch (e) {} }
+            if (mine !== token) return;
+            const p = await pdf.getPage(n);
+            const base = p.getViewport({ scale: 1 });
+            const dpr = window.devicePixelRatio || 1;
+            const scale = (Math.max(220, stage.clientWidth - 16) / base.width) * zoom;
+            const vp = p.getViewport({ scale: scale * dpr });
+            cv.width = Math.floor(vp.width); cv.height = Math.floor(vp.height);
+            cv.style.width = Math.floor(vp.width / dpr) + 'px'; cv.style.height = Math.floor(vp.height / dpr) + 'px';
+            current = p.render({ canvasContext: cv.getContext('2d'), canvas: cv, viewport: vp });
+            try { await current.promise; } catch (e) { if (e && e.name === 'RenderingCancelledException') return; throw e; }
+            if (mine !== token) return;
+            if (!keepScroll) stage.scrollTop = 0;
+            status.textContent = n + ' / ' + total;
+            document.body.dataset.page = n;
+            save(n, total);
+        }
+        const go = (n) => { if (n >= 1 && n <= total) show(n); };
+        $('prev').onclick = () => go(page - 1); $('next').onclick = () => go(page + 1);
+        input.onchange = () => go(Number(input.value) || page);
+        $('zin').onclick = () => { zoom = Math.min(4, zoom + 0.25); localStorage.setItem('pdfZoom', zoom); show(page, true); };
+        $('zout').onclick = () => { zoom = Math.max(0.5, zoom - 0.25); localStorage.setItem('pdfZoom', zoom); show(page, true); };
+        document.addEventListener('keydown', (e) => {
+            if (e.target === input) return;
+            if (e.key === 'ArrowLeft' || e.key === 'PageUp') go(page - 1);
+            if (e.key === 'ArrowRight' || e.key === 'PageDown') go(page + 1);
+        });
+        let tx = 0;                                   // deslizar para cambiar de página (solo sin zoom)
+        stage.addEventListener('touchstart', (e) => { tx = e.touches[0].clientX; }, { passive: true });
+        stage.addEventListener('touchend', (e) => { const dx = e.changedTouches[0].clientX - tx; if (zoom <= 1 && Math.abs(dx) > 70) go(page + (dx < 0 ? 1 : -1)); }, { passive: true });
+        let rt = null; addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(() => show(page, true), 250); });
+        await show(page);
+        if (RESUME && page > 1) status.textContent = 'Retomando en la página ' + page + ' · ' + page + ' / ' + total;
+    } catch (e) {
+        console.error(e);
+        fail('No se pudo abrir el PDF');
+        document.getElementById('stage').innerHTML = '<div id="msg">No se pudo abrir este PDF aquí. <a href="/stream/' + ID + '">Abrirlo con el visor del navegador</a></div>';
+    }
+</script>
+
+{% elif ext == 'epub' %}
+<script src="/static/vendor/jszip.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/epub.js/0.3.93/epub.min.js"></script>
+<script>
+    (async () => {
+        try {
+            const book = ePub('/stream/' + ID, { openAs: 'epub' });
+            const rendition = book.renderTo('viewer', { width: '100%', height: '100%', flow: 'paginated', spread: 'auto' });
+            rendition.on('relocated', (loc) => {
+                const spine = book.spine ? (book.spine.length || (book.spine.spineItems || []).length || 1) : 1;
+                const d = (loc.start && loc.start.displayed) || { page: 1, total: 1 };
+                const pct = clamp(((loc.start.index + d.page / (d.total || 1)) / spine) * 100, 0, 100);
+                status.textContent = Math.round(pct) + '%';
+                save(pct, 100, loc.start.cfi);
+            });
+            try { await rendition.display(RESUME && RESUME.extra ? RESUME.extra : undefined); if (RESUME && RESUME.extra) status.textContent = 'Retomando…'; }
+            catch (e) { await rendition.display(); }
+            $('prev').onclick = () => rendition.prev(); $('next').onclick = () => rendition.next();
+            document.addEventListener('keydown', (e) => { if (e.key === 'ArrowLeft') rendition.prev(); if (e.key === 'ArrowRight') rendition.next(); });
+        } catch (e) { console.error(e); fail('No se pudo abrir este EPUB'); }
+    })();
+</script>
+
+{% else %}
+<script src="/static/vendor/jszip.min.js"></script>
+<script>
+    // CBZ = zip de imágenes: se descarga en el navegador y se muestra página por página
+    (async () => {
+        try {
+            const stage = $('stage'), img = $('page'), input = $('pageno');
+            const resp = await fetch('/stream/' + ID);
+            const size = Number(resp.headers.get('Content-Length')) || 0;
+            const reader = resp.body.getReader(); const chunks = []; let got = 0;
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                chunks.push(value); got += value.length;
+                if (size) status.textContent = 'Descargando ' + Math.round(got * 100 / size) + '%';
+            }
+            const zip = await JSZip.loadAsync(new Blob(chunks));
+            const pages = Object.keys(zip.files).filter(n => /\.(jpe?g|png|webp|gif)$/i.test(n) && !zip.files[n].dir)
+                .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+            if (!pages.length) { fail('No hay imágenes en este archivo'); return; }
+            const total = pages.length; $('total').textContent = '/ ' + total; input.max = total;
+            let page = clamp(RESUME && RESUME.pos ? Math.round(RESUME.pos) : 1, 1, total);
+            async function show(n) {
+                n = clamp(n, 1, total); page = n; input.value = n;
+                const blob = await zip.files[pages[n - 1]].async('blob');
+                if (img.dataset.url) URL.revokeObjectURL(img.dataset.url);
+                img.dataset.url = URL.createObjectURL(blob); img.src = img.dataset.url;
+                img.style.maxWidth = '100%'; img.style.height = 'auto'; stage.scrollTop = 0;
+                status.textContent = n + ' / ' + total; document.body.dataset.page = n;
+                save(n, total);
+            }
+            const go = (n) => { if (n >= 1 && n <= total) show(n); };
+            $('prev').onclick = () => go(page - 1); $('next').onclick = () => go(page + 1);
+            input.onchange = () => go(Number(input.value) || page);
+            document.addEventListener('keydown', (e) => { if (e.target === input) return; if (e.key === 'ArrowLeft') go(page - 1); if (e.key === 'ArrowRight' || e.key === ' ') go(page + 1); });
+            stage.addEventListener('click', (e) => go(page + (e.clientX < window.innerWidth / 2 ? -1 : 1)));
+            await show(page);
+            if (RESUME && page > 1) status.textContent = 'Retomando en la página ' + page + ' · ' + page + ' / ' + total;
+        } catch (e) { console.error(e); fail('No se pudo abrir este archivo'); }
+    })();
+</script>
+{% endif %}
 </body>
 </html>

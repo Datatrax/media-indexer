@@ -1,5 +1,5 @@
 """Pruebas de secciones nuevas, búsqueda, favoritos, "continuar", metadatos y plantillas."""
-import asyncio, re, sys, tempfile
+import asyncio, json, re, sys, tempfile
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -297,6 +297,154 @@ def test_group_href_points_to_that_exact_item():
         g = by_title(lib_with(tmp))["High School DxD"]
         q = parse_qs(g["href"].lstrip("?"))
         assert q["section"] == ["series"] and q["key"] == [g["key"]] and "q" not in q
+
+
+def test_small_thumbnails():
+    import os
+    from PIL import Image
+    from thumbs import ensure_small, small_path
+    with tempfile.TemporaryDirectory() as tmp:
+        big = Path(tmp) / "7.jpg"
+        Image.effect_noise((1280, 1920), 80).convert("RGB").save(big, "JPEG", quality=95)
+        small = ensure_small(big)
+        assert small == small_path(big) and small.is_file()
+        w, h = Image.open(small).size
+        assert max(w, h) <= 480 and abs(h / w - 1.5) < 0.02                       # misma proporción
+        assert small.stat().st_size < big.stat().st_size / 4                       # bastante más ligera
+        mt = small.stat().st_mtime
+        assert ensure_small(big) == small and small.stat().st_mtime == mt          # no se rehace si no cambió
+        os.utime(big, (mt + 100, mt + 100))
+        ensure_small(big); assert small.stat().st_mtime > mt                       # si la original cambia, se rehace
+        broken = Path(tmp) / "8.jpg"; broken.write_bytes(b"no soy una imagen")
+        assert ensure_small(broken) == broken                                      # imagen dañada: se usa la original
+
+
+def test_group_exposes_small_thumbnail():
+    with tempfile.TemporaryDirectory() as tmp:
+        g = by_title(lib_with(tmp))["Oshin"]
+        assert g["thumbnail"] == "/thumb/20?v=7" and g["thumb_small"] == "/thumb/20?v=7&s=1"
+
+
+class _FakeFile:
+    def __init__(self, name): self.name = name
+
+
+class _FakeMsg:
+    def __init__(self, id, name, data): self.id, self.file, self.data = id, _FakeFile(name) if name else None, data
+
+
+class _FakeTelegram:
+    """Imita lo mínimo de TelegramClient que usa el respaldo (Mensajes guardados)."""
+    def __init__(self): self.msgs, self.next = [], 1; self.deleted = []
+    async def iter_messages(self, who, limit=None):
+        assert who == "me"
+        for m in sorted(self.msgs, key=lambda m: -m.id): yield m
+    async def send_file(self, who, f, caption=None, force_document=False):
+        assert who == "me" and force_document and f.name == "biblioteca-respaldo.json"
+        self.msgs.append(_FakeMsg(self.next, f.name, f.getvalue())); self.next += 1
+    async def download_media(self, msg, file=bytes): return msg.data
+    async def delete_messages(self, who, ids):
+        self.deleted += ids; self.msgs = [m for m in self.msgs if m.id not in ids]
+
+
+def test_backup_export_import_roundtrip_and_merge():
+    import backup
+    with tempfile.TemporaryDirectory() as tmp:
+        a = Database(Path(tmp) / "a.db")
+        a.toggle_favorite("books::dune"); a.mark_seen(5, "series|x"); a.set_progress(7, "podcasts::p", 30.5, 600, "", at=1000)
+        a.set_meta_cache("series|naruto", {"year": "2002"})
+        data = backup.export_data(a)
+        b = Database(Path(tmp) / "b.db")
+        assert backup.import_data(b, json.loads(json.dumps(data))) == {"favoritos": 1, "vistos": 1, "progreso": 1, "datos_automaticos": 1}
+        assert b.favorites().keys() == {"books::dune"} and b.progress_map()[7]["pos"] == 30.5 and b.load_meta_cache()["series|naruto"]["data"] == {"year": "2002"}
+        # fusionar: gana lo más reciente y nunca se borra nada
+        b.set_progress(7, "podcasts::p", 99, 600, "", at=2000)
+        b.toggle_favorite("music::oshin")
+        backup.import_data(b, data)
+        assert b.progress_map()[7]["pos"] == 99 and "music::oshin" in b.favorites()
+        assert backup.digest(data) == backup.digest({**data, "exported_at": 1})
+
+
+def test_backup_rejects_bad_files():
+    import backup
+    for bad in [[], {"app": "otra"}, {"app": backup.APP, "format": 99}, {"app": backup.APP, "format": 1, "seen": [{"id": "x"}]},
+                {"app": backup.APP, "format": 1, "favorites": [{"key": "", "added": 1}]}, {"app": backup.APP, "format": 1, "progress": [{"id": 1, "key": "k", "pos": -5, "dur": 1, "at": 1}]}]:
+        try:
+            backup.parse_backup(bad); assert False, bad
+        except ValueError:
+            pass
+
+
+def test_telegram_backup_restores_when_empty_and_uploads_changes():
+    import backup
+    with tempfile.TemporaryDirectory() as tmp:
+        tg = _FakeTelegram()
+        db1 = Database(Path(tmp) / "1.db"); db1.toggle_favorite("books::dune"); db1.mark_seen(5, "k")
+        t1 = backup.TelegramBackup(tg, db1, keep=2)
+        assert asyncio.run(t1.restore_if_empty()) is None                      # no hay respaldo todavía, y sus datos no están vacíos
+        assert asyncio.run(t1.upload_if_changed()) is False                    # primero fija lo que ya tiene; nada cambió
+        db1.toggle_favorite("music::oshin")
+        assert asyncio.run(t1.upload_if_changed()) is True and len(tg.msgs) == 1
+        assert asyncio.run(t1.upload_if_changed()) is False                    # sin cambios: no sube nada
+        # servidor nuevo sin disco: arranca vacío y se recupera solo
+        db2 = Database(Path(tmp) / "2.db"); t2 = backup.TelegramBackup(tg, db2)
+        assert asyncio.run(t2.restore_if_empty())["favoritos"] == 2 and set(db2.favorites()) == {"books::dune", "music::oshin"}
+        assert asyncio.run(t2.upload_if_changed()) is False                    # lo restaurado no se vuelve a subir
+        # se conservan solo los 2 respaldos más nuevos
+        for i in range(3):
+            db1.toggle_favorite(f"k{i}"); asyncio.run(t1.upload_if_changed())
+        assert len(tg.msgs) == 2 and max(m.id for m in tg.msgs) == 4
+        # un respaldo dañado como el más nuevo no impide usar el anterior
+        tg.msgs.append(_FakeMsg(99, "biblioteca-respaldo.json", b"no es json"))
+        db3 = Database(Path(tmp) / "3.db")
+        assert asyncio.run(backup.TelegramBackup(tg, db3).restore_if_empty())["favoritos"] >= 2
+
+
+def test_progress_rules_and_labels():
+    import progress as P
+    audio, pdf, epub = {"ext": "mp3"}, {"ext": "pdf"}, {"ext": "epub"}
+    assert P.fmt_time(65) == "1:05" and P.fmt_time(3725) == "1:02:05" and P.fmt_time(None) == "0:00"
+    assert not P.is_finished(audio, 100, 600) and P.is_finished(audio, 590, 600) and P.is_finished(audio, 600, 600)
+    assert not P.is_finished(pdf, 4, 5) and P.is_finished(pdf, 5, 5)
+    assert not P.is_finished(epub, 50, 100) and P.is_finished(epub, 99, 100)
+    assert not P.is_finished(audio, 5, 0)                                       # sin duración conocida nunca se da por terminado
+    row = {"pos": 90, "dur": 600, "at": 5, "extra": ""}
+    assert P.view(audio, row)["label"] == "1:30 de 10:00" and P.view(audio, row)["pct"] == 15
+    assert P.view(pdf, {"pos": 3, "dur": 5, "at": 1})["label"] == "pág. 3 de 5"
+    assert P.view(epub, {"pos": 35.4, "dur": 100, "at": 1})["label"] == "35%"
+
+
+def test_continue_offers_unfinished_item_itself():
+    from groups import continue_list
+    with tempfile.TemporaryDirectory() as tmp:
+        lib = lib_with(tmp, [raw(1, "p.jpg", "Tipo: Podcast\nNombre: P", "image/jpeg", True, True),
+                             raw(2, "Ep 1 - a.mp3", "", "audio/mpeg"), raw(3, "Ep 2 - b.mp3", "", "audio/mpeg")])
+        g = by_title(lib)["P"]
+        by_key = {x["key"]: x for x in lib.groups() if x.get("key")}
+        seen = {2: (g["key"], 10)}
+        assert continue_list(by_key, seen)[0]["ep"]["id"] == 3                       # terminado: sigue el siguiente
+        assert continue_list(by_key, seen, unfinished={2: {}})[0]["ep"]["id"] == 2   # a medias: aparece él mismo
+
+
+def test_diagnostics_reports_what_needs_fixing():
+    import diagnostics
+    with tempfile.TemporaryDirectory() as tmp:
+        lib = lib_with(tmp, SAMPLE + [raw(50, "algo.xyz", "Tipo: Cosa rara"), raw(51, "dup.mkv", "Tipo: Serie\nNombre: D", "video/x-matroska"),
+                                      raw(52, "dup.mkv", "Tipo: Serie\nNombre: D", "video/x-matroska"),
+                                      raw(60, "p.jpg", "Tipo: Álbum\nÁlbum: Fantasma\nArtista: Nadie", "image/jpeg", True, True)])
+        d = diagnostics.run(lib, {}, Path(tmp), Path(tmp) / "thumbs", Path(tmp) / "c.db")
+        ids = {p["id"]: p for p in d["problems"]}
+        assert [r["title"] for r in ids["sin_clasificar"]["rows"]] == ["algo.xyz"]
+        assert [r["title"] for r in ids["portadas_huerfanas"]["rows"]] == ["Fantasma"]
+        assert ids["repetidos"]["count"] == 1 and "sin_portada" in ids
+        assert d["problems"][0]["severity"] == "alto" and d["summary"]["files"] == lib.total
+
+
+def test_similar_albums_still_available():
+    from groups import similar_albums
+    a = {"key": "m::a", "title": "A", "artista": "X", "genero": "dream pop, shoegaze", "year": "2012"}
+    b = {"key": "m::b", "title": "B", "artista": "Y", "genero": "shoegaze", "year": "2013"}
+    assert similar_albums(a, [a, b])[1] == [b]
 
 
 if __name__ == "__main__":

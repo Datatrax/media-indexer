@@ -1,4 +1,6 @@
 import asyncio
+import json
+from pathlib import Path
 import re
 import secrets
 import time
@@ -9,19 +11,23 @@ from typing import Dict, List
 from urllib.parse import urlencode
 
 from fastapi import FastAPI, Request, Depends, HTTPException, status, Query
-from fastapi.responses import HTMLResponse, StreamingResponse, FileResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, StreamingResponse, FileResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 import uvicorn
 
 import tg
-from config import (ADMIN_USER, ADMIN_PASS, AUTO_META, CHANNEL_ID, DB_PATH, FULL_SYNC, TMDB_API_KEY,
+from config import (ADMIN_USER, ADMIN_PASS, AUTO_BACKUP, AUTO_META, CHANNEL_ID, DATA_DIR, DB_PATH, FULL_SYNC, TMDB_API_KEY,
                     ITEMS_PER_PAGE, THUMB_DIR)
 from db import Database
 from groups import slug, same_artist, get_filters_from_groups, continue_list, similar_albums
 from library import Library, human_size
 from downloads import archive_plan, content_disposition
 import zipstream
+from thumbs import ensure_small
+import progress as progress_mod
+import backup
+import diagnostics
 from meta import enrich_pending
 from search import search as fuzzy_search
 
@@ -81,6 +87,15 @@ async def startup_event():
     await client.start()
     tg.register_handlers(library)
     asyncio.create_task(tg.sync(library, full=FULL_SYNC))   # ...mientras se pone al día en segundo plano
+    if AUTO_BACKUP:
+        tb = backup.TelegramBackup(client, library.db)
+        try:    # si el servidor arrancó sin datos (hosting sin disco), recupera el último respaldo de "Mensajes guardados"
+            restored = await asyncio.wait_for(tb.restore_if_empty(), 45)
+            if restored:
+                print("Respaldo restaurado desde Telegram:", restored)
+        except Exception as e:
+            print("No se pudo restaurar el respaldo:", e)
+        asyncio.create_task(tb.run_forever())
     if AUTO_META:
         asyncio.create_task(_meta_loop())
 
@@ -107,6 +122,7 @@ async def index(
     by_key = {g["key"]: g for g in groups if g.get("key")}
     favs = library.db.favorites()
     seen = library.db.seen_map()
+    progress = progress_mod.build_map(library.items, library.db.progress_map())
     music_albums = [g for g in groups if g["final_category"] == "music" and not g.get("is_artist")]
     artist_profile = None
     recent, cont, fav_groups = [], [], []
@@ -125,7 +141,7 @@ async def index(
                 lst.sort(key=lambda x: x.get("latest_date") or "", reverse=True)
                 recent.append({"key": cat, "label": label, "groups": lst[:10]})
         fav_groups = [by_key[k] for k in sorted(favs, key=lambda k: -favs[k]) if k in by_key][:12]
-        cont = continue_list(by_key, seen)
+        cont = continue_list(by_key, seen, unfinished=progress)
     elif section == "favs":
         items = [by_key[k] for k in sorted(favs, key=lambda k: -favs[k]) if k in by_key]
     elif section == "music":
@@ -189,7 +205,7 @@ async def index(
                and page == 1 and (section != "music" or view == "artists"))
     sec_cont, sec_favs, sec_recent = [], [], []
     if landing:
-        sec_cont = [c for c in continue_list(by_key, seen) if c["group"]["final_category"] == section]
+        sec_cont = [c for c in continue_list(by_key, seen, unfinished=progress) if c["group"]["final_category"] == section]
         sec_favs = [by_key[k] for k in sorted(favs, key=lambda k: -favs[k])
                     if k in by_key and (by_key[k]["final_category"] == section or (section == "music" and by_key[k].get("is_artist")))][:12]
         sec_recent = sorted([g for g in groups if g["final_category"] == section and not g.get("is_artist")],
@@ -255,6 +271,8 @@ async def index(
         "fav_groups": fav_groups,
         "favs": set(favs),
         "seen_ids": set(seen),
+        "progress": progress,
+        "progress_json": {i: {"pos": p["pos"], "dur": p["dur"], "at": p["at"]} for i, p in progress.items()},
         "section": section,
         "q": q,
         "page": page,
@@ -313,6 +331,27 @@ async def api_seen(request: Request, username: str = Depends(verify_credentials)
     return {"ok": True}
 
 
+@app.post("/api/progress")
+async def api_progress(request: Request, username: str = Depends(verify_credentials)):
+    """Guarda en qué punto vas (segundos de un audio, página de un PDF/CBZ, posición de un EPUB)."""
+    body = await _json_body(request)
+    try:
+        item_id, pos, dur = int(body.get("id")), float(body.get("pos", 0)), float(body.get("dur", 0))
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="Datos inválidos")
+    item = library.items.get(item_id)
+    key = str(body.get("key", ""))[:300]
+    if not item or not key or pos < 0 or dur < 0 or pos != pos or dur != dur:
+        raise HTTPException(status_code=404, detail="Archivo no encontrado")
+    if body.get("done") or progress_mod.is_finished(item, pos, dur):
+        library.db.delete_progress(item_id)                  # terminado: ya no queda "a medias"
+        library.db.mark_seen(item_id, key)
+        return {"ok": True, "finished": True}
+    library.db.set_progress(item_id, key, pos, dur, str(body.get("extra", ""))[:400])
+    library.db.mark_seen(item_id, key)
+    return {"ok": True, "finished": False}
+
+
 # ---------------------------------------------------------------- lector (PDF / EPUB / CBZ)
 @app.get("/read/{msg_id}", response_class=HTMLResponse)
 async def read_file(msg_id: int, request: Request, key: str = "", username: str = Depends(verify_credentials)):
@@ -320,90 +359,42 @@ async def read_file(msg_id: int, request: Request, key: str = "", username: str 
     if not item:
         raise HTTPException(status_code=404, detail="Archivo no encontrado")
     ext = item.get("ext")
-    if ext == "pdf":
-        return RedirectResponse(f"/stream/{msg_id}")     # el navegador ya sabe abrir PDF
-    if ext in ("epub", "cbz"):
-        return templates.TemplateResponse("read.html", {"request": request, "item": item, "ext": ext, "key": key})
+    if ext in ("pdf", "epub", "cbz"):
+        saved = library.db.progress_map().get(msg_id)
+        resume = progress_mod.view(item, saved) if saved else None
+        if not key:   # enlace sin clave: se busca a qué libro/colección pertenece el archivo
+            key = next((g["key"] for g in library.groups() if g.get("key") and any(e["id"] == msg_id for e in g["episodes"])), "")
+        return templates.TemplateResponse("read.html", {"request": request, "item": item, "ext": ext, "key": key, "resume": resume})
     return RedirectResponse(item.get("link") or "/")
 
 
-def parse_range(header: str, size: int):
-    m = re.match(r"bytes=(\d*)-(\d*)\s*$", header or "")
-    if not m or (m.group(1) == "" and m.group(2) == ""):
-        return None
-    s_, e_ = m.groups()
-    if s_ == "":
-        start = max(0, size - int(e_))
-        end = size - 1
-    else:
-        start = int(s_)
-        end = int(e_) if e_ else size - 1
-    end = min(end, size - 1)
-    if start >= size or start > end:
-        raise HTTPException(status_code=416, detail="Rango inválido",
-                            headers={"Content-Range": f"bytes */{size}"})
-    return start, end
+# ---------------------------------------------------------------- archivos estáticos (públicos: librerías, iconos, PWA)
+STATIC_DIR = Path(__file__).resolve().parent / "static"
+STATIC_TYPES = {".mjs": "text/javascript", ".js": "text/javascript", ".png": "image/png", ".svg": "image/svg+xml",
+                ".json": "application/json", ".webmanifest": "application/manifest+json", ".html": "text/html; charset=utf-8",
+                ".txt": "text/plain; charset=utf-8"}
 
 
-@app.get("/stream/{msg_id}")
-async def stream_file(msg_id: int, request: Request, username: str = Depends(verify_credentials)):
-    msg = await client.get_messages(CHANNEL_ID, ids=msg_id)
-    if not msg or not getattr(msg, "document", None):
-        raise HTTPException(status_code=404, detail="Archivo no encontrado")
-
-    doc = msg.document
-    size = doc.size or 0
-    mime = doc.mime_type or "application/octet-stream"
-    filename = "file"
-    for attr in doc.attributes:
-        if hasattr(attr, "file_name") and attr.file_name:
-            filename = attr.file_name
-            break
-
-    start, end, code = 0, max(size - 1, 0), 200
-    rng = parse_range(request.headers.get("range"), size) if size else None
-    if rng:
-        start, end = rng
-        code = 206
-    length = end - start + 1 if size else 0
-
-    async def body():
-        remaining = length
-        aligned = start - (start % STREAM_CHUNK)
-        skip = start - aligned
-        async for chunk in client.iter_download(msg.media, offset=aligned, request_size=STREAM_CHUNK):
-            if skip:
-                chunk = chunk[skip:]
-                skip = 0
-            if len(chunk) > remaining:
-                chunk = chunk[:remaining]
-            remaining -= len(chunk)
-            if chunk:
-                yield chunk
-            if remaining <= 0:
-                break
-
-    headers = {
-        "Accept-Ranges": "bytes",
-        "Content-Length": str(length),
-        "Content-Disposition": f'inline; filename="{filename}"',
-    }
-    if code == 206:
-        headers["Content-Range"] = f"bytes {start}-{end}/{size}"
-    return StreamingResponse(body(), status_code=code, media_type=mime, headers=headers)
-
+@app.get("/static/{path:path}")
+async def static_files(path: str):
+    target = (STATIC_DIR / path).resolve()
+    if STATIC_DIR not in target.parents or not target.is_file():
+        raise HTTPException(status_code=404, detail="No encontrado")
+    return FileResponse(target, media_type=STATIC_TYPES.get(target.suffix.lower(), "application/octet-stream"),
+                        headers={"Cache-Control": "public, max-age=86400"})
 
 
 # ---------------------------------------------------------------- miniaturas
 @app.get("/thumb/{msg_id}")
-async def thumb(msg_id: int, v: str = "", username: str = Depends(verify_credentials)):
+async def thumb(msg_id: int, v: str = "", s: int = 0, username: str = Depends(verify_credentials)):
     path = THUMB_DIR / f"{int(msg_id)}.jpg"
     if not path.is_file():
         raise HTTPException(status_code=404, detail="Sin miniatura")
+    if s:   # versión chica (unos 480 px) para listas y tarjetas; se crea la primera vez que se pide
+        path = await asyncio.to_thread(ensure_small, path)
     # la URL lleva ?v=<fecha de edición>, así que puede cachearse "para siempre"
     return FileResponse(path, media_type="image/jpeg",
                         headers={"Cache-Control": "private, max-age=31536000, immutable"})
-
 
 
 # ---------------------------------------------------------------- descargas en zip (en streaming)
@@ -438,12 +429,56 @@ async def download_group(key: str = Query(...), username: str = Depends(verify_c
 
 # ---------------------------------------------------------------- admin / estado
 @app.post("/admin/resync")
-async def admin_resync(username: str = Depends(verify_credentials)):
-    """Revisa todo el canal (ediciones y borrados). Uso: curl -u usuario:clave -X POST https://tu-sitio/admin/resync"""
+async def admin_resync(request: Request, username: str = Depends(verify_credentials)):
+    """Revisa todo el canal (ediciones y borrados). Desde /admin, o: curl -u usuario:clave -H "Content-Type: application/json" -d "{}" https://tu-sitio/admin/resync"""
+    await _json_body(request)
     if tg.sync_state["running"]:
-        return {"status": "ya hay una sincronización en curso", **tg.sync_state}
+        return {"status": "Ya hay una sincronización en curso"}
     asyncio.create_task(tg.sync(library, full=True))
-    return {"status": "sincronización completa iniciada"}
+    return {"status": "Revisión completa iniciada. Puede tardar unos minutos; recarga esta página para ver el avance."}
+
+
+@app.get("/admin", response_class=HTMLResponse)
+async def admin_page(request: Request, username: str = Depends(verify_credentials)):
+    diag = diagnostics.run(library, tg.sync_state, DATA_DIR, THUMB_DIR, DB_PATH)
+    return templates.TemplateResponse("admin.html", {
+        "request": request, "diag": diag, "sync": tg.sync_state, "meta_on": AUTO_META,
+        "auto_backup": AUTO_BACKUP, "backup_state": backup.state})
+
+
+@app.get("/admin/backup")
+async def admin_backup(username: str = Depends(verify_credentials)):
+    data = backup.export_data(library.db)
+    return Response(content=json.dumps(data, ensure_ascii=False), media_type="application/json",
+                    headers={"Content-Disposition": f'attachment; filename="biblioteca-respaldo-{time.strftime("%Y-%m-%d")}.json"'})
+
+
+@app.post("/admin/restore")
+async def admin_restore(request: Request, username: str = Depends(verify_credentials)):
+    if int(request.headers.get("content-length") or 0) > 20_000_000:
+        raise HTTPException(status_code=413, detail="El archivo es demasiado grande")
+    body = await _json_body(request)
+    try:
+        counts = backup.import_data(library.db, body)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"ok": True, "counts": counts}
+
+
+# ---------------------------------------------------------------- app instalable (PWA): públicos
+@app.get("/manifest.webmanifest")
+async def manifest():
+    return FileResponse(STATIC_DIR / "manifest.webmanifest", media_type="application/manifest+json", headers={"Cache-Control": "no-cache"})
+
+
+@app.get("/sw.js")
+async def service_worker():
+    return FileResponse(STATIC_DIR / "sw.js", media_type="text/javascript", headers={"Cache-Control": "no-cache", "Service-Worker-Allowed": "/"})
+
+
+@app.get("/offline")
+async def offline_page():
+    return FileResponse(STATIC_DIR / "offline.html", media_type="text/html; charset=utf-8")
 
 
 @app.get("/health")

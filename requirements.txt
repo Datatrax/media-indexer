@@ -6,3 +6,4 @@ jinja2
 aiofiles
 python-multipart
 starlette<1.0.0
+Pillow

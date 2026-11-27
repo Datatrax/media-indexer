@@ -46,10 +46,11 @@ class Library:
         for i in ids:
             self.raws.pop(i, None)
             self.items.pop(i, None)
-            try:
-                (self.thumb_dir / f"{int(i)}.jpg").unlink()
-            except FileNotFoundError:
-                pass
+            for name in (f"{int(i)}.jpg", f"{int(i)}.s.jpg"):
+                try:
+                    (self.thumb_dir / name).unlink()
+                except FileNotFoundError:
+                    pass
         self.version += 1
         return len(ids)
 

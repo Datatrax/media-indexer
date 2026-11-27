@@ -120,6 +120,7 @@ def apply_meta(groups, cache: Dict[str, Dict]) -> None:
                 used = True
         if not g.get("thumbnail") and entry.get("poster"):
             g["thumbnail"] = entry["poster"]
+            g["thumb_small"] = entry["poster"]
             used = True
         g["auto_meta"] = used
 

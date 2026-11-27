@@ -25,6 +25,14 @@ CREATE TABLE IF NOT EXISTS seen (
     key     TEXT NOT NULL,
     at      INTEGER NOT NULL
 );
+CREATE TABLE IF NOT EXISTS progress (
+    item_id INTEGER PRIMARY KEY,
+    key     TEXT NOT NULL,
+    pos     REAL NOT NULL,
+    dur     REAL NOT NULL,
+    extra   TEXT NOT NULL DEFAULT '',
+    updated INTEGER NOT NULL
+);
 CREATE TABLE IF NOT EXISTS meta_cache (
     key     TEXT PRIMARY KEY,
     data    TEXT NOT NULL,
@@ -130,3 +138,52 @@ class Database:
                 "ON CONFLICT(key) DO UPDATE SET data=excluded.data, fetched=excluded.fetched",
                 (key, json.dumps(data, ensure_ascii=False), int(time.time())))
             self.conn.commit()
+
+    # ---- retomar donde lo dejaste (audio: segundos · PDF/CBZ: página · EPUB: porcentaje + posición) ----
+    def set_progress(self, item_id: int, key: str, pos: float, dur: float, extra: str = "", at: Optional[int] = None) -> None:
+        with self.lock:
+            self.conn.execute(
+                "INSERT INTO progress (item_id, key, pos, dur, extra, updated) VALUES (?, ?, ?, ?, ?, ?) "
+                "ON CONFLICT(item_id) DO UPDATE SET key=excluded.key, pos=excluded.pos, dur=excluded.dur, "
+                "extra=excluded.extra, updated=excluded.updated",
+                (int(item_id), key, float(pos), float(dur), extra or "", int(at if at is not None else time.time())))
+            self.conn.commit()
+
+    def delete_progress(self, item_id: int) -> None:
+        with self.lock:
+            self.conn.execute("DELETE FROM progress WHERE item_id = ?", (int(item_id),))
+            self.conn.commit()
+
+    def progress_map(self) -> Dict[int, Dict]:
+        with self.lock:
+            rows = self.conn.execute("SELECT item_id, key, pos, dur, extra, updated FROM progress").fetchall()
+        return {r[0]: {"key": r[1], "pos": r[2], "dur": r[3], "extra": r[4], "at": r[5]} for r in rows}
+
+    # ---- respaldo: favoritos, vistos, progreso y datos automáticos ----
+    def user_data_is_empty(self) -> bool:
+        with self.lock:
+            return not any(self.conn.execute(f"SELECT 1 FROM {t} LIMIT 1").fetchone() for t in ("favorites", "seen", "progress"))
+
+    def import_user_data(self, favorites, seen, progress, meta_cache) -> Dict[str, int]:
+        """Fusiona un respaldo: nunca borra nada y, si hay un dato en los dos lados, gana el más reciente."""
+        counts = {"favoritos": 0, "vistos": 0, "progreso": 0, "datos_automaticos": 0}
+        with self.lock:
+            cur = self.conn.cursor()
+            for key, added in favorites:
+                cur.execute("INSERT OR IGNORE INTO favorites (key, added) VALUES (?, ?)", (key, added))
+                counts["favoritos"] += cur.rowcount
+            for item_id, key, at in seen:
+                cur.execute("INSERT INTO seen (item_id, key, at) VALUES (?, ?, ?) ON CONFLICT(item_id) DO UPDATE SET "
+                            "key=excluded.key, at=excluded.at WHERE excluded.at > seen.at", (item_id, key, at))
+                counts["vistos"] += cur.rowcount
+            for item_id, key, pos, dur, extra, at in progress:
+                cur.execute("INSERT INTO progress (item_id, key, pos, dur, extra, updated) VALUES (?, ?, ?, ?, ?, ?) "
+                            "ON CONFLICT(item_id) DO UPDATE SET key=excluded.key, pos=excluded.pos, dur=excluded.dur, "
+                            "extra=excluded.extra, updated=excluded.updated WHERE excluded.updated > progress.updated",
+                            (item_id, key, pos, dur, extra, at))
+                counts["progreso"] += cur.rowcount
+            for key, data, fetched in meta_cache:
+                cur.execute("INSERT OR IGNORE INTO meta_cache (key, data, fetched) VALUES (?, ?, ?)", (key, json.dumps(data, ensure_ascii=False), fetched))
+                counts["datos_automaticos"] += cur.rowcount
+            self.conn.commit()
+        return counts

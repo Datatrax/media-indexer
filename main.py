@@ -359,7 +359,7 @@ async def read_file(msg_id: int, request: Request, key: str = "", username: str 
     if not item:
         raise HTTPException(status_code=404, detail="Archivo no encontrado")
     ext = item.get("ext")
-    if ext in ("pdf", "epub", "cbz"):
+    if ext in ("pdf", "epub", "cbz", "txt", "md", "markdown"):
         saved = library.db.progress_map().get(msg_id)
         resume = progress_mod.view(item, saved) if saved else None
         if not key:   # enlace sin clave: se busca a qué libro/colección pertenece el archivo

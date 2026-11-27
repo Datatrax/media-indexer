@@ -175,6 +175,27 @@
         } catch (e) { console.error(e); fail('No se pudo abrir este archivo'); }
     })();
 </script>
+{% elif ext in ("txt", "md", "markdown") %}
+<div id="text-viewer" style="padding: 2rem; max-width: 800px; margin: 0 auto; line-height: 1.7; white-space: pre-wrap; font-family: system-ui, sans-serif;"></div>
+<script>
+fetch(`/stream/{{ item.id }}`)
+  .then(r => r.text())
+  .then(text => {
+    const el = document.getElementById('text-viewer');
+    if ("{{ ext }}" === "md" || "{{ ext }}" === "markdown") {
+      // Markdown simple (puedes mejorar esto después)
+      el.innerHTML = text
+        .replace(/^# (.*$)/gim, '<h1>$1</h1>')
+        .replace(/^## (.*$)/gim, '<h2>$1</h2>')
+        .replace(/^### (.*$)/gim, '<h3>$1</h3>')
+        .replace(/\*\*(.*)\*\*/gim, '<strong>$1</strong>')
+        .replace(/\*(.*)\*/gim, '<em>$1</em>')
+        .replace(/\n/g, '<br>');
+    } else {
+      el.textContent = text;
+    }
+  });
+</script>
 {% endif %}
 </body>
 </html>

@@ -426,7 +426,75 @@ async def download_group(key: str = Query(...), username: str = Depends(verify_c
         headers={"Content-Length": str(zipstream.total_length(entries)),
                  "Content-Disposition": content_disposition(f"{folder}.zip")})
 
+@app.get("/stream/{msg_id}")
+async def stream_file(msg_id: int, request: Request, username: str = Depends(verify_credentials)):
+    try:
+        msg = await client.get_messages(CHANNEL_ID, ids=msg_id)
+        if not msg or not msg.media:
+            raise HTTPException(404, "Archivo no encontrado")
 
+
+        file_size = 0
+        mime = "application/octet-stream"
+        filename = "file"
+
+
+        if hasattr(msg.media, "document"):
+            doc = msg.media.document
+            file_size = getattr(doc, "size", 0) or 0
+            mime = getattr(doc, "mime_type", mime) or mime
+            for attr in getattr(doc, "attributes", []):
+                if hasattr(attr, "file_name") and attr.file_name:
+                    filename = attr.file_name
+                    break
+
+
+        range_header = request.headers.get("range")
+        if range_header and file_size:
+            m = re.search(r"bytes=(\d+)-(\d*)", range_header)
+            start = int(m.group(1)) if m else 0
+            end = int(m.group(2)) if m and m.group(2) else file_size - 1
+            end = min(end, file_size - 1)
+            length = end - start + 1
+
+
+            async def ranged():
+                async for chunk in client.iter_download(msg.media, offset=start, limit=length, request_size=STREAM_CHUNK):
+                    yield chunk
+
+
+            return StreamingResponse(
+                ranged(),
+                status_code=206,
+                media_type=mime,
+                headers={
+                    "Content-Range": f"bytes {start}-{end}/{file_size}",
+                    "Accept-Ranges": "bytes",
+                    "Content-Length": str(length),
+                    "Content-Disposition": f'inline; filename="{filename}"',
+                },
+            )
+
+
+        async def full():
+            async for chunk in client.iter_download(msg.media, request_size=STREAM_CHUNK):
+                yield chunk
+
+
+        return StreamingResponse(
+            full(),
+            media_type=mime,
+            headers={
+                "Content-Disposition": f'inline; filename="{filename}"',
+                "Accept-Ranges": "bytes",
+                "Content-Length": str(file_size) if file_size else "0",
+            },
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, str(e))
+      
 # ---------------------------------------------------------------- admin / estado
 @app.post("/admin/resync")
 async def admin_resync(request: Request, username: str = Depends(verify_credentials)):
